@@ -53,6 +53,8 @@ ci:
     # Native accelerator: maturin needs a Rust toolchain to compile the extension.
     - curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
     - export PATH="$HOME/.cargo/bin:$PATH"
+    # Targets for scripts/build-wheels (zig cross-compiles: aarch64 and musl libc).
+    - rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl
     - uv sync --frozen --extra docs       # ruff + pyright + pytest + mkdocs
   script:
     # One moon invocation owns all interdependence. `-c 1` (serial) sidesteps the proto

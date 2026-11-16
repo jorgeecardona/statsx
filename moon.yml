@@ -36,10 +36,10 @@ tasks:
 
   build:
     # maturin directly, not `uv build`: the PEP 517 path tags the wheel `linux_x86_64`, which
-    # PyPI rejects. `--compatibility pypi` makes maturin pick a manylinux tag PyPI accepts.
-    command: 'sh -c "rm -rf dist && uvx maturin build --release --compatibility pypi --out dist && uvx maturin sdist --out dist"'
+    # PyPI rejects. scripts/build-wheels builds manylinux2014 + musllinux wheels and the sdist.
+    command: 'sh scripts/build-wheels'
     deps: ['~:test']
-    inputs: ['src/**/*.py', 'rust/**/*.rs', 'rust/Cargo.toml', 'pyproject.toml', 'README.md', 'CHANGELOG.md', 'LICENSE']
+    inputs: ['src/**/*.py', 'rust/**/*.rs', 'rust/Cargo.toml', 'pyproject.toml', 'README.md', 'CHANGELOG.md', 'LICENSE', 'scripts/build-wheels']
     outputs: ['dist']
 
   docs:

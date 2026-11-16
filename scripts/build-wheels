@@ -1,0 +1,23 @@
+#!/bin/sh
+# Build the release files into dist/: abi3 wheels for Linux and the sdist.
+#
+# zig is the linker, so the x86_64 wheel targets glibc 2.17 (manylinux2014), not the build
+# machine's glibc. If zig fails, it falls back to a native build with a tag PyPI accepts.
+# aarch64 and musllinux are best-effort: a failed cross-compile must not block the release.
+# The sdist lets macOS, Windows, and other platforms build from source with a Rust toolchain.
+set -eu
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+maturin() { uvx --with ziglang maturin "$@"; }
+
+rm -rf dist
+maturin build --release --zig --target x86_64-unknown-linux-gnu --compatibility manylinux2014 --out dist \
+    || maturin build --release --compatibility pypi --out dist
+maturin build --release --zig --target aarch64-unknown-linux-gnu --compatibility manylinux2014 --out dist \
+    || echo "build-wheels: aarch64 glibc wheel failed; continuing" >&2
+for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+    maturin build --release --zig --target "$target" --compatibility musllinux_1_2 --out dist \
+        || echo "build-wheels: $target wheel failed; continuing" >&2
+done
+maturin sdist --out dist
+ls dist
