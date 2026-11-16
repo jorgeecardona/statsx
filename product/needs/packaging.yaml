@@ -9,6 +9,8 @@ needs:
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_packaging.py::test_numpy_is_the_only_run_time_dependency"
 
   - id: PK-2
     text: >
@@ -17,3 +19,5 @@ needs:
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_packaging.py::test_import_loads_no_heavy_or_network_modules"

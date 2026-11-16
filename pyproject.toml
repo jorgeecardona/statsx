@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = ["numpy>=1.26"]
 
 [project.optional-dependencies]
 # docs are an *extra* (not a uv dependency-group) so Read the Docs can install them via pip

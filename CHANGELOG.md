@@ -11,4 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Estimate` and `Interval`: every result gives the estimate, the interval, the sample size,
   and the assumption as fields of a frozen dataclass.
+- NumPy is the only run-time dependency, and `import statsx` loads no torch, pandas, SciPy,
+  plotting, database, network or cloud module. Tests check both.
 - Initial release.
