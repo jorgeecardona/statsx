@@ -1,3 +1,6 @@
+import numpy as np
+import numpy.typing as npt
+
 def version() -> str: ...
 def beta_binomial(a: float, b: float, successes: float, trials: float) -> tuple[float, float]: ...
 def gamma_poisson(
@@ -7,3 +10,11 @@ def normal_normal(
     mean0: float, sd0: float, sigma: float, n: float, xbar: float
 ) -> tuple[float, float]: ...
 def dirichlet_multinomial(alpha: list[float], counts: list[float]) -> list[float]: ...
+def bootstrap_indices(
+    n: int,
+    kind: str,
+    n_resamples: int,
+    seed: int,
+    labels: npt.NDArray[np.int64] | None = None,
+    block_length: int = 0,
+) -> tuple[npt.NDArray[np.uint64], npt.NDArray[np.uint64]]: ...

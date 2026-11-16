@@ -6,7 +6,7 @@
 # Build wheels:  maturin build --release
 [package]
 name = "statsx"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "Native accelerator for statsx (built into the package)."
 license = "MIT"
@@ -22,6 +22,8 @@ crate-type = ["cdylib"]
 # version (3.12, 3.13, ...) — no per-version rebuild. extension-module lets it link as a
 # Python extension without linking libpython.
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py311"] }
+# NumPy arrays across the boundary without copying through Python lists.
+numpy = "0.22"
 
 [profile.release]
 opt-level = 3

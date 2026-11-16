@@ -37,6 +37,9 @@ sed -i -E "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" pyproject.toml
 # rust/Cargo.toml carries the same version (the first `version =` line is the package's).
 if [ -f rust/Cargo.toml ]; then
     sed -i -E "0,/^version = \"${CURRENT}\"/s//version = \"${NEW}\"/" rust/Cargo.toml
+    # and in rust/Cargo.lock, the line after this crate's `name = "..."`.
+    CRATE=$(sed -n -E 's/^name = "([^"]*)"/\1/p' rust/Cargo.toml | head -1)
+    sed -i -E "/^name = \"${CRATE}\"$/{n;s/^version = \"${CURRENT}\"/version = \"${NEW}\"/}" rust/Cargo.lock
 fi
 
 # Keep uv.lock's pinned project version in sync so the working tree stays clean

@@ -16,6 +16,8 @@ needs:
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_bootstrap.py::test_the_result_records_the_resample_unit_for_each_of_the_four_units"
 
   - id: ES-3
     text: >

@@ -18,3 +18,52 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-16'
+- id: D-3
+  text: 'Bootstrap resamples by a named unit. i.i.d.: Efron (1979), ''Bootstrap methods:
+    another look at the jackknife'', Annals of Statistics 7(1):1-26, DOI 10.1214/aos/1176344552.
+    Stratified (resample within each stratum, sizes kept) and clustered (resample
+    whole clusters): Davison & Hinkley (1997), ''Bootstrap Methods and their Application'',
+    chapter 3, Cambridge University Press, DOI 10.1017/CBO9780511802843. Block: the
+    moving block bootstrap of Kunsch (1989), ''The jackknife and the bootstrap for
+    general stationary observations'', Annals of Statistics 17(3):1217-1241, DOI 10.1214/aos/1176347265.
+    Interval: percentile, Efron & Tibshirani (1993), ''An Introduction to the Bootstrap'',
+    DOI 10.1201/9780429246593.'
+  needs:
+  - ES-2
+  alternatives:
+  - 'Stationary bootstrap (Politis & Romano 1994) for series: not chosen first, the
+    fixed block length is easier to state in the result; can be added as another unit.'
+  - 'Circular block bootstrap: not chosen, the moving block is the reference method
+    and the end effects are small for the series lengths we expect.'
+  - 'Two-stage cluster resampling (clusters, then units within): not chosen, single-stage
+    keeps within-cluster dependence intact and is what Davison & Hinkley recommend
+    when clusters are the sampling unit.'
+  consequences: The percentile interval undercovers in small samples; BCa (ES-3) is
+    the fix and is a separate decision. The block length is the caller's choice; we
+    do not pick it automatically. The statistic runs in Python, so speed is bounded
+    by the caller's function; only the resample indices come from Rust.
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'
+- id: D-4
+  text: 'Random numbers come from our own xoshiro256++ generator seeded by SplitMix64:
+    Blackman & Vigna (2021), ''Scrambled Linear Pseudorandom Number Generators'',
+    ACM Transactions on Mathematical Software 47(4), DOI 10.1145/3460772. Integers
+    in [0, n) use the multiply-shift method with rejection: Lemire (2019), ''Fast
+    Random Integer Generation in an Interval'', ACM TOMS 45(1), DOI 10.1145/3230636.'
+  needs:
+  - ES-2
+  alternatives:
+  - 'The rand crate: not chosen, P-1 asks us to own the generator, and xoshiro256++
+    is 30 lines.'
+  - 'PCG64 (O''Neill 2014), the NumPy default: not chosen, it needs 128-bit multiplication
+    on every draw; xoshiro256++ passes the same test batteries and is faster.'
+  - 'Modulo reduction for ranges: not chosen, it is biased when n does not divide
+    2^64.'
+  consequences: Our streams do not match NumPy's for the same seed; results are reproducible
+    within statsx only. The generator is not cryptographic.
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'

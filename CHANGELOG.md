@@ -15,4 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plotting, database, network or cloud module. Tests check both.
 - `statsx.conjugate`: Beta-Binomial, Gamma-Poisson, Normal-Normal and Dirichlet-Multinomial
   updates return the posterior as a named object (`Beta`, `Gamma`, `Normal`, `Dirichlet`).
+- `statsx.bootstrap`: bootstrap with a named resample unit (`IID`, `Stratified`, `Clustered`,
+  `Block`) and a percentile interval; the result records the unit.
 - Initial release.
