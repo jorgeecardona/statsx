@@ -1,0 +1,20 @@
+decisions:
+- id: D-2
+  text: Conjugate updates (Beta-Binomial, Gamma-Poisson, Normal-Normal with known
+    variance, Dirichlet-Multinomial) use the closed forms in Gelman, Carlin, Stern,
+    Dunson, Vehtari & Rubin (2013), Bayesian Data Analysis, 3rd ed., CRC Press, DOI
+    10.1201/b16018, chapters 2 and 3. Gamma uses the shape-rate form.
+  needs:
+  - BA-1
+  alternatives:
+  - 'Numerical posterior (grid or MCMC) for these models: not chosen, the closed form
+    is exact and costs nothing.'
+  - 'Shape-scale Gamma: not chosen, shape-rate makes the update a plain addition of
+    count and exposure.'
+  consequences: Only these four pairs are closed form; any other likelihood-prior
+    pair goes to the general posterior method (D-1). Normal-Normal needs a known observation
+    sd; unknown variance (Normal-Inverse-Gamma) is a separate decision.
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'

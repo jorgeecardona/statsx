@@ -13,4 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the assumption as fields of a frozen dataclass.
 - NumPy is the only run-time dependency, and `import statsx` loads no torch, pandas, SciPy,
   plotting, database, network or cloud module. Tests check both.
+- `statsx.conjugate`: Beta-Binomial, Gamma-Poisson, Normal-Normal and Dirichlet-Multinomial
+  updates return the posterior as a named object (`Beta`, `Gamma`, `Normal`, `Dirichlet`).
 - Initial release.
