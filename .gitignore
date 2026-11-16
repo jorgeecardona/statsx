@@ -40,3 +40,7 @@ CLAUDE.local.md
 # Local agent wiring: names cabildo-issues-mcp, which is not a dependency of this
 # package. docs/issues/ IS tracked — the register is plain markdown anyone can read.
 .mcp.json
+
+# Rust extension build output (maturin develop)
+/rust/target/
+src/*/*.so
