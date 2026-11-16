@@ -35,9 +35,11 @@ tasks:
     inputs: ['src/**/*.py', 'tests/**/*.py', 'pyproject.toml']
 
   build:
-    command: 'uv build --out-dir dist'
+    # maturin directly, not `uv build`: the PEP 517 path tags the wheel `linux_x86_64`, which
+    # PyPI rejects. `--compatibility pypi` makes maturin pick a manylinux tag PyPI accepts.
+    command: 'sh -c "rm -rf dist && uvx maturin build --release --compatibility pypi --out dist && uvx maturin sdist --out dist"'
     deps: ['~:test']
-    inputs: ['src/**/*.py', 'pyproject.toml', 'README.md', 'CHANGELOG.md', 'LICENSE']
+    inputs: ['src/**/*.py', 'rust/**/*.rs', 'rust/Cargo.toml', 'pyproject.toml', 'README.md', 'CHANGELOG.md', 'LICENSE']
     outputs: ['dist']
 
   docs:
