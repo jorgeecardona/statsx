@@ -1,0 +1,97 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+#
+# statsx — Statistics for Python with its own Rust core: Bayesian inference, forecasting, causal impact, tests and design, with NumPy as the only dependency.
+# Single project at the repo root. Every task runs as a system command via `uv run`
+# (see .moon/toolchain.yml for why moon's Python toolchain is not used). CI runs one
+# `moon run :ci` (lint, format-check, typecheck, test, test-floor, build, docs,
+# version-guard, version-ahead) -- or `:release` on main; moon owns all task ordering
+# instead of hand-wired GitLab stages/needs.
+id: 'statsx'
+layer: 'library'
+language: 'python'
+
+tasks:
+  lint:
+    command: 'uv run ruff check src tests'
+    inputs: ['src/**/*.py', 'tests/**/*.py', 'pyproject.toml']
+
+  format-check:
+    command: 'uv run ruff format --check src tests'
+    inputs: ['src/**/*.py', 'tests/**/*.py', 'pyproject.toml']
+
+  typecheck:
+    command: 'uv run pyright'
+    inputs: ['src/**/*.py', 'tests/**/*.py', 'pyproject.toml']
+
+  test:
+    command: 'uv run pytest -q'
+    inputs: ['src/**/*.py', 'tests/**/*.py', 'pyproject.toml']
+
+  # Run the suite against the lowest supported Python in a throwaway isolated env (not .venv),
+  # so a feature that quietly needs a newer interpreter is caught at the floor rather than by a
+  # user on 3.12. --with-editable . installs this package; pytest is pulled in too.
+  test-floor:
+    command: 'uv run --isolated --python 3.12 --with-editable . --with pytest pytest -q'
+    inputs: ['src/**/*.py', 'tests/**/*.py', 'pyproject.toml']
+
+  build:
+    command: 'uv build --out-dir dist'
+    deps: ['~:test']
+    inputs: ['src/**/*.py', 'pyproject.toml', 'README.md', 'CHANGELOG.md', 'LICENSE']
+    outputs: ['dist']
+
+  docs:
+    command: 'uv run --extra docs mkdocs build --strict'
+    inputs: ['docs/**/*', 'mkdocs.yml', 'src/**/*.py']
+    outputs: ['site']
+
+  # CI-side enforcement of "a src/ change carries a version bump" (the non-bypassable
+  # counterpart to the pre-commit auto-bump). Reads the diff base from CI env, so it is
+  # git-state dependent, not file-input dependent -> not cacheable.
+  version-guard:
+    command: 'sh scripts/ci-version-guard'
+    options:
+      cache: false
+
+  # The origin/main-anchored guard: HEAD's version must be strictly greater than main's
+  # whenever src/ python differs from main. Complements version-guard (which checks a bump
+  # landed within the CI diff range) with "ahead of main", the invariant behind "every push
+  # carries a new patch". Fetches origin/main, so not cacheable. Also run by pre-push.
+  version-ahead:
+    command: 'sh scripts/check-version-ahead'
+    options:
+      cache: false
+
+  # The single aggregate gate: the whole CI check graph in one target. format-check IS in
+  # the gate -- a freshly rendered tree starts ruff-format-clean, so gating it from day one
+  # beats retrofitting it later.
+  ci:
+    command: 'noop'
+    deps:
+      - '~:lint'
+      - '~:format-check'
+      - '~:typecheck'
+      - '~:test'
+      - '~:test-floor'
+      - '~:build'
+      - '~:docs'
+      - '~:version-guard'
+      - '~:version-ahead'
+
+  # Mint a PyPI OIDC token and upload dist/*. Invoked by release (or by hand).
+  publish:
+    command: 'sh scripts/pypi-publish'
+    deps: ['~:build']
+    options:
+      cache: false
+      runInCI: false
+
+  # main-only: no-op if pyproject's version is already on PyPI; else publish.
+  # Invoked explicitly by the CI job on the default branch (`moon run :release`), so it
+  # MUST be runnable in CI -- do NOT set runInCI:false here (that makes `:release` resolve
+  # to "no tasks found" under CI). It is never part of `:ci`, so it only runs when targeted.
+  release:
+    command: 'sh scripts/release'
+    deps: ['~:ci']
+    options:
+      cache: false

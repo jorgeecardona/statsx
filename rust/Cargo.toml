@@ -1,0 +1,28 @@
+# Native accelerator for statsx: built by maturin as the `statsx._accel`
+# Python extension module (PyO3) and shipped INSIDE the statsx wheel — there is no
+# separate package. See [tool.maturin] in the repo-root pyproject.toml.
+#
+# Build (dev):   maturin develop --release     (from the repo ROOT, into the venv)
+# Build wheels:  maturin build --release
+[package]
+name = "statsx"
+version = "0.1.0"
+edition = "2021"
+description = "Native accelerator for statsx (built into the package)."
+license = "MIT"
+
+[lib]
+# Built by maturin as the `statsx._accel` submodule of the merged package.
+# Default source path is src/lib.rs, relative to this manifest (rust/src/lib.rs).
+name = "_accel"
+crate-type = ["cdylib"]
+
+[dependencies]
+# abi3-py311: build against Python's stable ABI so ONE wheel works on 3.11 and every later
+# version (3.12, 3.13, ...) — no per-version rebuild. extension-module lets it link as a
+# Python extension without linking libpython.
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py311"] }
+
+[profile.release]
+opt-level = 3
+lto = true

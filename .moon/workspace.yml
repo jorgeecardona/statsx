@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/workspace.json
+#
+# moon workspace — the task engine. This is a single project living at the repo
+# root (so the project id "statsx" maps to "."). CI bootstraps the toolchain
+# with `proto install`, then a single `moon run :ci` (or `:release` on main) orchestrates
+# everything — moon resolves the task graph instead of hand-wired GitLab stages.
+projects:
+  statsx: '.'
+
+vcs:
+  client: 'git'
+  defaultBranch: 'main'

@@ -1,0 +1,31 @@
+who: caller comparing two or more systems
+
+needs:
+
+  - id: CO-1
+    text: >
+      When the caller compares paired results, they can run McNemar, a sign test, Wilcoxon, or a
+      bootstrap difference.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: CO-2
+    text: >
+      When the caller ranks items from pairwise results, they can get Bradley-Terry or Davidson (ties
+      modelled), with intervals from item-level resampling.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: CO-3
+    text: >
+      When the caller runs many tests, they can correct with Benjamini-Hochberg, Holm, or Storey
+      q-values.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: CO-4
+    text: >
+      When the caller asks if two systems are practically the same, they can get one TOST and ROPE
+      definition used across all callers.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}

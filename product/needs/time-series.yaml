@@ -1,0 +1,64 @@
+who: caller analysing count time series
+
+needs:
+
+  - id: TS-1
+    text: >
+      When the caller has a monthly count series with seasonality and noise, they can get the trend
+      with the seasonality and noise removed, so they can analyse the trend alone.
+    sources:
+      - {kind: primary, date: 2026-11-11, who: maintainer, quote: "remove the noise, remove the seasonality so I can get the trend and based on that being able to do some analysis"}
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    must: true
+
+  - id: TS-2
+    text: >
+      When the caller fits a structural time series to counts, they can get nested 50/80/95% credible
+      bands for each past and future month, and the bands widen with the forecast horizon.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    must: true
+
+  - id: TS-3
+    text: >
+      When the caller asks whether the series is rising, they can get P(slope > 0) from the posterior,
+      not a p-value.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: TS-4
+    text: >
+      When an observed month falls outside the 95% band the model expected for it, the caller
+      can see it flagged as an anomaly given trend and season.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: TS-5
+    text: >
+      When the chains did not converge (R-hat above the threshold), the caller can get no forecast and
+      the reason, never a downgraded one.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    must: true
+
+  - id: TS-6
+    text: >
+      When the caller builds the model, they can choose the season period, the number of harmonics,
+      regressor terms, and a Poisson or NegativeBinomial likelihood, instead of one fixed monthly
+      shape.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: TS-7
+    text: >
+      When the caller has control series and an intervention date, they can get the posterior of the
+      effect (observed minus counterfactual), with a credible band and P(effect > 0).
+    sources:
+      - {kind: primary, date: 2026-11-11, who: maintainer, quote: "build a tool not just for this type of Bayesian analysis for forecasting but also for causal inference"}
+
+  - id: TS-8
+    text: >
+      When the caller backtests a forecast with rolling origins, they can get CRPS and interval
+      coverage, so a forecast claim can be checked.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}

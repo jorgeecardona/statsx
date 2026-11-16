@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/toolchain.json
+#
+# Intentionally empty. This project does NOT use moon's built-in Python toolchain:
+# moon's Python plugin expects a python3 symlink that proto's install doesn't reliably
+# provide on Linux. Every task runs as a system command through `uv run ...`; uv
+# (pinned in .prototools) provisions Python itself.

@@ -1,0 +1,25 @@
+# EditorConfig: consistent whitespace across editors. https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Match ruff's line length (see pyproject.toml / AGENTS.md).
+[*.py]
+max_line_length = 100
+
+[*.{toml,yml,yaml,json}]
+indent_size = 2
+
+# Makefiles require real tabs.
+[Makefile]
+indent_style = tab
+
+# Markdown keeps trailing spaces (two of them mean a hard line break).
+[*.md]
+trim_trailing_whitespace = false

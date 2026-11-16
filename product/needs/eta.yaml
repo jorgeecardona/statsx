@@ -1,0 +1,43 @@
+who: caller estimating how long a task will take
+
+needs:
+
+  - id: ET-1
+    text: >
+      When the caller has the durations of past runs of a task and their input parameters (for
+      example number of files and total size), they can fit a simple model of duration from those
+      parameters.
+    sources:
+      - {kind: primary, date: 2026-11-12, who: maintainer, quote: "estimate ETA of tasks after repeated attempts and based on some input parameters like moving files that would depend on the number of files or the total size if available in advance"}
+    must: true
+
+  - id: ET-2
+    text: >
+      When the caller knows the input parameters before a run starts, they can get the predicted
+      duration with a credible interval.
+    sources:
+      - {kind: primary, date: 2026-11-12, who: maintainer, quote: "estimate ETA of tasks after repeated attempts and based on some input parameters like moving files that would depend on the number of files or the total size if available in advance"}
+    must: true
+
+  - id: ET-3
+    text: >
+      When a running task reports progress status at some times (for example files done or bytes
+      done), the caller can get an updated ETA with an interval from the elapsed time and that
+      progress.
+    sources:
+      - {kind: primary, date: 2026-11-12, who: maintainer, quote: "learn simple models of prediction based on possible progress status if available at times"}
+      - {kind: primary, date: 2026-11-12, who: maintainer, quote: "like how many files have ended"}
+
+  - id: ET-4
+    text: >
+      When a run finishes, the caller can add its duration to the model without refitting from
+      all past runs.
+    sources:
+      - {kind: assumption, date: 2026-11-12, locator: "follows from 'after repeated attempts' (ET-1)"}
+
+  - id: ET-5
+    text: >
+      When some input parameters are unknown before a run, the caller can still get an ETA from the
+      parameters that are known, with a wider interval.
+    sources:
+      - {kind: primary, date: 2026-11-12, who: maintainer, quote: "the total size if available in advance"}

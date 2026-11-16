@@ -1,0 +1,22 @@
+# docs/issues/config.toml — what this folder's issues must say.
+#
+# Read by `cabildo issues`: the CLI, the `issues` MCP server, and any pre-commit gate are one
+# module, so the tool an agent calls and the gate that grades it cannot disagree.
+
+date_style = "DMY"          # 03-08-2026-short-kebab-summary.md
+index = true                # the generated table in README.md
+index_fields = ["scope", "verify"]
+
+# The one vocabulary that cannot be guessed from outside this repo. Edit this list to
+# match the project's real subsystems once they exist.
+areas = ["core", "ci", "docs"]
+
+[fields.scope]
+required = true
+values = ["XS", "S", "M", "L", "?"]
+
+# How "done" gets checked. The distinction is load-bearing: a green test is not the same claim as a
+# sensed fact, and an issue that blurs them sends the next person to the wrong evidence.
+[fields.verify]
+required = true
+values = ["test", "probe", "inspect"]

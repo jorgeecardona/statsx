@@ -1,0 +1,46 @@
+who: caller doing Bayesian inference
+
+needs:
+
+  - id: BA-1
+    text: >
+      When the caller updates a conjugate model (Beta-Binomial, Gamma-Poisson, Normal-Normal,
+      Dirichlet-Multinomial), they can get the posterior in closed form as a named object.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    must: true
+
+  - id: BA-2
+    text: >
+      When the caller has two posteriors, they can get P(A > B) and the probability of practical
+      equivalence.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: BA-3
+    text: >
+      When the caller has a calibrated 90% interval from an expert, they can get the matching lognormal
+      prior.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: BA-4
+    text: >
+      When the caller fits a model with no conjugate form (hierarchical Beta-Binomial with a free
+      pooling parameter, hierarchical regression), they can get MCMC draws.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: BA-5
+    text: >
+      When MCMC finishes, the caller can get R-hat, ESS, and divergences from one shared check that
+      refuses the result when it fails.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    must: true
+
+  - id: BA-6
+    text: >
+      When the caller installs the MCMC part, they can do it without JAX, PyTensor, or a C compiler.
+    sources:
+      - {kind: primary, date: 2026-11-11, who: maintainer, quote: "pymc has one big fat dependency no? also the other alternative depends on jax"}

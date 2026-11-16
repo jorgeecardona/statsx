@@ -1,0 +1,29 @@
+#!/bin/sh
+# Release driver, invoked by the `release` moon task (deps `ci`) which the CI job runs
+# on the default branch. Idempotent:
+#   - if pyproject's version is already on PyPI -> no-op (safe on every main pipeline)
+#   - else publish it to PyPI via OIDC (scripts/pypi-publish) -- this IS the release
+# Publishing needs no token (OIDC Trusted Publishing); there is no git tag step.
+set -e
+cd "$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+
+V="$(grep -E '^version = "' pyproject.toml | head -1 | cut -d'"' -f2)"
+[ -n "$V" ] || { echo "release: could not read version from pyproject.toml" >&2; exit 1; }
+
+# Already on PyPI? Then this version is released; nothing to do.
+if uv run python - "$V" <<'PY'
+import json, sys, urllib.request, urllib.error
+version = sys.argv[1]
+try:
+    data = json.load(urllib.request.urlopen("https://pypi.org/pypi/statsx/json"))
+    sys.exit(0 if version in data["releases"] else 1)
+except Exception:
+    sys.exit(1)
+PY
+then
+    echo "release: statsx $V already on PyPI -- nothing to do"
+    exit 0
+fi
+
+echo "release: publishing statsx $V to PyPI"
+sh scripts/pypi-publish

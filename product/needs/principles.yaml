@@ -1,0 +1,8 @@
+principles:
+- id: P-1
+  text: >-
+    We implement our own algorithms, in our own Rust backend: samplers, gradients, diagnostics,
+    tests, intervals, and special functions. No JAX, PyTensor, NumPyro, SciPy, or other external
+    statistics engine at run time. Reference libraries are allowed only in tests, to check our
+    numbers.
+  revised_at: '2026-11-12'

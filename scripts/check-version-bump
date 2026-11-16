@@ -1,0 +1,46 @@
+#!/bin/sh
+# Enforce the invariant "a change to the shipped Python source carries a version
+# bump" -- the CI-side, non-bypassable counterpart to the pre-commit auto-bump.
+# The local hook is convenience (it advances the version for you); this is the guard
+# that fails the pipeline when src/**/*.py changed without the version line moving,
+# catching --no-verify commits and clones that skipped `make install-hooks`.
+#
+# Mirrors the pre-commit rule exactly: only src/**/*.py changes require a bump;
+# doc/notes (incl. src/*.md)/test/example/config-only changes do not.
+#
+# Usage: scripts/check-version-bump <base-ref> [head-ref]   (head defaults to HEAD)
+set -e
+cd "$(dirname "$0")/.."
+
+BASE="$1"
+HEAD_REF="${2:-HEAD}"
+
+# Fail loudly if git is absent rather than letting the diff below come back empty
+# and silently "pass" -- that would turn this guard into a no-op (e.g. the uv CI
+# image ships without a git binary; the job must install it first).
+if ! command -v git >/dev/null 2>&1; then
+    echo "check-version-bump: git not found -- cannot verify; failing closed" >&2
+    exit 1
+fi
+
+if [ -z "$BASE" ]; then
+    echo "check-version-bump: no base ref given; skipping" >&2
+    exit 0
+fi
+
+# Did any shipped Python source file change in this range? (src/**/*.py only --
+# notes/docs under src/ are not a code change.)
+if git diff --name-only "$BASE" "$HEAD_REF" -- 'src/' | grep -q '\.py$'; then
+    # Then the pyproject version line -- the single source of truth maturin builds from --
+    # must have changed in the same range.
+    if git diff "$BASE" "$HEAD_REF" -- pyproject.toml | grep -qE '^[+-]version = "'; then
+        echo "check-version-bump: OK -- src python changed and version bumped"
+        exit 0
+    fi
+    echo "check-version-bump: FAIL -- src python changed but version did NOT bump." >&2
+    echo "  Fix: run 'make bump' (or 'make install-hooks' so it happens automatically)," >&2
+    echo "  then amend/recommit so the code change ships with a new version." >&2
+    exit 1
+fi
+
+echo "check-version-bump: OK -- no src python changes, no bump required"

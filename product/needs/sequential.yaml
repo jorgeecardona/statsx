@@ -1,0 +1,30 @@
+who: caller running an experiment that may stop early
+
+needs:
+
+  - id: SQ-1
+    text: >
+      When the caller watches an evaluation continuously, they can get always-valid inference
+      (e-values, confidence sequences), so stopping early does not inflate the error rate.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: SQ-2
+    text: >
+      When the caller plans a fixed number of looks, they can get O'Brien-Fleming or Pocock boundaries.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: SQ-3
+    text: >
+      When the caller allocates a budget over arms, they can get Thompson sampling, UCB, or successive
+      halving over Beta posteriors.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: SQ-4
+    text: >
+      When the caller must pick the best candidate, they can get best-arm identification with a
+      stopping guarantee.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}

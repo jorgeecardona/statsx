@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# pre-push -- mirror CI's `test` stage so failures are caught locally before the push
+# round-trip: the version-ahead guard first (fail fast if the version isn't ahead of
+# origin/main), then ruff + pyright + pytest (see `make check`).
+# Activated via `make install-hooks`. Bypass with `git push --no-verify`.
+
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+# Fail fast if the version is not ahead of origin/main before running the full suite.
+make version-ahead
+exec make check

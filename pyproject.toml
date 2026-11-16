@@ -1,0 +1,101 @@
+[project]
+name = "statsx"
+version = "0.1.0"  # static: maturin is the build backend (it cannot read __version__ from a Python file; it reads Cargo.toml or this line). Keep in sync with rust/Cargo.toml.
+description = "Statistics for Python with its own Rust core: Bayesian inference, forecasting, causal impact, tests and design, with NumPy as the only dependency."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Jorge Cardona", email = "jorgeecardona@gmail.com" }]
+keywords = []
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# docs are an *extra* (not a uv dependency-group) so Read the Docs can install them via pip
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.27",
+]
+
+[project.urls]
+Homepage = "https://gitlab.com/cardona-oss/statsx"
+Repository = "https://gitlab.com/cardona-oss/statsx"
+Documentation = "https://cardona-oss.gitlab.io/statsx/"
+Changelog = "https://gitlab.com/cardona-oss/statsx/-/blob/main/CHANGELOG.md"
+Issues = "https://gitlab.com/cardona-oss/statsx/-/issues"
+
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+# Mixed layout: the Python package is src/statsx/, and the Rust extension is
+# built from rust/Cargo.toml as the statsx._accel submodule and shipped in the
+# same wheel. The pyo3 abi3-py311 feature makes it ONE wheel per platform for Python 3.11+.
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+python-source = "src"
+module-name = "statsx._accel"
+features = ["pyo3/extension-module"]
+
+[dependency-groups]
+dev = ["ruff>=0.6", "pyright>=1.1.390", "pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+# The canonical base ignore list shared across the oss/ libraries. E501 (line length) is handled by
+# the formatter; COM812/ISC001 conflict with the formatter; D1/D401 relax docstring presence/mood;
+# TRY003/EM101/EM102 allow inline exception messages; CPY001 drops the copyright-header demand;
+# PLC0415 allows non-top-level imports; TC001/TC002/TC003 don't force type-only import blocks.
+ignore = [
+    "E501",
+    "COM812",
+    "ISC001",
+    "D1",
+    "D401",
+    "TRY003",
+    "EM101",
+    "EM102",
+    "CPY001",
+    "PLC0415",
+    "TC001",
+    "TC002",
+    "TC003",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may assert (S101), use magic values (PLR2004), take unused fixtures (ARG), pass Any to typed
+# calls (ANN401), and group assertions pytest would otherwise split (PT018).
+"tests/**/*.py" = ["S101", "PLR2004", "ARG", "ANN401", "PT018"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["statsx"]
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"

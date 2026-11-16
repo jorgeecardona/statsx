@@ -1,0 +1,62 @@
+#!/bin/sh
+# Enforce "the version is strictly greater than origin/main whenever the shipped
+# Python source differs from it." This is the origin/main-anchored counterpart to
+# check-version-bump: that one asks whether a bump happened inside a given diff
+# range; this one asks whether HEAD's version is actually ahead of main, which is
+# the invariant behind "every push that changes src/ carries a new patch".
+#
+# Runs locally (pre-push, via `make version-ahead`) and in CI (moon task
+# version-ahead). Git-state dependent, so it is not cacheable.
+#
+# Usage: scripts/check-version-ahead   (compares HEAD against origin/main)
+set -e
+cd "$(dirname "$0")/.."
+
+if ! command -v git >/dev/null 2>&1; then
+    echo "check-version-ahead: git not found -- cannot verify; failing closed" >&2
+    exit 1
+fi
+
+# A best-effort refresh so the comparison is against the real main and not a stale
+# remote-tracking ref. Offline or without a reachable origin, fall through to
+# whatever origin/main we already have.
+git fetch -q origin main 2>/dev/null || true
+BASE=$(git rev-parse -q --verify origin/main 2>/dev/null || true)
+if [ -z "$BASE" ]; then
+    echo "check-version-ahead: no origin/main to compare against; skipping"
+    exit 0
+fi
+
+# Only a change to shipped Python source requires being ahead. Docs/notes (incl.
+# src/*.md)/test/example/config-only changes do not, matching check-version-bump.
+# Three-dot: compare HEAD against the merge-base, i.e. what this branch adds to main.
+if ! git diff --name-only "$BASE"...HEAD -- 'src/' | grep -q '\.py$'; then
+    echo "check-version-ahead: OK -- no src python changes vs origin/main"
+    exit 0
+fi
+
+VERSION_FILE="pyproject.toml"
+_version_of() {
+    # Read `version = "X"` from a pyproject.toml handed on stdin -- the single source of truth
+    # maturin builds from (it cannot read a Python __init__).
+    sed -n 's/^version = "\([^"]*\)".*/\1/p' | head -1
+}
+
+THEIRS=$(git show "$BASE:$VERSION_FILE" | _version_of)
+OURS=$(_version_of <"$VERSION_FILE")
+
+if [ -z "$OURS" ] || [ -z "$THEIRS" ]; then
+    echo "check-version-ahead: could not read a version (ours='$OURS' theirs='$THEIRS'); failing closed" >&2
+    exit 1
+fi
+
+# Strictly greater: the highest of the two under version sort must be OURS, and the
+# two must differ. `sort -V` orders 0.0.9 before 0.0.10 where a plain sort would not.
+HIGHEST=$(printf '%s\n%s\n' "$THEIRS" "$OURS" | sort -V | tail -1)
+if [ "$OURS" = "$THEIRS" ] || [ "$HIGHEST" = "$THEIRS" ]; then
+    echo "check-version-ahead: FAIL -- version $OURS is not greater than origin/main ($THEIRS)." >&2
+    echo "  Fix: run 'make bump' so the code change ships ahead of main, then commit." >&2
+    exit 1
+fi
+
+echo "check-version-ahead: OK -- $OURS > origin/main ($THEIRS)"

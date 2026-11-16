@@ -1,0 +1,19 @@
+who: caller installing the library
+
+needs:
+
+  - id: PK-1
+    text: >
+      When the caller installs the library, they can get NumPy as the only run-time dependency, so a
+      notebook can import it.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    must: true
+
+  - id: PK-2
+    text: >
+      When the caller imports the library, they can do it without torch, pandas, plotting, database,
+      network, or cloud code being imported.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    must: true

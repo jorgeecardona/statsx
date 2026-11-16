@@ -1,0 +1,44 @@
+#!/bin/sh
+# Bump the project version in pyproject.toml -- the single source of truth maturin builds
+# from (it cannot read a Python __init__). Keep rust/Cargo.toml's version in step by hand.
+#
+# Usage: ./scripts/bump-version [patch|minor|major]   (default: patch)
+#
+# Called automatically by the pre-commit hook when src/ changes; also runnable
+# by hand (or `make bump TYPE=minor`) for an intentional minor/major release.
+
+set -e
+cd "$(dirname "$0")/.."
+
+BUMP_TYPE="${1:-patch}"
+
+CURRENT=$(grep -E '^version = "' pyproject.toml | head -1 | sed -E 's/^version = "(.*)"/\1/')
+if [ -z "$CURRENT" ]; then
+    echo "bump-version: could not read 'version = \"...\"' from pyproject.toml" >&2
+    exit 1
+fi
+
+MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+MINOR=$(echo "$CURRENT" | cut -d. -f2)
+PATCH=$(echo "$CURRENT" | cut -d. -f3)
+
+case "$BUMP_TYPE" in
+    major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+    minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+    patch) PATCH=$((PATCH + 1)) ;;
+    *)
+        echo "Usage: $0 [patch|minor|major]" >&2
+        exit 1
+        ;;
+esac
+
+NEW="${MAJOR}.${MINOR}.${PATCH}"
+sed -i -E "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" pyproject.toml
+
+# Keep uv.lock's pinned project version in sync so the working tree stays clean
+# (offline + cached = fast; online fallback for a cold cache).
+if command -v uv >/dev/null 2>&1; then
+    uv lock --offline >/dev/null 2>&1 || uv lock >/dev/null 2>&1 || true
+fi
+
+echo "bump-version: ${CURRENT} -> ${NEW}"

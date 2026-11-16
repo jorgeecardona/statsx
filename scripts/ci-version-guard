@@ -1,0 +1,26 @@
+#!/bin/sh
+# CI wrapper around check-version-bump: derive the diff base from GitLab CI vars,
+# then enforce "a change to src/ carries a version bump". Runs inside the single
+# moon-driven CI job (moon task: version-guard). Outside GitLab CI it no-ops, so
+# `moon run :ci` is safe to run locally.
+set -e
+cd "$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+
+if [ -z "${GITLAB_CI:-}" ]; then
+    echo "ci-version-guard: not in GitLab CI; skipping"
+    exit 0
+fi
+
+if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
+    BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}"
+else
+    BASE="${CI_COMMIT_BEFORE_SHA:-}"
+fi
+
+case "$BASE" in
+    ''|0000000000000000000000000000000000000000)
+        echo "ci-version-guard: no usable base sha (new branch/first push); skipping"
+        exit 0 ;;
+esac
+
+exec sh scripts/check-version-bump "$BASE" "${CI_COMMIT_SHA:-HEAD}"

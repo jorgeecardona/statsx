@@ -1,0 +1,24 @@
+who: caller checking a classifier or a set of raters
+
+needs:
+
+  - id: CA-1
+    text: >
+      When the caller checks classifier calibration, they can get a reliability diagram's numbers, ECE,
+      and the Brier decomposition.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: CA-2
+    text: >
+      When a classifier is miscalibrated, the caller can recalibrate it with isotonic or Platt
+      scaling.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: CA-3
+    text: >
+      When the caller measures agreement between raters, they can get Cohen kappa, Fleiss kappa, and
+      Krippendorff alpha (which handles missing ratings).
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}

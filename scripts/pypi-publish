@@ -1,0 +1,22 @@
+#!/bin/sh
+# Publish dist/* to PyPI using GitLab OIDC Trusted Publishing -- no API token is
+# stored anywhere. Mints a short-lived PyPI upload token from the job's OIDC id_token
+# ($PYPI_ID_TOKEN, provided by the CI job's id_tokens block), then uploads.
+# Run by the `publish` moon task (which deps on `build`, so dist/ exists).
+set -e
+cd "$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+
+if [ -z "${PYPI_ID_TOKEN:-}" ]; then
+    echo "pypi-publish: PYPI_ID_TOKEN is not set (needs GitLab id_tokens in CI)" >&2
+    exit 1
+fi
+
+# Exchange the OIDC id_token for a one-shot PyPI token. Done in Python via `uv run`
+# (the base image may lack a system python3); the token is captured, never echoed.
+pypi_token="$(uv run python -c 'import json, os, urllib.request;
+req = urllib.request.Request("https://pypi.org/_/oidc/mint-token",
+data=json.dumps({"token": os.environ["PYPI_ID_TOKEN"]}).encode(),
+headers={"Content-Type": "application/json"});
+print(json.load(urllib.request.urlopen(req))["token"])')"
+
+uv publish --token "$pypi_token"

@@ -1,0 +1,24 @@
+who: caller fitting distributions and watching for drift
+
+needs:
+
+  - id: DI-1
+    text: >
+      When the caller has only sufficient statistics (not rows), they can fit normal,
+      shifted-exponential, and lognormal distributions.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: DI-2
+    text: >
+      When the caller checks goodness of fit on a large N, they can get the test with an explicit
+      effective sample size, plus TVD and Wasserstein distance.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: DI-3
+    text: >
+      When the caller compares two samples for drift, they can use KS, MMD, a classifier two-sample
+      test, or PSI.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}

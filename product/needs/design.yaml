@@ -1,0 +1,23 @@
+who: caller planning an experiment
+
+needs:
+
+  - id: DE-1
+    text: >
+      When the caller plans a run, they can get power and sample size for proportions, paired
+      differences, and equivalence margins.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: DE-2
+    text: >
+      When the caller has a fixed N, they can get the minimum detectable effect.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: DE-3
+    text: >
+      When the caller builds a stratified evaluation set, they can get allocation per stratum for a
+      target precision.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}

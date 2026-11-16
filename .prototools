@@ -1,0 +1,5 @@
+# proto toolchain pins (https://moonrepo.dev/proto).
+# `proto install` brings up the whole toolchain; CI then needs only
+# `proto install` + `moon run` (uv is a built-in proto plugin now, no [plugins] block).
+moon = "2.5.6"
+uv = "0.11.19"

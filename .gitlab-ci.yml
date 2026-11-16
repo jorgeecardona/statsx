@@ -1,0 +1,91 @@
+# statsx CI/CD -- a single moon-driven job.
+#
+# proto installs the pinned toolchain (.prototools: moon + uv); then ONE `moon run`
+# orchestrates the whole task graph (lint, typecheck, test, build, docs, version-guard)
+# -- no per-language jobs, no hand-wired stages/needs, moon resolves the order. On the
+# default branch it runs `:release` instead: the same `:ci` checks run as deps, then it
+# publishes to PyPI via OIDC Trusted Publishing when pyproject's version isn't on PyPI
+# yet (no stored API token). See README "Releasing".
+
+default:
+  image: debian:bookworm-slim
+
+variables:
+  UV_LINK_MODE: copy
+  # version-guard diffs against a base older than a shallow clone would contain.
+  GIT_DEPTH: "0"
+
+# Avoid duplicate (branch + MR) pipelines.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+ci:
+  # OIDC Trusted Publishing: GitLab mints a short-lived id_token; scripts/pypi-publish
+  # exchanges it for a one-shot PyPI token. The `pypi` environment matches the PyPI
+  # publisher config (it is also recorded on non-publishing runs -- cosmetic only).
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+  environment:
+    name: pypi
+    url: https://pypi.org/project/statsx/
+  cache:
+    - key:
+        files:
+          - uv.lock
+      paths:
+        - .venv
+  before_script:
+    # debian-slim is bare: bring what proto + pyright's bundled node (libatomic1) need.
+    - apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates unzip xz-utils bash libatomic1
+    - export PATH="$HOME/.proto/bin:$HOME/.proto/shims:$PATH"
+    # Fetch proto straight from its GitHub release. moonrepo.dev/install/proto.sh merely downloads
+    # this tarball, and the runner's access to moonrepo.dev is flaky (curl SSL timeouts); GitHub is
+    # reliable. `proto install` then pulls the pinned toolchain from each tool's own upstream — not
+    # moonrepo. (Same fix as paas's CI image.)
+    - mkdir -p "$HOME/.proto/bin" /tmp/proto && curl -fsSL "https://github.com/moonrepo/proto/releases/latest/download/proto_cli-x86_64-unknown-linux-gnu.tar.xz" -o /tmp/proto/p.tar.xz && tar xf /tmp/proto/p.tar.xz --strip-components 1 -C /tmp/proto && mv /tmp/proto/proto /tmp/proto/proto-shim "$HOME/.proto/bin/" && rm -rf /tmp/proto
+    - proto install                       # moon + uv, pinned in .prototools
+    # Native accelerator: maturin needs a Rust toolchain to compile the extension.
+    - curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - uv sync --frozen --extra docs       # ruff + pyright + pytest + mkdocs
+  script:
+    # One moon invocation owns all interdependence. `-c 1` (serial) sidesteps the proto
+    # temp-rename race a parallel fan-out can hit; `proto install` above also pre-warmed
+    # the cache. On main: `:release` runs the full `:ci` graph then publishes if the
+    # version is new. Elsewhere (MRs/branches): checks only.
+    - export PATH="$HOME/.proto/bin:$HOME/.proto/shims:$PATH"
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        moon run :release -c 1
+      else
+        moon run :ci -c 1
+      fi
+  # `moon run :ci` already built the site (the `docs` task, strict, outputs `site/`), and
+  # `pages` below publishes exactly that. Handing it over as an artifact is what stops the
+  # site being built twice per pipeline.
+  artifacts:
+    paths:
+      - site
+    expire_in: 1 day
+
+# Publish the docs to GitLab Pages -- ad-free, replacing Read the Docs. A job named `pages`
+# whose artifact is public/ is what GitLab serves. It publishes the site the `ci` job already
+# built (strict, in the gated environment) rather than building its own: one build per pipeline,
+# and the served site is exactly the one the gate validated. main only.
+pages:
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  needs: ["ci"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - test -d site || { echo "the ci job produced no site/ -- did the docs task run?"; exit 1; }
+    - mv site public
+  artifacts:
+    paths:
+      - public

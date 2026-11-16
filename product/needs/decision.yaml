@@ -1,0 +1,17 @@
+who: caller deciding under uncertainty
+
+needs:
+
+  - id: DC-1
+    text: >
+      When the caller has an explicit cost model with uncertain inputs, they can get a Monte Carlo
+      distribution of the cost with a fixed seed.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+
+  - id: DC-2
+    text: >
+      When the caller chooses a threshold, they can get the break-even point and the expected value of
+      information.
+    sources:
+      - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
