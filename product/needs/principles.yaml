@@ -6,3 +6,11 @@ principles:
     statistics engine at run time. Reference libraries are allowed only in tests, to check our
     numbers.
   revised_at: '2026-11-12'
+- id: P-2
+  text: >-
+    Every algorithm follows the description in a published paper or book, and every change to
+    it (ours or one found by others) cites its own source. Each algorithm gets a prodc decision
+    whose text names the reference (authors, year, title, DOI or URL), whose alternatives name
+    the methods not chosen, and whose consequences name what the choice costs. The same
+    reference is in the docstring, under "References".
+  revised_at: '2026-11-16'
