@@ -1,4 +1,4 @@
-//! Special functions.
+//! Special functions: inverse normal CDF (D-6), log-gamma and digamma (D-10).
 // The coefficients keep every digit printed in AS 241, so they can be checked against the paper.
 #![allow(clippy::excessive_precision)]
 
@@ -101,6 +101,66 @@ const F: [f64; 8] = [
     2.044_263_103_389_939_785_64e-15,
 ];
 
+/// Lanczos coefficients for g = 7, n = 9 (Godfrey's set), Lanczos (1964), "A precision
+/// approximation of the gamma function", SIAM J. Numer. Anal. Ser. B 1:86-96,
+/// DOI 10.1137/0701008. Decision D-10.
+#[allow(dead_code)]
+const LANCZOS_G: f64 = 7.0;
+#[allow(dead_code)]
+const LANCZOS: [f64; 9] = [
+    0.999_999_999_999_809_93,
+    676.520_368_121_885_1,
+    -1_259.139_216_722_402_8,
+    771.323_428_777_653_13,
+    -176.615_029_162_140_59,
+    12.507_343_278_686_905,
+    -0.138_571_095_265_720_12,
+    9.984_369_578_019_571_6e-6,
+    1.505_632_735_149_311_6e-7,
+];
+
+/// ln |Gamma(x)| for x > 0 (Lanczos, D-10). NaN for x <= 0.
+#[allow(dead_code)]
+pub fn lgamma(x: f64) -> f64 {
+    if x.is_nan() || x <= 0.0 {
+        return f64::NAN;
+    }
+    if x < 0.5 {
+        // Reflection: Gamma(x) Gamma(1 - x) = pi / sin(pi x).
+        return (std::f64::consts::PI / (std::f64::consts::PI * x).sin()).ln() - lgamma(1.0 - x);
+    }
+    let z = x - 1.0;
+    let mut sum = LANCZOS[0];
+    for (k, c) in LANCZOS.iter().enumerate().skip(1) {
+        sum += c / (z + k as f64);
+    }
+    let t = z + LANCZOS_G + 0.5;
+    0.5 * (2.0 * std::f64::consts::PI).ln() + (z + 0.5) * t.ln() - t + sum.ln()
+}
+
+/// Digamma psi(x) for x > 0: the recurrence psi(x) = psi(x + 1) - 1/x up to x >= 12, then the
+/// asymptotic series, Bernardo (1976), "Algorithm AS 103: Psi (digamma) function", Applied
+/// Statistics 25(3):315-317, DOI 10.2307/2347257, with more series terms. Decision D-10.
+#[allow(dead_code)]
+pub fn digamma(x: f64) -> f64 {
+    if x.is_nan() || x <= 0.0 {
+        return f64::NAN;
+    }
+    let mut x = x;
+    let mut shift = 0.0;
+    while x < 12.0 {
+        shift -= 1.0 / x;
+        x += 1.0;
+    }
+    let r = 1.0 / (x * x);
+    // Bernoulli terms B_2k / (2k x^2k), k = 1..6.
+    let series = r
+        * (1.0 / 12.0
+            - r * (1.0 / 120.0
+                - r * (1.0 / 252.0 - r * (1.0 / 240.0 - r * (1.0 / 132.0 - r * 691.0 / 32_760.0)))));
+    shift + x.ln() - 0.5 / x - series
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +179,27 @@ mod tests {
         for (p, x) in cases {
             let got = norm_ppf(p);
             assert!((got - x).abs() <= 1e-12 * x.abs().max(1.0), "p={p}: {got} vs {x}");
+        }
+    }
+
+    #[test]
+    fn lgamma_and_digamma_match_mpmath() {
+        // (x, lgamma, digamma), mpmath at 40 digits.
+        let cases = [
+            (0.1, 2.252_712_651_734_206, -10.423_754_940_411_077),
+            (0.5, 0.572_364_942_924_700_1, -1.963_510_026_021_423_5),
+            (1.0, 0.0, -0.577_215_664_901_532_9),
+            (1.5, -0.120_782_237_635_245_22, 0.036_489_973_978_576_52),
+            (3.7, 1.428_072_326_665_388, 1.167_153_539_361_511_4),
+            (10.0, 12.801_827_480_081_47, 2.251_752_589_066_721),
+            (123.456, 469.605_547_129_929_47, 4.811_829_323_828_985),
+            (1e5, 1_051_287.708_973_656_9, 11.512_920_464_961_895),
+            (1e-8, 18.420_680_738_180_21, -100_000_000.577_215_65),
+        ];
+        for (x, lg, dg) in cases {
+            let tol = |v: f64| 1e-13 * v.abs().max(1.0);
+            assert!((lgamma(x) - lg).abs() <= tol(lg), "lgamma({x}) = {} vs {lg}", lgamma(x));
+            assert!((digamma(x) - dg).abs() <= tol(dg), "digamma({x}) = {} vs {dg}", digamma(x));
         }
     }
 }

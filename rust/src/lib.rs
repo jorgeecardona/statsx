@@ -8,6 +8,9 @@ mod conjugate;
 mod diagnostics;
 mod eta;
 mod linalg;
+// Used by the D-1 posterior method, which waits on the maintainer's choice.
+#[allow(dead_code)]
+mod negbin;
 mod rng;
 mod special;
 

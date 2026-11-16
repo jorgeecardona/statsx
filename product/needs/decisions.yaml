@@ -177,3 +177,46 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-16'
+- id: D-10
+  text: 'log-gamma uses the Lanczos approximation with g = 7 and 9 coefficients (Godfrey''s
+    set), Lanczos (1964), ''A precision approximation of the gamma function'', SIAM
+    J. Numer. Anal. Ser. B 1:86-96, DOI 10.1137/0701008, with the reflection formula
+    below 0.5. Digamma uses the recurrence up to x >= 12 and the asymptotic series,
+    Bernardo (1976), ''Algorithm AS 103: Psi (digamma) function'', Applied Statistics
+    25(3):315-317, DOI 10.2307/2347257, with Bernoulli terms up to x^-12 instead of
+    AS 103''s three.'
+  needs:
+  - TS-1
+  alternatives:
+  - 'Stirling series for log-gamma with a recurrence shift: not chosen, Lanczos reaches
+    1e-15 with one fixed formula.'
+  - 'AS 103 as published (shift to 8.5, three series terms): not chosen, it gives
+    about 1e-9; the extra terms give 1e-14.'
+  consequences: Both match mpmath to 1e-13 relative from 1e-8 to 1e5 in tests. Defined
+    for x > 0 only; NaN otherwise.
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'
+- id: D-11
+  text: The count likelihood is the negative binomial in the NB2 form (mean mu = exp(eta),
+    Var = mu + mu^2 / alpha), Cameron & Trivedi (2013), 'Regression Analysis of Count
+    Data', 2nd ed., chapter 3, Cambridge University Press, DOI 10.1017/CBO9781139013567.
+    It is written on the log-mean scale eta with closed-form first and second derivatives
+    in eta and the first derivative in alpha. The model sets alpha = 1 / (phi^2 +
+    1e-3), as in the consumer project's earlier NumPyro model, so old and new fits
+    are comparable.
+  needs:
+  - TS-1
+  - TS-2
+  alternatives:
+  - 'NB1 (Var = mu (1 + delta)): not chosen, the earlier model is NB2 and NB2 is the
+    usual form for overdispersed event counts.'
+  - 'Poisson only: not chosen, natural event counts are overdispersed; Poisson is
+    the limit alpha -> infinity and stays available.'
+  consequences: The log-likelihood is concave in eta for fixed alpha (tested), which
+    the D-1 Newton step relies on. Derivatives are checked against finite differences.
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'
