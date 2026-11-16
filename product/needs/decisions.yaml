@@ -1,4 +1,44 @@
 decisions:
+- id: D-1
+  text: 'The posterior of the structural time series is computed by the nested Laplace
+    approximation over the hyperparameters, Rue, Martino & Chopin (2009), ''Approximate
+    Bayesian inference for latent Gaussian models by using integrated nested Laplace
+    approximations'', J. R. Stat. Soc. B 71(2):319-392, DOI 10.1111/j.1467-9868.2008.00700.x,
+    with Laplace marginals of Tierney & Kadane (1986), JASA 81(393):82-86, DOI 10.1080/01621459.1986.10478240.
+    The Laplace draws are corrected by importance sampling, and the fit is accepted
+    only when the Pareto-smoothed importance weights pass the k-hat check of Vehtari,
+    Simpson, Gelman, Yao & Gabry (2024), ''Pareto smoothed importance sampling'',
+    JMLR 25(72). The fit check replaces R-hat: Newton converged at every grid point,
+    positive definite Hessian, low grid-edge mass, k-hat <= min(1 - 1/log10(S), 0.7),
+    importance-sampling ESS >= 400. A failed check returns no forecast and the reason.'
+  needs:
+  - TS-1
+  - TS-2
+  - TS-5
+  alternatives:
+  - 'NUTS, Hoffman & Gelman (2014), JMLR 15:1593-1623: not chosen for the structural
+    series, slow on long count series (TFP docs; a Stan forum thread reports minutes);
+    stays the candidate for the general posterior method (BA-4, BA-5), decided separately.'
+  - 'Polya-Gamma Gibbs, Polson, Scott & Windle (2013), JASA 108(504):1339-1349: not
+    chosen now, exact but needs about 1500-2500 lines of Rust (agent estimate, unverified)
+    and has no check beyond R-hat; the fallback if the k-hat failure rate on real
+    series is above 5%.'
+  - 'Auxiliary mixture sampling, Fruhwirth-Schnatter et al. (2009): not chosen, Windle
+    et al. report Polya-Gamma is better at small counts.'
+  - 'Durbin-Koopman Gaussian approximation with importance sampling (1997, 2000):
+    not chosen, it is the same idea without the hyperparameter grid and without the
+    k-hat check.'
+  - 'Particle MCMC, Andrieu, Doucet & Holenstein (2010): not chosen, too slow for
+    many series.'
+  consequences: 'About 5 hyperparameters at most; spike-and-slab priors are not possible
+    under this route. A synthetic spike (60 series, T=60, adaptive 21x21 grid) failed
+    k-hat 0.7 on 1 of 60 series (2%; a coarse 18x16 grid failed 6 of 60), so the grid
+    is adaptive. Not yet tested on real series, T=120, or against timed NUTS. Switch
+    to Polya-Gamma if more than 5% of real series fail the check.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'
 - id: D-2
   text: Conjugate updates (Beta-Binomial, Gamma-Poisson, Normal-Normal with known
     variance, Dirichlet-Multinomial) use the closed forms in Gelman, Carlin, Stern,

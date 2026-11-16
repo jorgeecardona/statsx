@@ -35,8 +35,8 @@ needs:
 
   - id: TS-5
     text: >
-      When the chains did not converge (R-hat above the threshold), the caller can get no forecast and
-      the reason, never a downgraded one.
+      When the fit check fails (Newton not converged, k-hat above 0.7, or too little importance-sampling
+      ESS), the caller can get no forecast and the reason, never a downgraded one.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
