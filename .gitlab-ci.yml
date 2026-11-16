@@ -41,7 +41,8 @@ ci:
         - .venv
   before_script:
     # debian-slim is bare: bring what proto + pyright's bundled node (libatomic1) need.
-    - apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates unzip xz-utils bash libatomic1
+    # build-essential gives cargo the C linker (cc) it needs to build the Rust extension.
+    - apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates unzip xz-utils bash libatomic1 build-essential
     - export PATH="$HOME/.proto/bin:$HOME/.proto/shims:$PATH"
     # Fetch proto straight from its GitHub release. moonrepo.dev/install/proto.sh merely downloads
     # this tarball, and the runner's access to moonrepo.dev is flaky (curl SSL timeouts); GitHub is
