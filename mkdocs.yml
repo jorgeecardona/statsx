@@ -1,5 +1,5 @@
 site_name: statsx
-site_description: Statistics for Python with its own Rust core: Bayesian inference, forecasting, causal impact, tests and design, with NumPy as the only dependency.
+site_description: "Statistics for Python with its own Rust core: Bayesian inference, forecasting, causal impact, tests and design, with NumPy as the only dependency."
 repo_url: https://gitlab.com/cardona-oss/statsx
 repo_name: cardona-oss/statsx
 copyright: MIT &copy; Jorge Cardona
