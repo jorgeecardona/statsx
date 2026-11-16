@@ -5,7 +5,9 @@ use pyo3::prelude::*;
 
 mod bootstrap;
 mod conjugate;
+mod diagnostics;
 mod rng;
+mod special;
 
 #[pyfunction]
 fn version() -> &'static str {
@@ -20,5 +22,6 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(conjugate::normal_normal, m)?)?;
     m.add_function(wrap_pyfunction!(conjugate::dirichlet_multinomial, m)?)?;
     m.add_function(wrap_pyfunction!(bootstrap::bootstrap_indices, m)?)?;
+    m.add_function(wrap_pyfunction!(diagnostics::convergence, m)?)?;
     Ok(())
 }

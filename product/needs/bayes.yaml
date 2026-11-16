@@ -40,6 +40,9 @@ needs:
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_diagnostics.py::test_one_check_reports_rhat_ess_and_divergences_and_refuses_when_any_fails"
+      - "test:tests/test_diagnostics.py::test_matches_arviz_on_a_fixed_ar1_sample"
 
   - id: BA-6
     text: >

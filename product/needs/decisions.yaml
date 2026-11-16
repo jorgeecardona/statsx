@@ -67,3 +67,49 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-16'
+- id: D-5
+  text: 'MCMC convergence uses rank-normalized split R-hat (the maximum of bulk and
+    folded R-hat), bulk ESS and tail ESS (the smaller ESS of the 5% and 95% quantile
+    indicators) from Vehtari, Gelman, Simpson, Carpenter & Burkner (2021), ''Rank-normalization,
+    folding, and localization: An improved R-hat for assessing convergence of MCMC'',
+    Bayesian Analysis 16(2):667-718, DOI 10.1214/20-BA1221. The autocorrelation sum
+    is truncated by Geyer''s initial monotone sequence, Geyer (1992), ''Practical
+    Markov chain Monte Carlo'', Statistical Science 7(4):473-483, DOI 10.1214/ss/1177011137.
+    Defaults follow the paper: R-hat at most 1.01, bulk and tail ESS at least 400.
+    Any divergent transition fails the check.'
+  needs:
+  - BA-5
+  - TS-5
+  alternatives:
+  - 'Classic Gelman-Rubin R-hat (Gelman & Rubin 1992): not chosen, it misses chains
+    that differ in scale or tails, which the folded and rank-normalized version detects.'
+  - 'R-hat threshold 1.05 (the consumer project''s old gate): not chosen as default,
+    the paper shows 1.05 passes chains that have not mixed; callers can still pass
+    rhat_max=1.05.'
+  - 'FFT autocovariance: not chosen, the direct sum stops at the Geyer cutoff, so
+    it is short for chains that mix; switch if long, slow-mixing chains make it a
+    bottleneck.'
+  consequences: Results match ArviZ 0.22 to about 1e-13 on a fixed sample (test).
+    Direct autocovariance is O(chains x draws x lags), slow for very long chains that
+    mix badly. The check refuses; it never returns a downgraded result.
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'
+- id: D-6
+  text: 'The inverse standard normal CDF is Wichura (1988), ''Algorithm AS 241: The
+    percentage points of the normal distribution'', Applied Statistics 37(3):477-484,
+    DOI 10.2307/2347330, routine PPND16 (about 16 digits).'
+  needs:
+  - BA-5
+  alternatives:
+  - 'Acklam''s approximation: not chosen, about 1e-9 relative accuracy and not a peer-reviewed
+    publication.'
+  - 'Newton iteration on an erfc implementation: not chosen, slower and needs its
+    own erfc first.'
+  consequences: Matches mpmath to 1e-12 relative from 1e-300 to 1 - 1e-16 in tests.
+    Any later special function (lgamma, digamma, erfc) is its own decision.
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-16'

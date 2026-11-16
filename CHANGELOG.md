@@ -17,4 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updates return the posterior as a named object (`Beta`, `Gamma`, `Normal`, `Dirichlet`).
 - `statsx.bootstrap`: bootstrap with a named resample unit (`IID`, `Stratified`, `Clustered`,
   `Block`) and a percentile interval; the result records the unit.
+- `statsx.diagnostics.check_convergence`: rank-normalized split R-hat, bulk and tail ESS, and
+  divergences in one check; `require()` raises `ConvergenceError` with the reasons.
 - Initial release.
