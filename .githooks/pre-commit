@@ -33,6 +33,7 @@ if printf '%s\n' "${staged[@]}" | grep -qE '^src/.*\.py$'; then
     else
         ./scripts/bump-version patch
         git add pyproject.toml uv.lock
+        [ -f rust/Cargo.toml ] && git add rust/Cargo.toml rust/Cargo.lock
     fi
 fi
 

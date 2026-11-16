@@ -44,3 +44,5 @@ needs:
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_result.py::test_estimate_exposes_estimate_interval_n_and_assumption_as_frozen_fields"

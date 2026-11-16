@@ -1,6 +1,6 @@
 [project]
 name = "statsx"
-version = "0.1.0"  # static: maturin is the build backend (it cannot read __version__ from a Python file; it reads Cargo.toml or this line). Keep in sync with rust/Cargo.toml.
+version = "0.1.1"  # static: maturin is the build backend (it cannot read __version__ from a Python file; it reads Cargo.toml or this line). Keep in sync with rust/Cargo.toml.
 description = "Statistics for Python with its own Rust core: Bayesian inference, forecasting, causal impact, tests and design, with NumPy as the only dependency."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -48,11 +48,11 @@ module-name = "statsx._accel"
 features = ["pyo3/extension-module"]
 
 [dependency-groups]
-dev = ["ruff>=0.6", "pyright>=1.1.390", "pytest>=8"]
+dev = ["ruff>=0.6", "pyright[nodejs]>=1.1.390", "pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --junitxml=build/junit.xml"
 
 [tool.ruff]
 line-length = 100

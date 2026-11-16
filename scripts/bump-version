@@ -1,6 +1,6 @@
 #!/bin/sh
 # Bump the project version in pyproject.toml -- the single source of truth maturin builds
-# from (it cannot read a Python __init__). Keep rust/Cargo.toml's version in step by hand.
+# from (it cannot read a Python __init__), and rust/Cargo.toml's package version with it.
 #
 # Usage: ./scripts/bump-version [patch|minor|major]   (default: patch)
 #
@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 BUMP_TYPE="${1:-patch}"
 
-CURRENT=$(grep -E '^version = "' pyproject.toml | head -1 | sed -E 's/^version = "(.*)"/\1/')
+CURRENT=$(grep -E '^version = "' pyproject.toml | head -1 | sed -E 's/^version = "([^"]*)".*/\1/')
 if [ -z "$CURRENT" ]; then
     echo "bump-version: could not read 'version = \"...\"' from pyproject.toml" >&2
     exit 1
@@ -34,6 +34,10 @@ esac
 
 NEW="${MAJOR}.${MINOR}.${PATCH}"
 sed -i -E "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" pyproject.toml
+# rust/Cargo.toml carries the same version (the first `version =` line is the package's).
+if [ -f rust/Cargo.toml ]; then
+    sed -i -E "0,/^version = \"${CURRENT}\"/s//version = \"${NEW}\"/" rust/Cargo.toml
+fi
 
 # Keep uv.lock's pinned project version in sync so the working tree stays clean
 # (offline + cached = fast; online fallback for a cold cache).

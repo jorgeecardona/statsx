@@ -9,4 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Estimate` and `Interval`: every result gives the estimate, the interval, the sample size,
+  and the assumption as fields of a frozen dataclass.
 - Initial release.
