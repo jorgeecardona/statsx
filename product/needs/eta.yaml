@@ -10,6 +10,8 @@ needs:
     sources:
       - {kind: primary, date: 2026-11-12, who: maintainer, quote: "estimate ETA of tasks after repeated attempts and based on some input parameters like moving files that would depend on the number of files or the total size if available in advance"}
     must: true
+    proofs:
+      - "test:tests/test_eta.py::test_fit_learns_duration_from_input_parameters"
 
   - id: ET-2
     text: >
@@ -18,6 +20,8 @@ needs:
     sources:
       - {kind: primary, date: 2026-11-12, who: maintainer, quote: "estimate ETA of tasks after repeated attempts and based on some input parameters like moving files that would depend on the number of files or the total size if available in advance"}
     must: true
+    proofs:
+      - "test:tests/test_eta.py::test_predicted_duration_has_a_credible_interval_that_covers_new_runs"
 
   - id: ET-3
     text: >

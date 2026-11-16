@@ -19,4 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Block`) and a percentile interval; the result records the unit.
 - `statsx.diagnostics.check_convergence`: rank-normalized split R-hat, bulk and tail ESS, and
   divergences in one check; `require()` raises `ConvergenceError` with the reasons.
+- `statsx.eta.fit_duration`: learn task duration from past runs and their parameters (for
+  example file count and size); `predict` gives the duration with a credible interval.
 - Initial release.

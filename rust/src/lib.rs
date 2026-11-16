@@ -6,6 +6,8 @@ use pyo3::prelude::*;
 mod bootstrap;
 mod conjugate;
 mod diagnostics;
+mod eta;
+mod linalg;
 mod rng;
 mod special;
 
@@ -23,5 +25,7 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(conjugate::dirichlet_multinomial, m)?)?;
     m.add_function(wrap_pyfunction!(bootstrap::bootstrap_indices, m)?)?;
     m.add_function(wrap_pyfunction!(diagnostics::convergence, m)?)?;
+    m.add_function(wrap_pyfunction!(eta::nig_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(eta::nig_predict, m)?)?;
     Ok(())
 }

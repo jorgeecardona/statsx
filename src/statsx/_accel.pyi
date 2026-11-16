@@ -19,3 +19,15 @@ def bootstrap_indices(
     block_length: int = 0,
 ) -> tuple[npt.NDArray[np.uint64], npt.NDArray[np.uint64]]: ...
 def convergence(draws: npt.NDArray[np.float64]) -> tuple[float, float, float]: ...
+def nig_fit(
+    x: npt.NDArray[np.float64], y: npt.NDArray[np.float64], coef_var: float, a0: float, b0: float
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float, float]: ...
+def nig_predict(
+    mean: npt.NDArray[np.float64],
+    cov: npt.NDArray[np.float64],
+    an: float,
+    bn: float,
+    x_new: npt.NDArray[np.float64],
+    n_draws: int,
+    seed: int,
+) -> npt.NDArray[np.float64]: ...

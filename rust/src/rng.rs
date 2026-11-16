@@ -2,7 +2,11 @@
 //!
 //! Blackman & Vigna (2021), "Scrambled Linear Pseudorandom Number Generators", ACM TOMS 47(4),
 //! DOI 10.1145/3460772. Lemire (2019), "Fast Random Integer Generation in an Interval",
-//! ACM TOMS 45(1), DOI 10.1145/3230636. Decision D-4.
+//! ACM TOMS 45(1), DOI 10.1145/3230636. Decision D-4. Normal draws by inversion (AS 241, D-6);
+//! gamma draws by Marsaglia & Tsang (2000), "A simple method for generating gamma variables",
+//! ACM TOMS 26(3):363-372, DOI 10.1145/358407.358414. Decision D-8.
+
+use crate::special::norm_ppf;
 
 pub struct Rng {
     s: [u64; 4],
@@ -55,6 +59,38 @@ impl Rng {
         }
         (m >> 64) as u64
     }
+
+    /// Uniform in the open interval (0, 1), 53 random bits.
+    pub fn uniform(&mut self) -> f64 {
+        ((self.next_u64() >> 11) as f64 + 0.5) / (1u64 << 53) as f64
+    }
+
+    /// Standard normal by inversion of the CDF.
+    pub fn normal(&mut self) -> f64 {
+        norm_ppf(self.uniform())
+    }
+
+    /// Gamma(shape, 1). For shape < 1, draws Gamma(shape + 1) and multiplies by U^(1/shape)
+    /// (Marsaglia & Tsang 2000, section 6). `shape` must be > 0.
+    pub fn gamma(&mut self, shape: f64) -> f64 {
+        if shape < 1.0 {
+            return self.gamma(shape + 1.0) * self.uniform().powf(1.0 / shape);
+        }
+        let d = shape - 1.0 / 3.0;
+        let c = 1.0 / (9.0 * d).sqrt();
+        loop {
+            let x = self.normal();
+            let v = 1.0 + c * x;
+            if v <= 0.0 {
+                continue;
+            }
+            let v = v * v * v;
+            let u = self.uniform();
+            if u < 1.0 - 0.0331 * x.powi(4) || u.ln() < 0.5 * x * x + d * (1.0 - v + v.ln()) {
+                return d * v;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -82,5 +118,19 @@ mod tests {
         let chi2: f64 = counts.iter().map(|&c| (c as f64 - expected).powi(2) / expected).sum();
         // 9 degrees of freedom: the 0.999 quantile is 27.88.
         assert!(chi2 < 27.88, "chi2 = {chi2}");
+    }
+
+    #[test]
+    fn gamma_moments() {
+        let mut rng = Rng::new(2);
+        for shape in [0.5, 1.0, 3.7, 50.0] {
+            let n = 200_000;
+            let draws: Vec<f64> = (0..n).map(|_| rng.gamma(shape)).collect();
+            let mean = draws.iter().sum::<f64>() / n as f64;
+            let var = draws.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+            // mean = var = shape; 6 standard errors of the mean
+            assert!((mean - shape).abs() < 6.0 * (shape / n as f64).sqrt(), "{shape}: {mean}");
+            assert!((var / shape - 1.0).abs() < 0.03, "{shape}: var {var}");
+        }
     }
 }
