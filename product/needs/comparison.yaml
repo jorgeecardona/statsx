@@ -22,6 +22,11 @@ needs:
       q-values.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_multiple.py::test_holm_and_benjamini_hochberg_reject_what_the_1995_example_says"
+      - "test:tests/test_multiple.py::test_adjusted_values_match_the_definitions_by_brute_force"
+      - "test:tests/test_multiple.py::test_benjamini_hochberg_keeps_the_false_discovery_rate_below_alpha"
+      - "test:tests/test_multiple.py::test_storey_rejects_more_than_benjamini_hochberg_when_many_effects_are_real"
 
   - id: CO-4
     text: >

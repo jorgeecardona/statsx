@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.multiple.adjust`: Holm, Benjamini-Hochberg and Storey q-value corrections for many
+  tests, with the adjusted values, the rejections and the estimated share of true nulls.
 - `statsx.decision`: `simulate_cost` (Monte Carlo cost distribution with a fixed seed),
   `expected_value_of_information`, `break_even_probability` and `break_even`.
 - `statsx.posterior.compare`: P(A > B) and the probability of practical equivalence of two

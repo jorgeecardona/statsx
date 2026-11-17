@@ -669,3 +669,30 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-27
+  text: 'Many tests are corrected by three methods. Holm (1979), Scandinavian Journal of
+    Statistics 6(2):65-70: step-down, p(i) (m - i + 1) made non-decreasing, controls the
+    family-wise error rate under any dependence. Benjamini-Hochberg (1995), JRSSB
+    57(1):289-300, DOI 10.1111/j.2517-6161.1995.tb02031.x: step-up, p(i) m / i made
+    non-decreasing from the largest p-value down, controls the false discovery rate for
+    independent or positively dependent tests. Storey q-values, Storey (2002), JRSSB
+    64(3):479-498, DOI 10.1111/1467-9868.00346, and Storey & Tibshirani (2003), PNAS
+    100(16):9440-9445, DOI 10.1073/pnas.1530509100: Benjamini-Hochberg scaled by pi0, the
+    estimated share of true nulls, from the share of p-values above lambda = 0.5, capped at 1.
+    The result gives adjusted values in the input order, the rejections at alpha, and pi0.'
+  needs:
+  - CO-3
+  alternatives:
+  - 'Storey pi0 by a smoother over many lambda (the qvalue package): not chosen now, it
+    needs a smoothing spline; the single-lambda estimate is the form in Storey (2002).'
+  - 'Benjamini-Yekutieli (any dependence): not offered, the need names three methods.'
+  consequences: 'On 200 z-tests with 20% real effects (3.5 sd), alpha 0.1, 1000 repetitions:
+    Holm had a family-wise error rate of 8.4% and power 60%; Benjamini-Hochberg a false
+    discovery rate of 8.0% (alpha times the share of nulls) and power 93%; Storey q-values 10.2%
+    and 94%. With 50% real effects Storey had a false discovery rate of 10.2% at alpha 0.1, so
+    it is slightly above its level; Benjamini-Hochberg had 5.0% and power 97%, Storey 99%. The
+    adjusted values match a brute-force implementation of each definition.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
