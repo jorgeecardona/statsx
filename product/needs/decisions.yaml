@@ -265,3 +265,30 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-16'
+- id: D-12
+  text: 'A forecast continues each posterior draw: the drift extends as a Gaussian random
+    walk with that draw''s sigma, the fixed effects (level, slope, Fourier season) are
+    evaluated at the future months, and a new count is drawn from the negative binomial
+    with that draw''s dispersion. This is forecasting a state space model by simulating
+    the state forward, Durbin & Koopman (2012), ''Time Series Analysis by State Space
+    Methods'', 2nd ed., chapter 4, Oxford University Press, DOI 10.1093/acprof:oso/9780199641178.001.0001.
+    Bands are central quantiles of the draws at 50%, 80% and 95%, nested by construction.
+    The Python layer draws with NumPy''s Generator (PCG64), seeded by the caller.'
+  needs:
+  - TS-2
+  - TS-4
+  alternatives:
+  - 'Closed-form Gaussian forecast variance: not chosen, the count likelihood is not
+    Gaussian and the draws already carry the uncertainty of sigma and the level.'
+  - 'Our own Rust sampler for the forecast draws: not chosen now, the cost is small
+    (2000 x 72 values) and NumPy is the allowed run-time dependency.'
+  consequences: 'The trend band widens with the horizon (80% width 0.56, 0.77, 0.98 at
+    1, 6 and 12 months ahead on synthetic series of mean 30). On 12 held-out months of
+    synthetic series of mean 30, 95% bands covered 96% and 80% bands 82%. At mean 1 and
+    5 the bands over-cover (80% bands covered 94% and 88%) because a count is an integer
+    and because the half-normal(0.2) prior on sigma is wider than the true drift at 60
+    months. The season repeats and the slope continues unchanged.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

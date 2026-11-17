@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `TrendFit.forecast`: nested 50/80/95% credible bands for each fitted and future month
+  (`Forecast.bands`), of the log trend, the expected count or a new count. The trend bands
+  widen with the horizon.
 - `statsx.trend.fit_trend`: the trend of a monthly count series with the season and the noise
   removed, as credible bands (`TrendFit.band`) and P(slope > 0) (`TrendFit.p_increasing`). A fit
   that fails its check raises `FitCheckError` with the reasons; it never returns a degraded fit.

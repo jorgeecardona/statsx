@@ -1,4 +1,4 @@
-"""Trend of a count series with the seasonality and noise removed (TS-1, TS-3, TS-5).
+"""Trend and forecast of a count series (TS-1, TS-2, TS-3, TS-5).
 
 ``fit_trend`` fits a negative binomial structural time series: a level, a slope, a random-walk
 drift, and a Fourier season. The posterior comes from the nested Laplace approximation, corrected
@@ -17,6 +17,10 @@ References:
     Vehtari, A., Simpson, D., Gelman, A., Yao, Y., & Gabry, J. (2024). Pareto smoothed
     importance sampling. *Journal of Machine Learning Research* 25(72):1-58.
 
+    Durbin, J., & Koopman, S. J. (2012). *Time Series Analysis by State Space Methods*, 2nd ed.,
+    chapter 4 (filtering, smoothing and forecasting). Oxford University Press.
+    https://doi.org/10.1093/acprof:oso/9780199641178.001.0001.
+
     Cameron, A. C., & Trivedi, P. K. (2013). *Regression Analysis of Count Data*, 2nd ed.,
     chapter 3. Cambridge University Press. https://doi.org/10.1017/CBO9781139013567.
 """
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -96,6 +101,65 @@ class Band:
     upper: npt.NDArray[np.float64]
 
 
+_ETA_LIMIT = 30.0
+"""Same clamp on the log mean as the Rust fit."""
+
+_DISPERSION_FLOOR = 1e-3
+
+BandOf = Literal["counts", "mean", "trend"]
+
+
+@dataclass(frozen=True, slots=True)
+class Forecast:
+    """Posterior draws for every fitted month and every forecast month (TS-2).
+
+    Each array has shape (draws, fitted months + horizon).
+
+    Args:
+        trend: Draws of the log trend (level + slope + drift).
+        mean: Draws of the expected count, the exponential of trend plus season.
+        counts: Draws of a new count, from the negative binomial given ``mean``.
+        n_fitted: Number of fitted months; later columns are forecast months.
+    """
+
+    trend: npt.NDArray[np.float64]
+    mean: npt.NDArray[np.float64]
+    counts: npt.NDArray[np.float64]
+    n_fitted: int
+
+    @property
+    def horizon(self) -> int:
+        """Return the number of forecast months."""
+        return self.counts.shape[1] - self.n_fitted
+
+    def bands(
+        self, levels: tuple[float, ...] = (0.5, 0.8, 0.95), *, of: BandOf = "counts"
+    ) -> tuple[Band, ...]:
+        """Return nested central credible bands, one per level, for every month.
+
+        Args:
+            levels: Increasing levels in (0, 1). Each band contains the one before it.
+            of: ``"counts"`` for a new count (the default), ``"mean"`` for the expected count,
+                ``"trend"`` for the log trend.
+
+        Raises:
+            ValueError: If ``levels`` is empty, not increasing, or outside (0, 1).
+        """
+        if (
+            not levels
+            or any(not 0.0 < v < 1.0 for v in levels)
+            or list(levels) != sorted(set(levels))
+        ):
+            raise ValueError(f"levels must increase within (0, 1), got {levels}")
+        draws = {"counts": self.counts, "mean": self.mean, "trend": self.trend}[of]
+        out: list[Band] = []
+        for level in levels:
+            tail = (1.0 - level) / 2.0
+            lower, upper = np.quantile(draws, [tail, 1.0 - tail], axis=0)
+            out.append(Band(level, lower, upper))
+        return tuple(out)
+
+
 @dataclass(frozen=True, slots=True)
 class TrendFit:
     """A checked fit. Only ``fit_trend`` builds it, and only after the check passed.
@@ -146,18 +210,59 @@ class TrendFit:
         lower, upper = np.quantile(self.trend, [tail, 1.0 - tail], axis=0)
         return Band(level, lower, upper)
 
+    def forecast(self, horizon: int, *, seed: int = 0) -> Forecast:
+        """Return draws for the fitted months and the next ``horizon`` months.
+
+        Each posterior draw continues its own random walk: the drift gains ``sigma`` times a
+        standard normal step per month, so the trend band widens with the horizon. The season
+        repeats. New counts are drawn from the negative binomial with that draw's dispersion.
+
+        Args:
+            horizon: Number of months ahead, at least 1.
+            seed: Seed of the NumPy generator; the same seed gives the same draws.
+
+        Raises:
+            ValueError: If ``horizon`` is below 1.
+        """
+        if horizon < 1:
+            raise ValueError(f"horizon must be at least 1, got {horizon}")
+        months, draws = self.n_months, self.latent.shape[0]
+        columns = 2 + 2 * self.harmonics
+        rng = np.random.default_rng(seed)
+        sigma = np.exp(self.hyper[:, [0]])
+        alpha = 1.0 / (np.exp(2.0 * self.hyper[:, [1]]) + _DISPERSION_FLOOR)
+        fixed, drift = self.latent[:, :columns], self.latent[:, columns:]
+        future = np.arange(months, months + horizon, dtype=np.float64)
+        rows = _design_rows(future, months, self.period, self.harmonics)
+        steps = sigma * rng.standard_normal((draws, horizon))
+        drift_future = drift[:, [-1]] + np.cumsum(steps, axis=1)
+        all_rows = _design(months, self.period, self.harmonics)
+        centred = np.vstack([all_rows, rows])
+        eta = fixed @ centred.T + np.hstack([drift, drift_future])
+        eta = np.clip(eta, -_ETA_LIMIT, _ETA_LIMIT)
+        trend = fixed[:, [0]] + fixed[:, [1]] * centred[:, 1] + np.hstack([drift, drift_future])
+        mean = np.exp(eta)
+        counts = rng.negative_binomial(alpha, alpha / (alpha + mean)).astype(np.float64)
+        return Forecast(trend, mean, counts, months)
+
     def p_increasing(self) -> float:
         """Return the posterior probability that the slope is above 0 (TS-3)."""
         return float(np.mean(self.slope > 0.0))
 
 
-def _design(months: int, period: int, harmonics: int) -> npt.NDArray[np.float64]:
-    t = np.arange(months, dtype=np.float64)
-    columns = [np.ones(months), (t - (months - 1) / 2) / period]
+def _design_rows(
+    t: npt.NDArray[np.float64], months: int, period: int, harmonics: int
+) -> npt.NDArray[np.float64]:
+    """Return the fixed-effects design at month indices ``t``; the slope is centred on the fit."""
+    columns = [np.ones(t.size), (t - (months - 1) / 2) / period]
     for k in range(1, harmonics + 1):
         angle = 2.0 * np.pi * k * t / period
         columns += [np.cos(angle), np.sin(angle)]
     return np.column_stack(columns)
+
+
+def _design(months: int, period: int, harmonics: int) -> npt.NDArray[np.float64]:
+    return _design_rows(np.arange(months, dtype=np.float64), months, period, harmonics)
 
 
 def _check(

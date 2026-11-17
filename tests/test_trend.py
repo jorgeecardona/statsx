@@ -142,3 +142,64 @@ def test_band_level_is_validated() -> None:
     counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
     with pytest.raises(ValueError, match="level"):
         fit_trend(counts, seed=0).band(1.5)
+
+
+def test_forecast_bands_are_nested_and_widen_with_the_horizon() -> None:
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
+    forecast = fit_trend(counts, seed=0).forecast(24, seed=0)
+    assert forecast.horizon == 24
+    assert forecast.counts.shape[1] == MONTHS + 24
+    inner, middle, outer = forecast.bands((0.5, 0.8, 0.95))
+    assert (inner.level, middle.level, outer.level) == (0.5, 0.8, 0.95)
+    # Nested at every past and future month.
+    assert np.all(outer.lower <= middle.lower) and np.all(middle.lower <= inner.lower)
+    assert np.all(inner.upper <= middle.upper) and np.all(middle.upper <= outer.upper)
+    # The 80% band of the trend is wider the further ahead it is.
+    trend_band = forecast.bands((0.8,), of="trend")[0]
+    width = trend_band.upper - trend_band.lower
+    ahead = [MONTHS, MONTHS + 5, MONTHS + 11, MONTHS + 23]
+    assert width[ahead[0]] < width[ahead[1]] < width[ahead[2]] < width[ahead[3]]
+    # So does the 80% band of a new count.
+    count_band = forecast.bands((0.8,))[0]
+    count_width = count_band.upper - count_band.lower
+    assert count_width[MONTHS + 23] > count_width[MONTHS]
+
+
+def test_forecast_bands_cover_held_out_months() -> None:
+    held = 12
+    covered: dict[float, list[float]] = {0.5: [], 0.8: [], 0.95: []}
+    for seed in range(15):
+        full, _, _ = _series(seed=100 + seed, level=30.0, slope=0.2, alpha=5.0)
+        # The generator has no months beyond MONTHS, so hold out the last ones.
+        fit = fit_trend(full[:-held], seed=seed)
+        bands = fit.forecast(held, seed=seed).bands((0.5, 0.8, 0.95))
+        for band in bands:
+            inside = (full[-held:] >= band.lower[-held:]) & (full[-held:] <= band.upper[-held:])
+            covered[band.level].append(float(inside.mean()))
+    rate = {level: float(np.mean(v)) for level, v in covered.items()}
+    assert 0.35 < rate[0.5] < 0.7, rate
+    assert 0.7 < rate[0.8] < 0.93, rate
+    assert rate[0.95] > 0.88, rate
+
+
+def test_forecast_repeats_the_season_and_draws_counts() -> None:
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.0, alpha=20.0, season=0.8)
+    forecast = fit_trend(counts, seed=0).forecast(12, seed=0)
+    median = np.median(forecast.mean, axis=0)
+    assert np.corrcoef(median[-12:], median[-24:-12])[0, 1] > 0.8
+    assert np.all(forecast.counts >= 0)
+    assert np.all(forecast.counts == np.round(forecast.counts))
+
+
+def test_forecast_is_reproducible_and_validated() -> None:
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
+    fit = fit_trend(counts, seed=0)
+    a, b, c = fit.forecast(6, seed=3), fit.forecast(6, seed=3), fit.forecast(6, seed=4)
+    assert np.array_equal(a.counts, b.counts)
+    assert not np.array_equal(a.counts, c.counts)
+    with pytest.raises(ValueError, match="horizon"):
+        fit.forecast(0)
+    with pytest.raises(ValueError, match="levels"):
+        a.bands((0.8, 0.5))
+    with pytest.raises(ValueError, match="levels"):
+        a.bands(())

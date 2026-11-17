@@ -21,6 +21,9 @@ needs:
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_trend.py::test_forecast_bands_are_nested_and_widen_with_the_horizon"
+      - "test:tests/test_trend.py::test_forecast_bands_cover_held_out_months"
 
   - id: TS-3
     text: >
