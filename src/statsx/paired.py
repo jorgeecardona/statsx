@@ -43,6 +43,7 @@ import numpy as np
 import numpy.typing as npt
 
 from statsx import _accel
+from statsx._ranks import midranks
 from statsx.bootstrap import IID, IntervalMethod, bootstrap
 from statsx.result import Estimate
 
@@ -162,20 +163,6 @@ def sign_test(a: npt.ArrayLike, b: npt.ArrayLike) -> PairedTest:
     )
 
 
-def _midranks(values: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    order = np.argsort(values, kind="stable")
-    ranks = np.empty(values.size, dtype=np.float64)
-    sorted_values = values[order]
-    start = 0
-    while start < values.size:
-        stop = start
-        while stop + 1 < values.size and sorted_values[stop + 1] == sorted_values[start]:
-            stop += 1
-        ranks[order[start : stop + 1]] = 0.5 * (start + stop) + 1.0
-        start = stop + 1
-    return ranks
-
-
 def _exact_signed_rank_p(doubled_ranks: npt.NDArray[np.int64], observed: int) -> float:
     """Two-sided exact p-value: all 2^n sign assignments counted by dynamic programming.
 
@@ -207,7 +194,7 @@ def wilcoxon(a: npt.ArrayLike, b: npt.ArrayLike) -> PairedTest:
     n = d.size
     if n == 0:
         return PairedTest("wilcoxon signed-rank", 0.0, 1.0, 0, "all differences are zero")
-    ranks = _midranks(np.abs(d))
+    ranks = midranks(np.abs(d))
     positive = float(ranks[d > 0].sum())
     if n <= EXACT_LIMIT:
         doubled = np.rint(2.0 * ranks).astype(np.int64)

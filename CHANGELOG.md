@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.drift`: `ks_test` (exact for small samples), `mmd_test`, `classifier_test` and `psi` /
+  `psi_from_shares` to compare two samples for drift.
 - `statsx.design`: power, sample size, minimum detectable effect and TOST for two independent groups
   of means (`power_two_sample`, `sample_size_two_sample`, `minimum_detectable_effect_two_sample`,
   `power_equivalence_two_sample`, `sample_size_equivalence_two_sample`).

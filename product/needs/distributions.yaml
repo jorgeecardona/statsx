@@ -32,3 +32,8 @@ needs:
       test, or PSI.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_drift.py::test_the_exact_ks_p_value_equals_the_count_over_every_possible_labelling"
+      - "test:tests/test_drift.py::test_the_unbiased_mmd_has_the_closed_form_mean_for_two_normals"
+      - "test:tests/test_drift.py::test_the_classifier_test_has_the_stated_level_and_needs_quadratic_terms_for_spread"
+      - "test:tests/test_drift.py::test_psi_equals_the_definition_and_its_p_value_has_the_stated_level"

@@ -1160,3 +1160,40 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-43
+  text: 'The caller compares two samples for drift with four tests, each from its paper. KS:
+    D = max |F_a - F_b|; the p-value is exact without ties when n m <= 10000, by counting the
+    lattice paths that stay inside |i m - j n| < D n m (Hodges 1958, Arkiv for Matematik
+    3:469-486, DOI 10.1007/BF02589501), and otherwise the Smirnov limit 2 sum (-1)^(k-1)
+    exp(-2 k^2 lambda^2) at lambda = D sqrt(n m / (n + m)) (Smirnov 1948, Annals of Mathematical
+    Statistics 19(2):279-281, DOI 10.1214/aoms/1177730256). MMD: the unbiased squared maximum mean
+    discrepancy with the Gaussian kernel and the median-distance bandwidth (Gretton et al. 2012,
+    JMLR 13:723-773), with a permutation p-value (1 + #{permuted >= observed}) / (1 + B)
+    (Phipson & Smyth 2010, SAGMB 9(1):39, DOI 10.2202/1544-6115.1585). Classifier two-sample
+    test (Lopez-Paz & Oquab 2017, ICLR): an L2-penalised logistic regression, written here with
+    Newton steps, trained on half of each sample; the statistic is the AUC on the other half,
+    and the p-value is the Mann-Whitney test (1947, Annals of Mathematical Statistics 18(1):50-60,
+    DOI 10.1214/aoms/1177730491) of the held-out scores, which is valid because the scores are
+    exchangeable without drift. PSI (Siddiqi 2006, Credit Risk Scorecards): sum (b_i - a_i)
+    ln(b_i / a_i) over bins of equal share in the reference, with shares floored at 1e-4; its
+    p-value uses n_eff PSI ~ chi-square(bins - 1) with n_eff = n m / (n + m), from the
+    second-order expansion (b - a) ln(b / a) ~ (b - a)^2 / a, and is approximate.'
+  needs:
+  - DI-3
+  alternatives:
+  - 'Cramer-von Mises and Anderson-Darling two-sample tests: not offered, the need names four.'
+  - 'Cross-validated classifier accuracy against a binomial: rejected, the folds are not
+    independent; a single split with the Mann-Whitney test is exact without drift.'
+  consequences: 'With no drift the 5% test rejected in 4.5% of 1500 KS runs (exact branch, 40
+    and 30 rows) and 4.9% (limit branch, 150 and 120 rows); 5.7% of 300 MMD runs (199
+    permutations); 4.0% of 400 classifier runs; 5.5% of 1500 PSI runs (10 bins, 1000 rows each).
+    The exact KS p-value equals the count over every possible labelling for three small cases to
+    1e-10. The unbiased MMD averages the closed-form value for two normal distributions within
+    4 standard errors over 600 samples. The classifier AUC for a shift of one standard
+    deviation is 0.756 against the normal-theory 0.760. A change of spread (sd 2 against 1,
+    1500 rows each, 2 columns) has p = 0.13 for the linear classifier and 2e-89 with
+    quadratic = True. The MMD needs the (n + m)^2 kernel matrix in memory.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'
