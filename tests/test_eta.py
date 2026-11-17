@@ -59,3 +59,44 @@ def test_refuses_bad_input() -> None:
     model = fit_duration([1.0, 2.0, 3.0], {"files": [1, 2, 3]})
     with pytest.raises(ValueError, match="missing"):
         model.predict({})
+
+
+def test_updating_with_each_new_run_equals_refitting_from_all_runs() -> None:
+    duration, files, gb = _runs(seed=11, n=60)
+    first = 25
+    model = fit_duration(duration[:first], {"files": files[:first], "gb": gb[:first]})
+    for i in range(first, 60):
+        model = model.update(duration[i], {"files": files[i], "gb": gb[i]})
+    batch = fit_duration(duration, {"files": files, "gb": gb})
+    assert model.n == batch.n == 60
+    np.testing.assert_allclose(model.coef_mean, batch.coef_mean, rtol=1e-9, atol=1e-10)
+    np.testing.assert_allclose(model.coef_cov, batch.coef_cov, rtol=1e-9, atol=1e-12)
+    assert model.noise_shape == batch.noise_shape
+    assert model.noise_rate == pytest.approx(batch.noise_rate, rel=1e-9)
+    new = {"files": 800.0, "gb": 12.0}
+    a, b = model.predict(new, seed=1), batch.predict(new, seed=1)
+    assert a.estimate == pytest.approx(b.estimate, rel=1e-9)
+    assert a.interval.lower == pytest.approx(b.interval.lower, rel=1e-9)
+    assert a.interval.upper == pytest.approx(b.interval.upper, rel=1e-9)
+
+
+def test_update_returns_a_new_model_and_checks_its_input() -> None:
+    duration, files, _ = _runs(seed=12, n=20)
+    model = fit_duration(duration, {"files": files})
+    newer = model.update(duration[0], {"files": files[0]})
+    assert newer is not model
+    assert model.n == 20
+    assert newer.n == 21
+    with pytest.raises(ValueError, match="duration"):
+        model.update(0.0, {"files": 10.0})
+    with pytest.raises(ValueError, match="missing"):
+        model.update(5.0, {})
+    with pytest.raises(ValueError, match="parameters"):
+        model.update(5.0, {"files": -1.0})
+
+
+def test_update_works_with_no_parameters() -> None:
+    model = fit_duration([10.0, 12.0, 9.0], {})
+    batch = fit_duration([10.0, 12.0, 9.0, 11.0], {})
+    updated = model.update(11.0, {})
+    np.testing.assert_allclose(updated.coef_mean, batch.coef_mean, rtol=1e-12)

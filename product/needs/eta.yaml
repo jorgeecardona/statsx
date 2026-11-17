@@ -38,6 +38,9 @@ needs:
       all past runs.
     sources:
       - {kind: assumption, date: 2026-11-12, locator: "follows from 'after repeated attempts' (ET-1)"}
+    proofs:
+      - "test:tests/test_eta.py::test_updating_with_each_new_run_equals_refitting_from_all_runs"
+      - "test:tests/test_eta.py::test_update_returns_a_new_model_and_checks_its_input"
 
   - id: ET-5
     text: >

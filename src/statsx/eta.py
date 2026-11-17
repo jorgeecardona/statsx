@@ -1,4 +1,4 @@
-"""Task duration from input parameters, with a credible interval (ET-1, ET-2).
+"""Task duration from input parameters, with a credible interval (ET-1, ET-2, ET-4).
 
 The model is ``log(duration) = b0 + sum_k b_k * log(1 + x_k) + e``, with normal noise ``e``.
 A coefficient of 1 on ``log(1 + files)`` means duration grows in proportion to the file count.
@@ -59,6 +59,43 @@ class DurationModel:
         names = ("intercept", *self.parameters)
         return {k: float(v) for k, v in zip(names, self.coef_mean, strict=True)}
 
+    def update(self, duration: float, params: Mapping[str, float]) -> DurationModel:
+        """Return the model after one more run, without refitting from the past runs (ET-4).
+
+        This is the one-observation form of the Normal-Inverse-Gamma update (a rank-one update of
+        the coefficient covariance), so ``fit_duration`` on all runs and a chain of ``update``
+        calls give the same model up to rounding.
+
+        Args:
+            duration: Duration of the finished run, in the unit of the earlier runs. Must be > 0.
+            params: A value for every parameter the model was fitted with.
+
+        Raises:
+            ValueError: If the duration is not positive, or a parameter is missing or negative.
+        """
+        if not math.isfinite(duration) or duration <= 0.0:
+            raise ValueError("duration must be finite and > 0")
+        missing = set(self.parameters) - set(params)
+        if missing:
+            raise ValueError(f"missing parameters: {sorted(missing)}")
+        row = self._row(params)[0]
+        gain = self.coef_cov @ row
+        scale = 1.0 + float(row @ gain)
+        residual = math.log(duration) - float(row @ self.coef_mean)
+        return DurationModel(
+            self.parameters,
+            self.coef_mean + gain * residual / scale,
+            self.coef_cov - np.outer(gain, gain) / scale,
+            self.noise_shape + 0.5,
+            self.noise_rate + 0.5 * residual**2 / scale,
+            self.n + 1,
+        )
+
+    def _row(self, params: Mapping[str, float]) -> npt.NDArray[np.float64]:
+        if not self.parameters:
+            return np.ones((1, 1), dtype=np.float64)
+        return _design([[params[k]] for k in self.parameters])
+
     def predict(
         self, params: Mapping[str, float], *, level: float = 0.9, seed: int = 0
     ) -> Estimate:
@@ -75,11 +112,7 @@ class DurationModel:
         missing = set(self.parameters) - set(params)
         if missing:
             raise ValueError(f"missing parameters: {sorted(missing)}")
-        row = (
-            _design([[params[k]] for k in self.parameters])
-            if self.parameters
-            else np.ones((1, 1), dtype=np.float64)
-        )
+        row = self._row(params)
         draws = _accel.nig_predict(
             self.coef_mean,
             self.coef_cov,

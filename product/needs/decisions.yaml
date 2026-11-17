@@ -404,3 +404,24 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-17
+  text: 'A finished run is added to a duration model by the one-observation conjugate
+    update of the Normal-Inverse-Gamma regression of decision D-7: with row x and
+    log duration y, s = 1 + x^T V x and r = y - x^T m, the posterior is m + V x r / s,
+    V - V x x^T V / s, shape + 1/2 and rate + r^2 / (2 s). This is recursive Bayesian
+    least squares with a conjugate prior, Gelman, Carlin, Stern, Dunson, Vehtari & Rubin
+    (2013), ''Bayesian Data Analysis'', 3rd ed., chapter 14, CRC Press, DOI 10.1201/b16018.'
+  needs:
+  - ET-4
+  alternatives:
+  - 'Refit from all past runs: not chosen, it needs every past run and costs more with
+    each run; the update is exact, so nothing is lost.'
+  - 'Exponential forgetting of old runs: not chosen now, the model assumes the process
+    does not change; forgetting is a separate decision if durations drift.'
+  consequences: 'The update gives the same model as a refit from all runs up to rounding
+    (1e-9 relative, tested on 35 sequential updates). It keeps no past run, so it cannot
+    detect that the process changed.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
