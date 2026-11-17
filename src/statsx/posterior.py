@@ -98,7 +98,7 @@ def hdi(draws: npt.ArrayLike, level: float = 0.95) -> Interval:
 
 @runtime_checkable
 class Sampler(Protocol):
-    """A posterior that can be sampled: ``Beta``, ``Gamma``, ``Normal`` and ``LogNormal``."""
+    """A posterior that can be sampled: ``Beta``, ``Gamma``, ``Normal``, ``LogNormal`` and ``NormalInverseGamma``."""
 
     def sample(self, n: int, *, seed: int = 0) -> npt.NDArray[np.float64]:
         """Return ``n`` draws."""

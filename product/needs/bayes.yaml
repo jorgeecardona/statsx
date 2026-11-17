@@ -56,3 +56,16 @@ needs:
       When the caller installs the MCMC part, they can do it without JAX, PyTensor, or a C compiler.
     sources:
       - {kind: primary, date: 2026-11-11, who: maintainer, quote: "pymc has one big fat dependency no? also the other alternative depends on jax"}
+
+  - id: BA-7
+    text: >
+      When the caller has a few repeated timings of two versions, they can get the probability that
+      one is faster, the speedup with a credible interval, and the probability that the two are
+      within a margin, from a Normal-Inverse-Gamma posterior that goes straight into compare.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "request from the ComputeML benchmark agent, approved by the maintainer (private, not linked)"}
+    proofs:
+      - "test:tests/test_nig.py::test_the_posterior_equals_the_intercept_only_duration_fit"
+      - "test:tests/test_nig.py::test_the_reference_posterior_covers_at_the_stated_rate_at_n_5_for_any_noise"
+      - "test:tests/test_nig.py::test_under_the_reference_prior_the_difference_matches_the_welch_interval"
+      - "test:tests/test_nig.py::test_compare_takes_the_posteriors_directly_and_finds_version_b_faster"

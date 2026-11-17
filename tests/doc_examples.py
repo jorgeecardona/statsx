@@ -15,7 +15,8 @@ import re
 import sys
 from pathlib import Path
 
-PAGES = sorted(Path(__file__).resolve().parent.parent.glob("docs/methods/*.md"))
+_DOCS = Path(__file__).resolve().parent.parent / "docs"
+PAGES = sorted([*_DOCS.glob("methods/*.md"), *_DOCS.glob("recipes/*.md")])
 PATTERN = re.compile(r"```python\n(?P<code>.*?)```\n\n```text\n(?P<out>.*?)```", re.DOTALL)
 
 

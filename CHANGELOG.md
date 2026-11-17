@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.conjugate.NormalInverseGamma`: posterior for the mean and variance of a normal sample, with
+  `update`, an exact t credible interval, `sample` (works in `compare`) and `reference` (the
+  classical t interval). Docs recipe "Compare two timing runs".
 - Docs: methods pages with LaTeX (always-valid inference, group sequential bounds, bandits and best
   arm, distributions and goodness of fit), a full API reference, and a test that runs every page's
   example.
