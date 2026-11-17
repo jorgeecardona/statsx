@@ -86,3 +86,8 @@ needs:
       coverage, so a forecast claim can be checked.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_backtest.py::test_backtest_scores_every_origin_with_crps_and_coverage"
+      - "test:tests/test_backtest.py::test_backtest_shows_a_better_forecast_has_a_lower_crps"
+      - "test:tests/test_backtest.py::test_every_series_is_reported_and_refused_origins_are_counted"
+      - "test:tests/test_backtest.py::test_crps_matches_the_closed_form_for_a_normal_forecast"

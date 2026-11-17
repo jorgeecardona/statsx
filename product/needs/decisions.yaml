@@ -376,3 +376,31 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-16
+  text: 'A forecast is backtested with rolling origins: at each origin the model is
+    refitted on the months before it and forecasts the next months, Tashman (2000),
+    ''Out-of-sample tests of forecasting accuracy: an analysis and review'', International
+    Journal of Forecasting 16(4):437-450, DOI 10.1016/S0169-2070(00)00065-0. The forecast
+    draws are scored with the CRPS, estimated from the draws as E|X - y| - E|X - X''|/2
+    (sorted-draws form), a strictly proper score, Gneiting & Raftery (2007), JASA
+    102(477):359-378, DOI 10.1198/016214506000001437, and with the share of observed
+    counts inside the 50%, 80% and 95% bands. An origin whose fit fails the fit check is
+    counted as refused and reported, never dropped; every series given is reported.'
+  needs:
+  - TS-8
+  alternatives:
+  - 'A single train/test split: not chosen, one origin cannot show how the score changes
+    with the forecast horizon or the season.'
+  - 'Log score: not chosen, the draws give no density for counts without an extra
+    smoothing step, and the CRPS is in the units of the counts.'
+  consequences: 'The result carries the refused origins, so a method that refuses hard
+    series cannot look better than one that forecasts them. Reporting all series follows
+    Roque, Cerqueira, Soares & Torgo (2025), AAAI 39(19):20192-20199, who show that a
+    choice of 4 datasets lets 46% of methods look best. On 10 synthetic series (96 months,
+    horizon 6, origins every 6 months from 48; 80 origins, none refused) the bands covered
+    54% (50% band), 81% (80%) and 96% (95%) of the counts, per series 44-62%, 65-92% and
+    92-98%. The cost is one refit per origin: about 0.4 s each.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
