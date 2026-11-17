@@ -23,6 +23,7 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 import numpy.typing as npt
 
+from statsx.equivalence import EquivalenceMargin, as_margin
 from statsx.result import Interval
 
 
@@ -112,7 +113,7 @@ class Comparison:
         p_a_greater: Probability that A is above B.
         p_b_greater: Probability that B is above A.
         p_equivalent: Probability that the difference A - B lies within ``margin`` of 0.
-        margin: The practical equivalence margin that was used.
+        margin: The practical equivalence margin that was used (see ``statsx.equivalence``).
         difference: Equal-tailed credible interval of A - B.
         n_draws: Number of paired draws behind the probabilities.
         mc_error: The largest Monte Carlo standard error of the three probabilities.
@@ -121,7 +122,7 @@ class Comparison:
     p_a_greater: float
     p_b_greater: float
     p_equivalent: float
-    margin: float
+    margin: EquivalenceMargin
     difference: Interval
     n_draws: int
     mc_error: float
@@ -139,7 +140,7 @@ def compare(  # noqa: PLR0913 (two posteriors and the settings of the comparison
     a: Sampler | npt.ArrayLike,
     b: Sampler | npt.ArrayLike,
     *,
-    margin: float,
+    margin: EquivalenceMargin | float,
     level: float = 0.95,
     n_draws: int = 100_000,
     seed: int = 0,
@@ -154,18 +155,18 @@ def compare(  # noqa: PLR0913 (two posteriors and the settings of the comparison
     Args:
         a: The first posterior.
         b: The second posterior.
-        margin: Practical equivalence: A and B are equivalent when ``|A - B| <= margin``.
-            Must be > 0, in the unit of the quantity.
+        margin: Practical equivalence: A and B are equivalent when ``A - B`` is inside the
+            margin. An ``EquivalenceMargin`` (the same object ``statsx.equivalence.tost`` takes),
+            or a number ``d`` for ``(-d, d)``, in the unit of the quantity.
         level: Coverage of the credible interval of A - B.
         n_draws: Draws taken from a distribution; ignored for an array, which gives its length.
         seed: Seed of the draws (B uses ``seed + 1``).
 
     Raises:
-        ValueError: If ``margin`` is not positive, ``level`` is not in (0, 1), an array has fewer
+        ValueError: If the margin is not valid, ``level`` is not in (0, 1), an array has fewer
             than 2 draws, or ``n_draws`` is below 2.
     """
-    if not margin > 0.0:
-        raise ValueError(f"margin must be > 0, got {margin}")
+    region = as_margin(margin)
     _level(level)
     if n_draws < 2:  # noqa: PLR2004
         raise ValueError("n_draws must be at least 2")
@@ -175,6 +176,6 @@ def compare(  # noqa: PLR0913 (two posteriors and the settings of the comparison
     diff = x[:n] - y[:n]
     p_a = float(np.mean(diff > 0.0))
     p_b = float(np.mean(diff < 0.0))
-    p_eq = float(np.mean(np.abs(diff) <= margin))
+    p_eq = float(np.mean((diff >= region.low) & (diff <= region.high)))
     error = max(math.sqrt(p * (1.0 - p) / n) for p in (p_a, p_b, p_eq))
-    return Comparison(p_a, p_b, p_eq, margin, credible_interval(diff, level), n, error)
+    return Comparison(p_a, p_b, p_eq, region, credible_interval(diff, level), n, error)

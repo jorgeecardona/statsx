@@ -4,7 +4,9 @@
 //! Morris (1992) and Press et al. (2007), "Numerical Recipes", 3rd ed., section 6.4, using the
 //! modified Lentz method, and the symmetry I_x(a, b) = 1 - I_{1-x}(b, a) so that the fraction is
 //! used where it converges fast. The inverse solves I_x(a, b) = p by Newton steps inside a
-//! shrinking bracket, with bisection when a step leaves the bracket. Decision D-23.
+//! shrinking bracket, with bisection when a step leaves the bracket. The Student t CDF and
+//! quantile follow from it, as P(|T| > t) = I_{df/(df+t^2)}(df/2, 1/2) (Abramowitz & Stegun
+//! 1964, formula 26.7.1). Decisions D-23 and D-28.
 
 use crate::special::lgamma;
 use numpy::PyReadonlyArray1;
@@ -111,6 +113,35 @@ pub fn beta_quantile(a: f64, b: f64, p: f64) -> f64 {
     x
 }
 
+/// Student t CDF with `df` degrees of freedom (df > 0, not necessarily an integer):
+/// P(|T| > t) = I_{df / (df + t^2)}(df / 2, 1 / 2).
+pub fn t_cdf_value(t: f64, df: f64) -> f64 {
+    if t == 0.0 {
+        return 0.5;
+    }
+    let tail = 0.5 * betainc(0.5 * df, 0.5, df / (df + t * t));
+    if t > 0.0 {
+        1.0 - tail
+    } else {
+        tail
+    }
+}
+
+/// Student t quantile for a probability in (0, 1).
+pub fn t_quantile(p: f64, df: f64) -> f64 {
+    if p == 0.5 {
+        return 0.0;
+    }
+    // I_x(df / 2, 1 / 2) = 2 min(p, 1 - p) with x = df / (df + t^2).
+    let x = beta_quantile(0.5 * df, 0.5, 2.0 * p.min(1.0 - p));
+    let t = (df * (1.0 - x) / x).sqrt();
+    if p > 0.5 {
+        t
+    } else {
+        -t
+    }
+}
+
 fn check(a: f64, b: f64) -> PyResult<()> {
     if a > 0.0 && b > 0.0 && a.is_finite() && b.is_finite() {
         Ok(())
@@ -135,6 +166,28 @@ pub fn beta_ppf(p: PyReadonlyArray1<'_, f64>, a: f64, b: f64) -> PyResult<Vec<f6
         return Err(PyValueError::new_err("probabilities must be in [0, 1]"));
     }
     Ok(probs.iter().map(|&v| beta_quantile(a, b, v)).collect())
+}
+
+/// Student t CDF at each x.
+#[pyfunction]
+pub fn t_cdf(x: PyReadonlyArray1<'_, f64>, df: f64) -> PyResult<Vec<f64>> {
+    if !(df > 0.0 && df.is_finite()) {
+        return Err(PyValueError::new_err("df must be finite and > 0"));
+    }
+    Ok(x.as_slice()?.iter().map(|&v| t_cdf_value(v, df)).collect())
+}
+
+/// Student t quantile at each probability in (0, 1).
+#[pyfunction]
+pub fn t_ppf(p: PyReadonlyArray1<'_, f64>, df: f64) -> PyResult<Vec<f64>> {
+    if !(df > 0.0 && df.is_finite()) {
+        return Err(PyValueError::new_err("df must be finite and > 0"));
+    }
+    let probs = p.as_slice()?;
+    if probs.iter().any(|v| !(*v > 0.0 && *v < 1.0)) {
+        return Err(PyValueError::new_err("probabilities must be in (0, 1)"));
+    }
+    Ok(probs.iter().map(|&v| t_quantile(v, df)).collect())
 }
 
 #[cfg(test)]
@@ -183,5 +236,23 @@ mod tests {
         assert_eq!(beta_quantile(2.0, 3.0, 1.0), 1.0);
         assert_eq!(betainc(2.0, 3.0, -1.0), 0.0);
         assert_eq!(betainc(2.0, 3.0, 2.0), 1.0);
+    }
+
+    #[test]
+    fn student_t_matches_mpmath() {
+        close(t_cdf_value(2.0, 5.0), 0.949_030_260_585_070_82, 1e-13);
+        close(t_cdf_value(-1.3, 12.0), 0.109_008_585_541_757_04, 1e-12);
+        close(t_cdf_value(0.4, 1.0), 0.621_118_941_590_843_4, 1e-13);
+        close(t_cdf_value(10.0, 3.0), 0.998_935_800_470_792_9, 1e-13);
+        close(t_cdf_value(3.1, 100.5), 0.998_744_578_630_531_8, 1e-12);
+        close(t_cdf_value(-0.05, 7.5), 0.480_714_069_985_727_26, 1e-12);
+        close(t_cdf_value(1.7, 2.0), 0.884_383_286_899_218_4, 1e-13);
+        close(t_quantile(0.975, 5.0), 2.570_581_835_636_314_8, 1e-12);
+        close(t_quantile(0.95, 12.0), 1.782_287_555_649_319_5, 1e-12);
+        close(t_quantile(0.6, 1.0), 0.324_919_696_232_906_25, 1e-12);
+        close(t_quantile(0.999, 3.0), 10.214_531_852_407_383, 1e-11);
+        close(t_quantile(0.025, 100.5), -1.983_850_655_335_799_8, 1e-12);
+        close(t_quantile(0.9, 7.5), 1.405_211_846_415_953, 1e-12);
+        assert_eq!(t_quantile(0.5, 4.0), 0.0);
     }
 }

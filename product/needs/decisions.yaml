@@ -696,3 +696,33 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-28
+  text: 'Practical equivalence has one definition, an EquivalenceMargin (low, high) with
+    low < 0 < high, taken by every function that asks it; a number d means (-d, d). TOST:
+    two one-sided t tests, equivalent when both reject at alpha, so the p-value is the larger
+    of the two, Schuirmann (1987), Journal of Pharmacokinetics and Biopharmaceutics
+    15(6):657-680, DOI 10.1007/BF01068419, as in Lakens (2017), Social Psychological and
+    Personality Science 8(4):355-362, DOI 10.1177/1948550617697177. Two independent samples
+    use the Welch standard error and Satterthwaite degrees of freedom, Welch (1947),
+    Biometrika 34(1-2):28-35, DOI 10.1093/biomet/34.1-2.28; paired data use the differences.
+    The Bayesian counterpart is the share of posterior draws of the difference inside the
+    margin, the ROPE of Kruschke (2018), DOI 10.1177/2515245918771304, and decision D-24''s
+    comparison uses the same margin. The Student t CDF and quantile are in Rust, from the
+    incomplete beta function of decision D-23 (P(|T| > t) = I_{df/(df+t^2)}(df/2, 1/2)).'
+  needs:
+  - CO-4
+  alternatives:
+  - 'A margin relative to a reference value: not offered, the margin is on the difference
+    and in the unit of the data; a caller can scale it.'
+  - 'The equal-variance (Student) TOST: not chosen, Welch is as good when variances are equal
+    and safer when not.'
+  consequences: 'Simulation, margin 0.5, 2000 repetitions, 5% level: with a true difference
+    at the edge of the margin, equivalence was declared in 4.6% (60 per group) and 5.1% (200
+    per group) of samples, as the level says. With no difference the power was 71.5% at 60 per
+    group and 99.9% at 200. The test equals the check that the 90% interval lies inside the
+    margin (tested on 60 datasets). Student t values match mpmath to 1e-11 to 1e-13 on 13
+    cases. A failed test does not show a difference.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

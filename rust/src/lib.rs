@@ -40,6 +40,8 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(structural::fit_structural, m)?)?;
     m.add_function(wrap_pyfunction!(beta::beta_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(beta::beta_ppf, m)?)?;
+    m.add_function(wrap_pyfunction!(beta::t_cdf, m)?)?;
+    m.add_function(wrap_pyfunction!(beta::t_ppf, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_beta, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_gamma, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_normal, m)?)?;
