@@ -142,6 +142,88 @@ pub fn t_quantile(p: f64, df: f64) -> f64 {
     }
 }
 
+/// Standard normal CDF through the complementary error function.
+fn norm_cdf(x: f64) -> f64 {
+    0.5 * erfc(-x / std::f64::consts::SQRT_2)
+}
+
+/// Complementary error function: the Maclaurin series of the error function for x < 2, and the
+/// continued fraction of the upper incomplete gamma function (Numerical Recipes, section 6.2)
+/// above it.
+fn erfc(x: f64) -> f64 {
+    if x < 0.0 {
+        return 2.0 - erfc(-x);
+    }
+    if x < 2.0 {
+        // erf(x) = 2 / sqrt(pi) * sum_n (-1)^n x^(2n+1) / (n! (2n+1)).
+        let (mut term, mut sum) = (x, x);
+        for n in 1..120 {
+            let n = n as f64;
+            term *= -x * x / n;
+            sum += term / (2.0 * n + 1.0);
+        }
+        return 1.0 - 2.0 / std::f64::consts::PI.sqrt() * sum;
+    }
+    // erfc(x) = exp(-x^2) / (x sqrt(pi)) * 1 / (1 + 1/(2 x^2) / (1 + 2/(2 x^2) / (1 + ...))): the
+    // continued fraction K = x + (1/2) / (x + 1 / (x + (3/2) / (x + 2 / (x + ...)))).
+    let mut f = 0.0;
+    for k in (1..=200).rev() {
+        f = (k as f64 / 2.0) / (x + f);
+    }
+    (-x * x).exp() / ((x + f) * std::f64::consts::PI.sqrt())
+}
+
+/// Noncentral t CDF P(T <= t) with `df` degrees of freedom and noncentrality `delta`.
+///
+/// Algorithm AS 243: Lenth, R. V. (1989), "Cumulative distribution function of the non-central t
+/// distribution", Applied Statistics 38(1):185-189, DOI 10.2307/2347693, a Poisson-weighted sum of
+/// incomplete beta functions; for df above 4e5 the normal approximation of Abramowitz & Stegun
+/// (1964), formula 26.7.10.
+pub fn nct_cdf_value(t: f64, df: f64, delta: f64) -> f64 {
+    if t < 0.0 {
+        return 1.0 - nct_cdf_value(-t, df, -delta);
+    }
+    if df > 4e5 {
+        let s = 1.0 / (4.0 * df);
+        return norm_cdf((t * (1.0 - s) - delta) / (1.0 + t * t * 2.0 * s).sqrt());
+    }
+    let x = t * t / (t * t + df);
+    if x <= 0.0 {
+        return norm_cdf(-delta);
+    }
+    let lambda = delta * delta;
+    let mut p = 0.5 * (-0.5 * lambda).exp();
+    let mut q = (2.0 / std::f64::consts::PI).sqrt() * p * delta;
+    let mut s = 0.5 - p;
+    let (mut a, b) = (0.5, 0.5 * df);
+    let rxb = (1.0 - x).powf(b);
+    let albeta = 0.5 * std::f64::consts::PI.ln() + lgamma(b) - lgamma(0.5 + b);
+    let mut xodd = betainc(a, b, x);
+    let mut godd = 2.0 * rxb * (a * x.ln() - albeta).exp();
+    let tnc = b * x;
+    let mut xeven = if tnc < f64::EPSILON { tnc } else { 1.0 - rxb };
+    let mut geven = tnc * rxb;
+    let mut total = p * xodd + q * xeven;
+    for it in 1..=2000 {
+        a += 1.0;
+        xodd -= godd;
+        xeven -= geven;
+        godd *= x * (a + b - 1.0) / a;
+        geven *= x * (a + b - 0.5) / (a + 0.5);
+        p *= lambda / (2.0 * it as f64);
+        q *= lambda / (2.0 * it as f64 + 1.0);
+        total += p * xodd + q * xeven;
+        s -= p;
+        if s < -1e-10 {
+            break;
+        }
+        if s >= 0.0 && (2.0 * s * (xodd - godd)).abs() < 1e-14 {
+            break;
+        }
+    }
+    (total + norm_cdf(-delta)).min(1.0)
+}
+
 fn check(a: f64, b: f64) -> PyResult<()> {
     if a > 0.0 && b > 0.0 && a.is_finite() && b.is_finite() {
         Ok(())
@@ -188,6 +270,15 @@ pub fn t_ppf(p: PyReadonlyArray1<'_, f64>, df: f64) -> PyResult<Vec<f64>> {
         return Err(PyValueError::new_err("probabilities must be in (0, 1)"));
     }
     Ok(probs.iter().map(|&v| t_quantile(v, df)).collect())
+}
+
+/// Noncentral t CDF at each x.
+#[pyfunction]
+pub fn nct_cdf(x: PyReadonlyArray1<'_, f64>, df: f64, delta: f64) -> PyResult<Vec<f64>> {
+    if !(df > 0.0 && df.is_finite() && delta.is_finite()) {
+        return Err(PyValueError::new_err("df must be finite and > 0, delta finite"));
+    }
+    Ok(x.as_slice()?.iter().map(|&v| nct_cdf_value(v, df, delta)).collect())
 }
 
 #[cfg(test)]
@@ -254,5 +345,29 @@ mod tests {
         close(t_quantile(0.025, 100.5), -1.983_850_655_335_799_8, 1e-12);
         close(t_quantile(0.9, 7.5), 1.405_211_846_415_953, 1e-12);
         assert_eq!(t_quantile(0.5, 4.0), 0.0);
+    }
+
+    #[test]
+    fn noncentral_t_matches_mpmath_integration() {
+        // mpmath: the integral of Phi(t sqrt(u / df) - delta) over the chi-square density of u.
+        close(nct_cdf_value(2.0, 10.0, 1.0), 0.807_611_562_530_375_26, 1e-12);
+        close(nct_cdf_value(1.5, 4.0, 2.5), 0.165_841_563_826_235_06, 1e-12);
+        close(nct_cdf_value(-0.5, 7.0, 1.0), 0.070_771_848_236_596_07, 1e-11);
+        close(nct_cdf_value(3.0, 30.0, 3.2), 0.416_519_184_859_404_17, 1e-12);
+        close(nct_cdf_value(0.0, 12.0, 0.8), 0.211_855_398_583_396_67, 1e-12);
+        close(nct_cdf_value(5.0, 9.0, 4.0), 0.708_793_324_760_329_1, 1e-12);
+        close(nct_cdf_value(2.2, 5.5, -1.0), 0.996_090_499_019_067_4, 1e-12);
+        close(nct_cdf_value(1.0, 100.0, 0.5), 0.690_145_928_737_984_3, 1e-12);
+        close(nct_cdf_value(8.0, 20.0, 6.0), 0.882_675_292_194_773_9, 1e-12);
+    }
+
+    #[test]
+    fn noncentral_t_with_no_shift_is_the_central_t_and_the_normal_cdf_is_accurate() {
+        for &(t, df) in &[(0.7, 5.0), (-2.1, 12.0), (3.3, 2.5)] {
+            close(nct_cdf_value(t, df, 0.0), t_cdf_value(t, df), 1e-13);
+        }
+        close(norm_cdf(1.959_963_984_540_054), 0.975, 1e-14);
+        close(norm_cdf(-3.0), 0.001_349_898_031_630_094_6, 1e-13);
+        close(norm_cdf(0.3), 0.617_911_422_188_952_9, 1e-14);
     }
 }

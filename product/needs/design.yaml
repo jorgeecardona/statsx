@@ -8,12 +8,20 @@ needs:
       differences, and equivalence margins.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_design.py::test_paired_t_power_matches_the_published_value_and_a_simulation"
+      - "test:tests/test_design.py::test_two_proportions_power_and_sample_size_match_the_fleiss_formula_and_an_exact_count"
+      - "test:tests/test_design.py::test_paired_equivalence_power_is_exact_and_matches_the_tost_test"
+      - "test:tests/test_design.py::test_proportion_equivalence_power_follows_the_normal_approximation"
+      - "test:tests/test_design.py::test_a_sample_size_is_the_smallest_that_reaches_the_power"
 
   - id: DE-2
     text: >
       When the caller has a fixed N, they can get the minimum detectable effect.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_design.py::test_the_minimum_detectable_effect_for_a_fixed_n_reaches_the_power_and_shrinks_with_n"
 
   - id: DE-3
     text: >

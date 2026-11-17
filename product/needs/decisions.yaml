@@ -867,3 +867,38 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-34
+  text: 'Planning has three questions per test: power for a sample size, the smallest sample
+    size for a power, and the minimum detectable effect for a fixed sample size (found by
+    bisection on the power). Paired differences: the t test, power exact from the
+    noncentral t distribution, algorithm AS 243, Lenth (1989), Applied Statistics 38(1):185-189,
+    DOI 10.2307/2347693, in Rust, Cohen (1988), ''Statistical Power Analysis for the
+    Behavioral Sciences'', 2nd ed., chapter 2. Two proportions: the pooled z test, power by the
+    normal approximation of Fleiss, Levin & Paik (2003), ''Statistical Methods for Rates and
+    Proportions'', 3rd ed., chapter 4, Wiley, DOI 10.1002/0471445428, or by counting every
+    outcome of the two binomials (n up to 2000). Equivalence: TOST (decision D-28) against an
+    EquivalenceMargin; the paired power is exact, an integral over the sample standard
+    deviation of the chance the mean falls inside the shifted margin (the form of Owen (1965),
+    Biometrika 52(3-4):437-446, DOI 10.1093/biomet/52.3-4.437), by 200-point Gauss-Legendre
+    quadrature; the proportions use the normal approximation of Blackwelder (1982), Controlled
+    Clinical Trials 3(4):345-353, DOI 10.1016/0197-2456(82)90024-1.'
+  needs:
+  - DE-1
+  - DE-2
+  alternatives:
+  - 'Simulation for every power: not chosen, it is slow and noisy; simulation is the check in
+    the tests.'
+  - 'Sample size for exact two-proportion power: not offered, exact power rises and falls with
+    n, so no smallest n is well defined; the sample size is for the approximation.'
+  consequences: 'Paired t, effect 0.5 sd, 34 pairs: power 0.8078 (G*Power 0.8077); 34 pairs for
+    80%. Two proportions 0.5 against 0.6: 388 per group, approximate power 0.8007, exact count
+    0.7956. The paired TOST power matches a simulation of the TOST test within 0.01 (0.6965
+    against 0.6892, 0.5834 against 0.5802, 0.1254 against 0.1290, 0.1072 against 0.1060; 6000
+    runs each); the 200-point rule differs from a 600-point rule by 1.5e-8. The proportion TOST
+    approximation was 0.579 against a simulated 0.548 at 300 per group and rates 0.5 and 0.5
+    (margin 0.1), and 0.475 against 0.481 at 500 per group and 0.5 and 0.55, so use it as a
+    guide. All planning inputs are guesses; the power is only as good as they are.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
