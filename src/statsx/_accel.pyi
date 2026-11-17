@@ -31,3 +31,17 @@ def nig_predict(
     n_draws: int,
     seed: int,
 ) -> npt.NDArray[np.float64]: ...
+def fit_structural(
+    y: npt.NDArray[np.float64],
+    design: npt.NDArray[np.float64],
+    prior_mean: npt.NDArray[np.float64],
+    prior_prec: npt.NDArray[np.float64],
+    sigma_scale: float,
+    phi_scale: float,
+    n_draws: int,
+    seed: int,
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    tuple[float, float, float, float, float, float, float],
+]: ...

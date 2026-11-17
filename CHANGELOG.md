@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.trend.fit_trend`: the trend of a monthly count series with the season and the noise
+  removed, as credible bands (`TrendFit.band`) and P(slope > 0) (`TrendFit.p_increasing`). A fit
+  that fails its check raises `FitCheckError` with the reasons; it never returns a degraded fit.
 - `Estimate` and `Interval`: every result gives the estimate, the interval, the sample size,
   and the assumption as fields of a frozen dataclass.
 - NumPy is the only run-time dependency, and `import statsx` loads no torch, pandas, SciPy,

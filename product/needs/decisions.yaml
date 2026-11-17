@@ -33,8 +33,13 @@ decisions:
   consequences: 'About 5 hyperparameters at most; spike-and-slab priors are not possible
     under this route. A synthetic spike (60 series, T=60, adaptive 21x21 grid) failed
     k-hat 0.7 on 1 of 60 series (2%; a coarse 18x16 grid failed 6 of 60), so the grid
-    is adaptive. Not yet tested on real series, T=120, or against timed NUTS. Switch
-    to Polya-Gamma if more than 5% of real series fail the check.'
+    is adaptive. The Rust fit gives the same posterior trend as the spike (RMSE 0.01-0.03
+    between them, 6 series) at about 0.4 s per series. With 2000 draws, 2 of 400 synthetic
+    series (T = 60 and 120, mean 0.3 to 30) were refused, both at mean 0.3 and T = 60;
+    the 90% band covered the true trend 91-95% of the time. With 800 draws, 6 of 60 spike
+    series would have failed ESS >= 400, so the default is 2000 draws. The grid-edge mass limit
+    0.02 is about 3 times the largest mass seen in the spike (0.008). Not yet tested on real
+    series or against timed NUTS. Switch to Polya-Gamma if more than 5% of real series fail the check.'
   principles:
   - P-1
   - P-2

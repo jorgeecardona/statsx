@@ -10,6 +10,9 @@ needs:
       - {kind: primary, date: 2026-11-11, who: maintainer, quote: "remove the noise, remove the seasonality so I can get the trend and based on that being able to do some analysis"}
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_trend.py::test_trend_follows_the_true_trend_without_the_season"
+      - "test:tests/test_trend.py::test_trend_works_on_low_counts"
 
   - id: TS-2
     text: >
@@ -25,6 +28,8 @@ needs:
       not a p-value.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_trend.py::test_probability_of_increase_follows_the_slope"
 
   - id: TS-4
     text: >
@@ -40,6 +45,9 @@ needs:
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
     must: true
+    proofs:
+      - "test:tests/test_trend.py::test_a_failed_fit_check_gives_an_error_with_reasons_and_no_fit"
+      - "test:tests/test_trend.py::test_each_check_names_its_reason"
 
   - id: TS-6
     text: >
