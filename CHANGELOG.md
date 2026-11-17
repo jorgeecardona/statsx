@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.calibration.reliability`: reliability diagram numbers, ECE, MCE and the exact Brier
+  decomposition of a classifier's probabilities.
 - `statsx.agreement`: `cohen_kappa` (plain, linear or quadratic weights), `fleiss_kappa` and
   `krippendorff_alpha` (missing ratings, four levels of measurement), each with a bootstrap
   interval.

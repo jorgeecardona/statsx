@@ -1,0 +1,176 @@
+"""Calibration of a classifier's probabilities: reliability numbers, ECE, Brier decomposition (CA-1).
+
+A classifier is calibrated when, among the items it gives probability ``p``, a share ``p`` are
+positive. ``reliability`` bins the predicted probabilities and compares the mean prediction in
+each bin with the share of positives, which are the numbers of a reliability diagram. From the
+same bins it gives:
+
+- ECE, the expected calibration error: the bin gaps, weighted by bin size. MCE is the largest gap
+  among bins with items.
+- The Brier score and its decomposition into reliability (calibration error), resolution (how
+  much the bins separate positives from negatives) and uncertainty (the variance of the outcome).
+  With bins, the decomposition has two more terms from the spread of the predictions inside a
+  bin; they are zero when every bin holds one predicted value. The identity is exact:
+  ``brier = reliability - resolution + uncertainty + within_bin``.
+
+ECE depends on the number of bins and on how the bins are cut (equal width, or equal count). It
+is biased upward with few items per bin: for a perfectly calibrated classifier, 10 bins give a
+mean ECE of about 0.10 at 100 items, 0.03 at 1000 and 0.01 at 10000. Read ECE with the bin
+counts, and the Brier score as the overall check.
+
+References:
+    DeGroot, M. H., & Fienberg, S. E. (1983). The comparison and evaluation of forecasters.
+    *The Statistician* 32(1/2):12-22. https://doi.org/10.2307/2987588. Reliability diagram.
+
+    Murphy, A. H. (1973). A new vector partition of the probability score. *Journal of Applied
+    Meteorology* 12(4):595-600. https://doi.org/10.1175/1520-0450(1973)012<0595:ANVPOT>2.0.CO;2.
+
+    Stephenson, D. B., Coelho, C. A. S., & Jolliffe, I. T. (2008). Two extra components in the
+    Brier score decomposition. *Weather and Forecasting* 23(4):752-757.
+    https://doi.org/10.1175/2007WAF2006116.1. The within-bin terms.
+
+    Naeini, M. P., Cooper, G. F., & Hauskrecht, M. (2015). Obtaining well calibrated
+    probabilities using Bayesian binning into quantiles. *Proceedings of the AAAI Conference
+    on Artificial Intelligence* 29(1). ECE and MCE.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+import numpy as np
+import numpy.typing as npt
+
+Strategy = Literal["uniform", "quantile"]
+
+
+@dataclass(frozen=True, slots=True)
+class BrierDecomposition:
+    """The Brier score as ``reliability - resolution + uncertainty + within_bin``."""
+
+    brier: float
+    reliability: float
+    resolution: float
+    uncertainty: float
+    within_bin: float
+
+
+@dataclass(frozen=True, slots=True)
+class Reliability:
+    """The numbers of a reliability diagram, ECE, MCE and the Brier decomposition.
+
+    Each array has one entry per bin that holds at least one item, in increasing order of the
+    predicted probability.
+
+    Args:
+        counts: Number of items in the bin.
+        mean_predicted: Mean predicted probability in the bin.
+        observed_rate: Share of positives in the bin.
+        ece: Expected calibration error: bin gaps weighted by bin size.
+        mce: Maximum calibration error: the largest bin gap.
+        brier: The Brier score and its decomposition.
+        n: Number of items.
+    """
+
+    counts: npt.NDArray[np.int64]
+    mean_predicted: npt.NDArray[np.float64]
+    observed_rate: npt.NDArray[np.float64]
+    ece: float
+    mce: float
+    brier: BrierDecomposition
+    n: int
+
+
+def check_labels(
+    y_true: npt.ArrayLike, p: npt.ArrayLike
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return labels and probabilities as float arrays after checking them."""
+    y = np.asarray(y_true, dtype=np.float64).ravel()
+    q = np.asarray(p, dtype=np.float64).ravel()
+    if y.size != q.size or y.size == 0:
+        raise ValueError("y_true and p must be non-empty arrays of the same length")
+    if not np.isin(y, (0.0, 1.0)).all():
+        raise ValueError("y_true must hold only 0 and 1")
+    if not np.all((q >= 0.0) & (q <= 1.0)):
+        raise ValueError("p must hold probabilities in [0, 1]")
+    return y, q
+
+
+def _bin_index(
+    q: npt.NDArray[np.float64], n_bins: int, strategy: Strategy
+) -> npt.NDArray[np.int64]:
+    if strategy == "uniform":
+        edges = np.linspace(0.0, 1.0, n_bins + 1)
+    else:
+        edges = np.quantile(q, np.linspace(0.0, 1.0, n_bins + 1))
+    index = np.searchsorted(edges[1:-1], q, side="right")
+    return index.astype(np.int64)
+
+
+def reliability(
+    y_true: npt.ArrayLike,
+    p: npt.ArrayLike,
+    *,
+    n_bins: int = 10,
+    strategy: Strategy = "uniform",
+) -> Reliability:
+    """Return the reliability numbers, ECE, MCE and the Brier decomposition of probabilities.
+
+    Args:
+        y_true: The outcome of each item, 0 or 1.
+        p: The predicted probability of 1 for each item.
+        n_bins: Number of bins, at least 1.
+        strategy: ``"uniform"`` for bins of equal width on [0, 1] (the usual reliability
+            diagram), or ``"quantile"`` for bins with about the same number of items.
+
+    Raises:
+        ValueError: If the arrays differ in length or are empty, ``y_true`` is not 0 or 1, ``p``
+            is outside [0, 1], ``n_bins`` is below 1, or ``strategy`` is unknown.
+    """
+    y, q = check_labels(y_true, p)
+    if n_bins < 1:
+        raise ValueError(f"n_bins must be at least 1, got {n_bins}")
+    if strategy not in ("uniform", "quantile"):
+        raise ValueError(f"strategy must be 'uniform' or 'quantile', got {strategy!r}")
+    index = _bin_index(q, n_bins, strategy)
+    n = y.size
+    base_rate = float(y.mean())
+    counts: list[int] = []
+    mean_p: list[float] = []
+    rate: list[float] = []
+    reliability_term = resolution = within_var = within_cov = 0.0
+    for k in range(n_bins):
+        mask = index == k
+        size = int(mask.sum())
+        if size == 0:
+            continue
+        f, o = q[mask], y[mask]
+        f_bar, o_bar = float(f.mean()), float(o.mean())
+        counts.append(size)
+        mean_p.append(f_bar)
+        rate.append(o_bar)
+        reliability_term += size * (f_bar - o_bar) ** 2
+        resolution += size * (o_bar - base_rate) ** 2
+        within_var += float(np.sum((f - f_bar) ** 2))
+        within_cov += float(np.sum((f - f_bar) * (o - o_bar)))
+    counts_a = np.array(counts, dtype=np.int64)
+    mean_a = np.array(mean_p, dtype=np.float64)
+    rate_a = np.array(rate, dtype=np.float64)
+    gaps = np.abs(mean_a - rate_a)
+    decomposition = BrierDecomposition(
+        brier=float(np.mean((q - y) ** 2)),
+        reliability=reliability_term / n,
+        resolution=resolution / n,
+        uncertainty=base_rate * (1.0 - base_rate),
+        within_bin=(within_var - 2.0 * within_cov) / n,
+    )
+    return Reliability(
+        counts=counts_a,
+        mean_predicted=mean_a,
+        observed_rate=rate_a,
+        ece=float(np.sum(counts_a * gaps) / n),
+        mce=float(gaps.max()),
+        brier=decomposition,
+        n=n,
+    )

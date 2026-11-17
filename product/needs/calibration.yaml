@@ -8,6 +8,10 @@ needs:
       and the Brier decomposition.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_calibration.py::test_the_reliability_numbers_are_the_bin_means_and_the_ece_is_their_weighted_gap"
+      - "test:tests/test_calibration.py::test_the_brier_score_equals_its_decomposition_exactly"
+      - "test:tests/test_calibration.py::test_a_calibrated_classifier_has_a_small_ece_and_an_overconfident_one_a_large_one"
 
   - id: CA-2
     text: >

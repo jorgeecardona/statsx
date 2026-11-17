@@ -787,3 +787,30 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-31
+  text: 'Classifier calibration is read from binned probabilities. Reliability diagram
+    numbers (DeGroot & Fienberg 1983, The Statistician 32(1/2):12-22, DOI 10.2307/2987588):
+    for each non-empty bin, the count, the mean predicted probability and the share of
+    positives. ECE is the bin gaps weighted by bin size and MCE the largest gap, Naeini,
+    Cooper & Hauskrecht (2015), AAAI 29(1). The Brier score is split into reliability,
+    resolution and uncertainty, Murphy (1973), Journal of Applied Meteorology 12(4):595-600,
+    DOI 10.1175/1520-0450(1973)012<0595:ANVPOT>2.0.CO;2, plus the within-bin term that binning
+    adds, Stephenson, Coelho & Jolliffe (2008), Weather and Forecasting 23(4):752-757, DOI
+    10.1175/2007WAF2006116.1, so that Brier = reliability - resolution + uncertainty +
+    within-bin holds exactly. Bins are equal width (default) or equal count.'
+  needs:
+  - CA-1
+  alternatives:
+  - 'Debiased or smooth ECE (Kumar et al. 2019, Roelofs et al. 2022): not chosen now, the need
+    names ECE and the decomposition; the docstring states the bias.'
+  - 'Adaptive bins chosen by a rule: not chosen, the caller picks the number and the cut.'
+  consequences: 'The identity holds to 1e-12 on 6 settings. A calibrated forecast on 5000
+    items had ECE 0.018 and reliability 0.0004; an overconfident one (logit times 3) had ECE
+    0.158 and reliability 0.028. ECE is biased upward with few items: a perfectly calibrated
+    classifier with 10 bins has a mean ECE of 0.104 at 100 items, 0.033 at 1000 and 0.010 at
+    10000. The within-bin term is small here (about -0.001 to -0.002) and is zero when each bin
+    holds one predicted value.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
