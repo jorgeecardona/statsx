@@ -814,3 +814,32 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-32
+  text: 'A miscalibrated classifier is recalibrated by one of two maps learned on held-out
+    scores, both in Rust. Platt scaling, Platt (1999), Advances in Large Margin Classifiers,
+    MIT Press: p = 1 / (1 + exp(-(a s + b))) by maximum likelihood on targets smoothed by the
+    class counts, with the Newton method and backtracking of Lin, Lin & Weng (2007), Machine
+    Learning 68(3):267-276, DOI 10.1007/s10994-007-5018-6. Isotonic regression, Zadrozny &
+    Elkan (2002), KDD, DOI 10.1145/775047.775151, by the pool-adjacent-violators algorithm,
+    Barlow, Bartholomew, Bremner & Brunk (1972), ''Statistical Inference under Order
+    Restrictions'', Wiley, in the linear-time form of Best & Chakravarti (1990),
+    Mathematical Programming 47:425-439, DOI 10.1007/BF01580873. Items with the same score are
+    pooled first; the isotonic map is linear between the distinct training scores and constant
+    outside them.'
+  needs:
+  - CA-2
+  alternatives:
+  - 'Temperature scaling and beta calibration: not offered, the need names Platt and isotonic.'
+  - 'Isotonic regression as a step function: not chosen, the linear interpolation gives a
+    strictly usable ranking between thresholds.'
+  consequences: 'On an overconfident classifier (logit three times too large), test ECE fell
+    from 0.157 to 0.009 (Platt) and 0.011 (isotonic) with 20000 training items, and the Platt
+    slope was 1/3 as expected. With few items isotonic was worse: test Brier at 40 training
+    items raw 0.229, Platt 0.207, isotonic 0.223; at 200 items 0.229, 0.203, 0.207; at 1000
+    items 0.228, 0.201, 0.202 (60 repetitions each). This is for a sigmoid miscalibration, where
+    Platt''s form is right; a non-sigmoid miscalibration favours isotonic. The isotonic fit
+    equals the best non-decreasing step fit found by enumerating all partitions (n = 8).'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

@@ -1,4 +1,4 @@
-"""Calibration of a classifier's probabilities: reliability numbers, ECE, Brier decomposition (CA-1).
+"""Calibration of a classifier's probabilities: measure it (CA-1) and fix it (CA-2).
 
 A classifier is calibrated when, among the items it gives probability ``p``, a share ``p`` are
 positive. ``reliability`` bins the predicted probabilities and compares the mean prediction in
@@ -12,6 +12,15 @@ same bins it gives:
   With bins, the decomposition has two more terms from the spread of the predictions inside a
   bin; they are zero when every bin holds one predicted value. The identity is exact:
   ``brier = reliability - resolution + uncertainty + within_bin``.
+
+When a classifier is miscalibrated, ``fit_platt`` (a sigmoid on the score) and ``fit_isotonic`` (a
+non-decreasing step-free curve) learn a map from its scores to probabilities on held-out data.
+Platt scaling has 2 parameters, so it is stable with few items, but it can only stretch and shift
+the score's logit. Isotonic regression fits any non-decreasing shape, so it needs more items and
+can overfit with fewer: when the miscalibration was a sigmoid of the logit (an overconfident
+classifier), isotonic had a worse test Brier score than Platt with 40 and 200 training items
+and the same from 1000. Fit the map on data the classifier was not
+trained on, and check the result on a third set.
 
 ECE depends on the number of bins and on how the bins are cut (equal width, or equal count). It
 is biased upward with few items per bin: for a perfectly calibrated classifier, 10 bins give a
@@ -29,6 +38,20 @@ References:
     Brier score decomposition. *Weather and Forecasting* 23(4):752-757.
     https://doi.org/10.1175/2007WAF2006116.1. The within-bin terms.
 
+    Platt, J. C. (1999). Probabilistic outputs for support vector machines and comparisons to
+    regularized likelihood methods. In *Advances in Large Margin Classifiers*, 61-74. MIT Press.
+
+    Lin, H.-T., Lin, C.-J., & Weng, R. C. (2007). A note on Platt's probabilistic outputs for
+    support vector machines. *Machine Learning* 68(3):267-276.
+    https://doi.org/10.1007/s10994-007-5018-6. The Newton method with backtracking.
+
+    Zadrozny, B., & Elkan, C. (2002). Transforming classifier scores into accurate multiclass
+    probability estimates. *Proceedings of KDD 2002*, 694-699.
+    https://doi.org/10.1145/775047.775151. Isotonic regression for calibration.
+
+    Barlow, R. E., Bartholomew, D. J., Bremner, J. M., & Brunk, H. D. (1972). *Statistical
+    Inference under Order Restrictions*. Wiley. Pool-adjacent-violators algorithm.
+
     Naeini, M. P., Cooper, G. F., & Hauskrecht, M. (2015). Obtaining well calibrated
     probabilities using Bayesian binning into quantiles. *Proceedings of the AAAI Conference
     on Artificial Intelligence* 29(1). ECE and MCE.
@@ -41,6 +64,8 @@ from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
+
+from statsx import _accel
 
 Strategy = Literal["uniform", "quantile"]
 
@@ -174,3 +199,84 @@ def reliability(
         brier=decomposition,
         n=n,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class PlattScaler:
+    """The map ``p = 1 / (1 + exp(-(a * score + b)))`` learned by ``fit_platt``."""
+
+    a: float
+    b: float
+
+    def predict(self, scores: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Return calibrated probabilities for ``scores``."""
+        z = self.a * np.asarray(scores, dtype=np.float64) + self.b
+        return 0.5 * (1.0 + np.tanh(0.5 * z))
+
+
+@dataclass(frozen=True, slots=True)
+class IsotonicCalibrator:
+    """A non-decreasing map from scores to probabilities, learned by ``fit_isotonic``.
+
+    ``thresholds`` are the distinct training scores in increasing order and ``values`` the fitted
+    probability at each. Between two thresholds the map is linear, and outside them it is
+    constant.
+    """
+
+    thresholds: npt.NDArray[np.float64]
+    values: npt.NDArray[np.float64]
+
+    def predict(self, scores: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Return calibrated probabilities for ``scores``."""
+        return np.interp(np.asarray(scores, dtype=np.float64), self.thresholds, self.values)
+
+
+def fit_platt(scores: npt.ArrayLike, y_true: npt.ArrayLike) -> PlattScaler:
+    """Fit Platt scaling: a sigmoid of the score, by maximum likelihood on smoothed targets.
+
+    Args:
+        scores: The classifier's scores (any real numbers; logits work best).
+        y_true: The outcome of each item, 0 or 1.
+
+    Raises:
+        ValueError: If the arrays differ in length or are empty, a score is not finite, ``y_true``
+            is not 0 or 1, or only one class is present.
+    """
+    f = np.asarray(scores, dtype=np.float64).ravel()
+    y = np.asarray(y_true, dtype=np.float64).ravel()
+    if f.size != y.size or f.size == 0:
+        raise ValueError("scores and y_true must be non-empty arrays of the same length")
+    if not np.all(np.isfinite(f)) or not np.isin(y, (0.0, 1.0)).all():
+        raise ValueError("scores must be finite and y_true must hold only 0 and 1")
+    if y.min() == y.max():
+        raise ValueError("y_true holds one class only: there is nothing to calibrate")
+    a, b = _accel.platt_fit(f, y)
+    return PlattScaler(a, b)
+
+
+def fit_isotonic(scores: npt.ArrayLike, y_true: npt.ArrayLike) -> IsotonicCalibrator:
+    """Fit isotonic regression of the outcome on the score (pool adjacent violators).
+
+    Items with the same score are pooled first. The fitted curve never decreases, so a higher
+    score never gives a lower probability.
+
+    Args:
+        scores: The classifier's scores (any finite numbers).
+        y_true: The outcome of each item, 0 or 1.
+
+    Raises:
+        ValueError: If the arrays differ in length or are empty, a score is not finite, ``y_true``
+            is not 0 or 1, or only one class is present.
+    """
+    f = np.asarray(scores, dtype=np.float64).ravel()
+    y = np.asarray(y_true, dtype=np.float64).ravel()
+    if f.size != y.size or f.size == 0:
+        raise ValueError("scores and y_true must be non-empty arrays of the same length")
+    if not np.all(np.isfinite(f)) or not np.isin(y, (0.0, 1.0)).all():
+        raise ValueError("scores must be finite and y_true must hold only 0 and 1")
+    if y.min() == y.max():
+        raise ValueError("y_true holds one class only: there is nothing to calibrate")
+    thresholds, inverse, counts = np.unique(f, return_inverse=True, return_counts=True)
+    rate = np.bincount(inverse, weights=y) / counts
+    fitted = _accel.isotonic_fit(rate, counts.astype(np.float64))
+    return IsotonicCalibrator(thresholds, np.asarray(fitted, dtype=np.float64))

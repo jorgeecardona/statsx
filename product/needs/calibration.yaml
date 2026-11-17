@@ -19,6 +19,10 @@ needs:
       scaling.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_calibration.py::test_platt_scaling_and_isotonic_regression_repair_an_overconfident_classifier"
+      - "test:tests/test_calibration.py::test_the_isotonic_map_never_decreases_and_stays_a_probability"
+      - "test:tests/test_calibration.py::test_isotonic_regression_is_the_best_non_decreasing_fit"
 
   - id: CA-3
     text: >

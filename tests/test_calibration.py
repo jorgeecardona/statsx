@@ -1,7 +1,9 @@
+from itertools import pairwise
+
 import numpy as np
 import pytest
 
-from statsx.calibration import Reliability, reliability
+from statsx.calibration import Reliability, fit_isotonic, fit_platt, reliability
 
 
 def _forecasts(seed: int, n: int = 5000, tilt: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
@@ -94,3 +96,104 @@ def test_bad_input_is_refused(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         reliability(y, p, **kwargs)  # type: ignore[arg-type]
+
+
+def _scores(rng: np.random.Generator, n: int, tilt: float = 3.0) -> tuple[np.ndarray, np.ndarray]:
+    """Logit scores that are ``tilt`` times too confident, and their outcomes."""
+    true_p = rng.beta(2.0, 2.0, n)
+    y = (rng.random(n) < true_p).astype(float)
+    return np.log(true_p / (1.0 - true_p)) * tilt, y
+
+
+def test_platt_scaling_and_isotonic_regression_repair_an_overconfident_classifier() -> None:
+    rng = np.random.default_rng(0)
+    train_f, train_y = _scores(rng, 5000)
+    test_f, test_y = _scores(rng, 20000)
+    raw = reliability(test_y, 1.0 / (1.0 + np.exp(-test_f)))
+    platt = fit_platt(train_f, train_y)
+    isotonic = fit_isotonic(train_f, train_y)
+    for fixed in (platt.predict(test_f), isotonic.predict(test_f)):
+        after = reliability(test_y, fixed)
+        assert after.ece < 0.03
+        assert raw.ece > 0.1
+        assert after.brier.brier < raw.brier.brier - 0.02
+    # The logit was 3 times too large, so the fitted slope is about 1 / 3 and the intercept 0.
+    assert platt.a == pytest.approx(1.0 / 3.0, abs=0.02)
+    assert platt.b == pytest.approx(0.0, abs=0.05)
+
+
+def test_the_isotonic_map_never_decreases_and_stays_a_probability() -> None:
+    rng = np.random.default_rng(1)
+    f, y = _scores(rng, 400)
+    f = np.round(f, 1)  # repeated scores are pooled
+    calibrator = fit_isotonic(f, y)
+    assert np.all(np.diff(calibrator.thresholds) > 0)
+    assert np.all(np.diff(calibrator.values) >= -1e-15)
+    assert calibrator.values.min() >= 0.0 and calibrator.values.max() <= 1.0
+    grid: np.ndarray = np.linspace(float(f.min()) - 5.0, float(f.max()) + 5.0, 500)
+    assert np.all(np.diff(calibrator.predict(grid)) >= -1e-15)
+    # Outside the training scores the map stays at its end values.
+    assert calibrator.predict([f.min() - 100.0])[0] == calibrator.values[0]
+    assert calibrator.predict([f.max() + 100.0])[0] == calibrator.values[-1]
+
+
+def test_isotonic_regression_is_the_best_non_decreasing_fit() -> None:
+    # The fit has the smallest squared error among all non-decreasing step fits (every way to cut
+    # the sorted items into blocks with non-decreasing means).
+    rng = np.random.default_rng(2)
+    for _ in range(20):
+        n = 8
+        f = np.sort(rng.normal(size=n))
+        y = (rng.random(n) < 0.5).astype(float)
+        if y.min() == y.max():
+            continue
+        fitted = fit_isotonic(f, y).values
+        best = np.inf
+        for cuts in range(2 ** (n - 1)):
+            blocks: list[tuple[int, int]] = []
+            start = 0
+            for i in range(n - 1):
+                if cuts >> i & 1:
+                    blocks.append((start, i + 1))
+                    start = i + 1
+            blocks.append((start, n))
+            means = [float(y[a:b].mean()) for a, b in blocks]
+            if all(m1 <= m2 for m1, m2 in pairwise(means)):
+                best = min(
+                    best,
+                    sum(
+                        float(np.sum((y[a:b] - m) ** 2))
+                        for (a, b), m in zip(blocks, means, strict=True)
+                    ),
+                )
+        assert float(np.sum((y - fitted) ** 2)) == pytest.approx(best, abs=1e-9)
+
+
+def test_platt_scaling_is_better_than_isotonic_regression_with_few_items() -> None:
+    rng = np.random.default_rng(3)
+    test_f, test_y = _scores(rng, 20000)
+    platt_brier: list[float] = []
+    isotonic_brier: list[float] = []
+    for _ in range(40):
+        f, y = _scores(rng, 40)
+        if y.min() == y.max():
+            continue
+        platt_brier.append(reliability(test_y, fit_platt(f, y).predict(test_f)).brier.brier)
+        isotonic_brier.append(reliability(test_y, fit_isotonic(f, y).predict(test_f)).brier.brier)
+    assert np.mean(platt_brier) < np.mean(isotonic_brier)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: fit_platt([1.0, 2.0], [0.0]),
+        lambda: fit_platt([1.0, float("inf")], [0.0, 1.0]),
+        lambda: fit_platt([1.0, 2.0], [0.0, 0.0]),
+        lambda: fit_isotonic([], []),
+        lambda: fit_isotonic([1.0, 2.0], [0.0, 2.0]),
+        lambda: fit_isotonic([1.0, 2.0], [1.0, 1.0]),
+    ],
+)
+def test_calibrators_refuse_bad_input(call: object) -> None:
+    with pytest.raises(ValueError, match=r"same length|finite|one class"):
+        call()  # type: ignore[operator]

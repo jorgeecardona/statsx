@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.calibration.fit_platt` and `fit_isotonic`: recalibrate a classifier's scores with Platt
+  scaling or isotonic regression, both written in Rust.
 - `statsx.calibration.reliability`: reliability diagram numbers, ECE, MCE and the exact Brier
   decomposition of a classifier's probabilities.
 - `statsx.agreement`: `cohen_kappa` (plain, linear or quadratic weights), `fleiss_kappa` and
