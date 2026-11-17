@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.identify.best_arm`: find the best arm and stop when it is certain, with an error rate
+  `delta` and an optional tolerance `epsilon`. `statsx.alwaysvalid.confidence_radius` gives the
+  interval half-width for a running total.
 - `statsx.bandit`: `thompson_allocation`, `bayes_ucb_indices`, `bayes_ucb_arm` and
   `successive_halving` to spend a budget over arms with Beta posteriors.
 - `statsx.alwaysvalid.confidence_sequence` and `e_process`: always-valid confidence sequence for a

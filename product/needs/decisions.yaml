@@ -997,3 +997,38 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-38
+  text: 'The caller finds the best arm and stops when it is certain by successive elimination
+    (Even-Dar, Mannor & Mansour 2006, JMLR 7:1079-1105, Algorithm 3): every arm in the race is
+    pulled each round, and an arm is removed when its empirical mean is more than twice the
+    confidence radius below the best, which is the same as its upper end being below the best
+    lower end. The radius is the time-uniform radius of D-36 (Howard, Ramdas, McAuliffe &
+    Sekhon 2021, Annals of Statistics 49(2):1055-1080) at level delta / K per arm, with sigma =
+    0.5 for 0/1 outcomes, in place of the paper''s radius sqrt(ln(c n t^2 / delta) / t) with a
+    sum over time. On the event that all K intervals hold at every round, which has probability
+    at least 1 - delta by the union bound, the best arm is never removed (its upper end is at
+    least its mean, which is at least every other lower end). With epsilon = 0 the rule stops
+    when one arm is left and returns the best arm. With epsilon > 0 it also stops when every
+    other upper end is at most the leader lower end plus epsilon, and the arm returned is
+    within epsilon of the best on the same event (Even-Dar et al., Remark 9, give another
+    (epsilon, delta) rule; this one is derived here from the same event). When max_pulls runs
+    out the result says confident = False and the guarantee does not apply.'
+  needs:
+  - SQ-4
+  alternatives:
+  - 'lil'' UCB (Jamieson, Malloy, Nowak & Bubeck 2014, COLT, PMLR 35:423-439), which spends
+    samples on the leading arm and has a smaller sample count: not offered now, one method
+    first; the guarantee needs a different stopping rule.'
+  - 'Fixed-budget successive halving (D-37): kept as a separate tool, it has no error
+    guarantee on the stopping time.'
+  consequences: 'Four arms at 0.5, 0.6, 0.45, 0.4 with delta = 0.2 and 300 runs: the best arm
+    was returned in all 300 (the bound allows up to 20%), after a mean of 2794 pulls. Four arms
+    at 0.50, 0.52, 0.51, 0.30 with delta = 0.1: the exact rule (epsilon = 0) did not stop in
+    60000 pulls, and epsilon = 0.1 stopped after a mean of 2746 pulls in 100 runs, always with
+    an arm within 0.1 of the best. Four arms at 0.2, 0.4, 0.6, 0.9 stopped after 420 pulls, and
+    the worse an arm, the earlier it was removed and the fewer pulls it got (25, 95, 150, 150).
+    The intervals are conservative, so the observed error is far below delta.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

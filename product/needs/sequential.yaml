@@ -42,3 +42,7 @@ needs:
       stopping guarantee.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_identify.py::test_the_arm_returned_is_the_best_arm_with_probability_at_least_one_minus_delta"
+      - "test:tests/test_identify.py::test_an_epsilon_guarantee_returns_an_arm_within_epsilon_of_the_best"
+      - "test:tests/test_identify.py::test_two_equal_arms_run_out_of_budget_and_the_result_says_no_guarantee"

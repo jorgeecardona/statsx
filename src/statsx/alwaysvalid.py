@@ -118,6 +118,32 @@ def _check(observations: npt.ArrayLike, sigma: float, alpha: float) -> npt.NDArr
     return x
 
 
+def confidence_radius(
+    n: npt.ArrayLike, *, sigma: float, alpha: float = 0.05, n_target: float = 100.0
+) -> npt.NDArray[np.float64]:
+    """Return the half-width of the confidence sequence after ``n`` observations.
+
+    The interval for the mean is the running mean plus or minus this radius. It depends only on
+    ``n``, so a caller that keeps a running total can build the interval without the data.
+
+    Raises:
+        ValueError: If ``n`` is below 1, ``sigma`` is not positive, ``alpha`` is not in (0, 1),
+            or ``n_target`` is not positive.
+    """
+    count = np.asarray(n, dtype=np.float64)
+    if np.any(count < 1.0) or not np.all(np.isfinite(count)):
+        raise ValueError("n must be at least 1")
+    if not sigma > 0.0 or not math.isfinite(sigma):
+        raise ValueError(f"sigma must be finite and > 0, got {sigma}")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
+    if not n_target > 0.0:
+        raise ValueError(f"n_target must be > 0, got {n_target}")
+    rho = _tuned_rho(sigma, alpha, n_target)
+    variance = rho + count * sigma**2
+    return np.sqrt(variance * np.log(variance / (rho * alpha**2))) / count
+
+
 def confidence_sequence(
     observations: npt.ArrayLike,
     *,
@@ -145,12 +171,9 @@ def confidence_sequence(
     x = _check(observations, sigma, alpha)
     if not n_target > 0.0:
         raise ValueError(f"n_target must be > 0, got {n_target}")
-    rho = _tuned_rho(sigma, alpha, n_target)
     n = np.arange(1, x.size + 1)
-    total = np.cumsum(x)
-    variance = rho + n * sigma**2
-    radius = np.sqrt(variance * np.log(variance / (rho * alpha**2))) / n
-    mean = total / n
+    radius = confidence_radius(n, sigma=sigma, alpha=alpha, n_target=n_target)
+    mean = np.cumsum(x) / n
     return ConfidenceSequence(n.astype(np.int64), mean, mean - radius, mean + radius, alpha, sigma)
 
 
