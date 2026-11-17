@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Docs: methods pages with LaTeX (always-valid inference, group sequential bounds, bandits and best
+  arm, distributions and goodness of fit), a full API reference, and a test that runs every page's
+  example.
 - `statsx.goodness`: `goodness_of_fit` and `chi_square_test` at a stated effective sample size, with
   total variation distance, exact Wasserstein distance and the sample size that would reject the fit.
   New Rust `chi2_cdf` and `chi2_sf`.

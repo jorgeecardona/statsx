@@ -47,8 +47,14 @@ markdown_extensions:
       base_path: [".", "docs"]
       check_paths: true
   - pymdownx.details
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.tabbed:
       alternate_style: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3.2.2/es5/tex-mml-chtml.js
 
 # docs/issues/ is the follow-up register (`cabildo issues`), read in the repo, not published:
 # its links point at source files that are not part of the site, so --strict would fail on them.
@@ -72,5 +78,10 @@ plugins:
 
 nav:
   - Home: index.md
+  - Methods:
+      - Always-valid inference: methods/always-valid.md
+      - Group sequential bounds: methods/group-sequential.md
+      - Spending a budget over arms: methods/arms.md
+      - Distributions and goodness of fit: methods/distributions.md
   - API reference: api.md
   - Changelog: changelog.md
