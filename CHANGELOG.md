@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.effect.effect_size`: Hedges' g, Cohen's d or the mean difference of two groups, with
+  an analytic or bootstrap interval, the sample size and the assumption.
 - `bootstrap(..., method="basic" | "bca")`: basic and BCa intervals next to the percentile
   interval. The result records the method. BCa needs `IID` or `Clustered` resampling.
 - `statsx.posterior`: `quantiles`, `credible_interval` (equal-tailed) and `hdi` (highest density

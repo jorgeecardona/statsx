@@ -46,6 +46,10 @@ needs:
       only.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_effect.py::test_the_effect_size_comes_with_an_interval_and_its_assumption"
+      - "test:tests/test_effect.py::test_the_analytic_interval_covers_the_true_effect_at_about_the_nominal_rate"
+      - "test:tests/test_effect.py::test_the_bootstrap_interval_agrees_with_the_analytic_one"
 
   - id: ES-6
     text: >

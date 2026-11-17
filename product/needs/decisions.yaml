@@ -534,3 +534,30 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-22
+  text: 'The effect size of two independent groups is Cohen''s d (mean difference over
+    the pooled sd), Cohen (1988), ''Statistical Power Analysis for the Behavioral
+    Sciences'', 2nd ed., chapter 2, Lawrence Erlbaum, or Hedges'' g, d times the
+    correction J = Gamma(df/2) / (sqrt(df/2) Gamma((df-1)/2)), Hedges (1981), Journal of
+    Educational Statistics 6(2):107-128, DOI 10.3102/10769986006002107. The default is g.
+    The analytic interval is the large-sample normal interval with variance (n1 + n2) /
+    (n1 n2) + d^2 / (2 (n1 + n2)), times J^2 for g, Hedges & Olkin (1985), ''Statistical
+    Methods for Meta-Analysis'', Academic Press. The alternative is a percentile bootstrap
+    resampling within each group (decision D-21). A raw mean difference is available with
+    the bootstrap interval. The result is an Estimate with the sample size and the
+    assumption.'
+  needs:
+  - ES-5
+  alternatives:
+  - 'Interval by inverting the noncentral t distribution: not chosen, it needs the
+    noncentral t quantile, which would be one more special function to write and test.'
+  - 'Welch standardizer (unequal variances): not chosen now, the equal-variance pooled sd
+    is the standard d; the assumption says so and the bootstrap does not rely on it for
+    the interval.'
+  consequences: 'On normal samples with a true effect of 0.5 the 90% analytic interval for
+    g held it in 89%, 91% and 91% of 1000 samples with 10, 20 and 40 observations per
+    group. The paired and the one-sample effect sizes are not included.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
