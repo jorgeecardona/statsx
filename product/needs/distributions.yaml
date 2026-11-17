@@ -8,6 +8,11 @@ needs:
       shifted-exponential, and lognormal distributions.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_distributions.py::test_a_normal_fit_from_statistics_equals_the_fit_from_the_rows"
+      - "test:tests/test_distributions.py::test_merging_shards_gives_the_statistics_of_the_pooled_rows"
+      - "test:tests/test_distributions.py::test_the_lognormal_fit_is_the_normal_fit_of_the_logarithms"
+      - "test:tests/test_distributions.py::test_the_bias_corrected_shifted_exponential_is_unbiased_and_the_mle_is_not"
 
   - id: DI-2
     text: >

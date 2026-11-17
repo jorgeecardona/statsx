@@ -1032,3 +1032,33 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-39
+  text: 'The caller fits a normal, lognormal or shifted exponential distribution from
+    sufficient statistics, so the rows are not needed and shards can be merged. Statistics:
+    for the normal, the count, the mean and the sum of squared deviations m2, merged by the
+    pairwise rule of Chan, Golub & LeVeque (1983), The American Statistician 37(3):242-247, DOI
+    10.1080/00031305.1983.10483115; for the lognormal, the same moments of the logarithms; for
+    the shifted exponential, the count, the minimum and the mean. The fit is the maximum
+    likelihood fit (Casella & Berger 2002, Statistical Inference, 2nd ed., chapter 7): the
+    variance is m2 / n, and the shifted exponential has shift = min and rate = n / T with T =
+    n (mean - min). With bias_corrected = True the variance is m2 / (n - 1), and the shifted
+    exponential uses shift = min - T / (n (n - 1)) and rate = (n - 2) / T, the unbiased
+    estimates (Lehmann & Casella 1998, Theory of Point Estimation, 2nd ed., chapter 2): T is
+    Gamma(n - 1, rate) and independent of the minimum, so E[1 / T] = rate / (n - 2) and E[min]
+    = shift + 1 / (n rate). Each fit has cdf, ppf and sample.'
+  needs:
+  - DI-1
+  alternatives:
+  - 'Interval estimates for the parameters: not offered in this step, the need names the
+    fit; they follow if the caller asks.'
+  - 'Other families (gamma, Weibull): not offered, the need names three.'
+  consequences: 'A fit from statistics equals the fit from the rows to 1e-12, and a merge of
+    three shards (10, 400 and 37 rows) equals the statistics of the 447 pooled rows to 1e-12.
+    For a shifted exponential with shift 10, rate 0.5 and 8 values, in 40000 simulated samples
+    the maximum likelihood shift averaged 10.25 (the bias 1 / (n rate)), while the corrected
+    shift averaged 10.00 and the corrected rate 0.500 (within 2%). A fit needs at least 2
+    values that are not all equal (3 for the corrected shifted exponential).'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

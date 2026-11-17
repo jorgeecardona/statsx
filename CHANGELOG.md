@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.distributions`: `fit_normal`, `fit_lognormal` and `fit_shifted_exponential` from
+  sufficient statistics (`Moments`, `ExponentialStats`) that merge across shards, with cdf, ppf and
+  sample.
 - `statsx.identify.best_arm`: find the best arm and stop when it is certain, with an error rate
   `delta` and an optional tolerance `epsilon`. `statsx.alwaysvalid.confidence_radius` gives the
   interval half-width for a running total.
