@@ -31,6 +31,10 @@ needs:
       credible interval from one function each.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_posterior.py::test_quantiles_are_one_call_and_match_linear_interpolation"
+      - "test:tests/test_posterior.py::test_credible_interval_has_equal_tails"
+      - "test:tests/test_posterior.py::test_hdi_is_the_shortest_interval_with_the_stated_mass"
 
   - id: ES-5
     text: >

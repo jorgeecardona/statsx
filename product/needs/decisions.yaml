@@ -482,3 +482,25 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-20
+  text: 'Posterior draws are summarized by three functions. Quantiles use linear
+    interpolation between order statistics (type 7), Hyndman & Fan (1996), The American
+    Statistician 50(4):361-365, DOI 10.1080/00031305.1996.10473566. The credible interval
+    is equal-tailed: the same share of draws below and above. The highest density
+    interval is the shortest interval holding the stated share of the sorted draws, Chen
+    & Shao (1999), Journal of Computational and Graphical Statistics 8(1):69-92, DOI
+    10.1080/10618600.1999.10474802.'
+  needs:
+  - ES-4
+  alternatives:
+  - 'A set of intervals for a multimodal posterior (the HDR of Hyndman 1996): not chosen,
+    the need asks for one interval; the docstring says what a gap means.'
+  - 'Kernel density estimate for the HDI: not chosen, the sorted-draws form needs no
+    bandwidth and is exact for the sample.'
+  consequences: 'The HDI is one interval, so a sample with two separate modes gets an
+    interval that spans the gap. On a Gamma(2, 1) sample the 90% HDI was shorter than the
+    equal-tailed interval and started lower, as theory says for a right-skewed density.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
