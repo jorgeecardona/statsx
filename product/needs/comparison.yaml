@@ -8,6 +8,13 @@ needs:
       bootstrap difference.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_paired.py::test_the_sign_test_matches_the_binomial_sum_and_drops_ties"
+      - "test:tests/test_paired.py::test_mcnemar_exact_is_a_binomial_test_on_the_disagreements"
+      - "test:tests/test_paired.py::test_mcnemar_chi_square_matches_the_textbook_value"
+      - "test:tests/test_paired.py::test_wilcoxon_matches_the_enumeration_of_all_sign_assignments_with_and_without_ties"
+      - "test:tests/test_paired.py::test_wilcoxon_matches_the_hollander_wolfe_depression_example"
+      - "test:tests/test_paired.py::test_the_bootstrap_difference_is_an_estimate_with_an_interval"
 
   - id: CO-2
     text: >

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.paired`: `mcnemar` (exact or chi-square), `sign_test`, `wilcoxon` (exact up to 50
+  differences, ties included) and `bootstrap_difference` for paired results.
 - `statsx.equivalence`: one `EquivalenceMargin`, a TOST test (`tost`, Welch or paired) and
   `rope_probability`. `compare` takes the same margin.
 - `statsx.multiple.adjust`: Holm, Benjamini-Hochberg and Storey q-value corrections for many

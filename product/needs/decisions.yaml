@@ -726,3 +726,35 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-29
+  text: 'Paired results have four analyses. McNemar (1947), Psychometrika 12(2):153-157,
+    DOI 10.1007/BF02295996: from the items where two systems disagree, the exact test is a
+    two-sided binomial test of b out of b + c against one half (default); the chi-square form
+    uses (|b - c| - 1)^2 / (b + c), with the continuity correction of Edwards (1948),
+    Psychometrika 13(3):185-187, DOI 10.1007/BF02289261. Sign test, Dixon & Mood (1946), JASA
+    41(236):557-566, DOI 10.1080/01621459.1946.10501898: wins against wins plus losses, ties
+    dropped. Wilcoxon (1945), Biometrics Bulletin 1(6):80-83, DOI 10.2307/3001968: the
+    signed-rank test; zero differences dropped, ties get mid-ranks; for up to 50 non-zero
+    differences the p-value is exact by counting all sign assignments (dynamic programming
+    on twice the ranks, so ties are exact), above that a normal approximation with continuity
+    and tie corrections, Hollander, Wolfe & Chicken (2014), ''Nonparametric Statistical
+    Methods'', 3rd ed., Wiley, DOI 10.1002/9781119196037. The bootstrap difference resamples
+    the pairs (decision D-21). The binomial tail comes from the incomplete beta function of
+    decision D-23.'
+  needs:
+  - CO-1
+  alternatives:
+  - 'Paired t test: not offered, it is in the TOST function of decision D-28 for equivalence;
+    the need names these four.'
+  - 'Mid-p exact McNemar: not chosen, it is not conservative-exact; the plain exact test never
+    exceeds its level.'
+  consequences: 'The exact Wilcoxon p-value equals the enumeration of all 2^n sign assignments
+    on random data, with and without ties, and the R example of Hollander & Wolfe (V = 40,
+    two-sided p = 0.03906). The McNemar chi-square value matches Agresti''s 63^2 / 236. At 30
+    pairs, 1000 repetitions, 5% level: the sign test rejected a true null in 3.1% and a
+    shift of 0.6 sd in 69.2%; Wilcoxon 4.7% and 86.3%. The exact tests are conservative, so
+    their size is at or below the level.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
