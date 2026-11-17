@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.progress.fit_progress`: the time left of a running task, with an interval, from its
+  elapsed time and the fraction done, learned from past runs that reported progress.
 - `DurationModel.predict` takes only the parameters known before the run. The model is refitted
   without the unknown ones, so the interval is wider, and the result names them.
 - `DurationModel.update`: add a finished run to the duration model without refitting from all

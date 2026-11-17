@@ -451,3 +451,34 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-19
+  text: 'The ETA of a running task from its progress is the constant-rate extrapolation
+    e (1 - f) / f of the elapsed time e and the fraction done f, times a correction
+    learned from past runs: the log of the ratio of the true time left to that
+    extrapolation is regressed on log f with the Normal-Inverse-Gamma regression of
+    decision D-7 (Gelman, Carlin, Stern, Dunson, Vehtari & Rubin (2013), ''Bayesian
+    Data Analysis'', 3rd ed., chapter 14, CRC Press, DOI 10.1201/b16018). The interval is
+    the Student-t predictive of that regression, mapped back to time left, so it is
+    always positive. A progress report is (elapsed time, fraction done); the caller
+    divides files done by files to do.'
+  needs:
+  - ET-3
+  alternatives:
+  - 'The constant-rate extrapolation alone: not chosen, it gives no interval and is biased
+    when a task starts slowly or ends slowly (median error 39% on the synthetic tasks).'
+  - 'Combine the progress estimate with the prediction from the input parameters (D-7):
+    not chosen now, the need asks for the estimate from elapsed time and progress; the
+    two can be combined later.'
+  - 'A curve of progress against time per task (a hierarchical model): not chosen now,
+    the simple regression is what the maintainer asked for.'
+  consequences: 'On 1000 new synthetic tasks (progress (elapsed / duration)^0.7 with
+    noise, 60 past runs with 9 reports each) the 90% interval held the true time left in
+    93.7% of tasks, and the median relative error was 18%, against 39% for the
+    constant-rate extrapolation. Reports of one run are treated as independent, which
+    makes the interval slightly too narrow when runs differ much from each other. The
+    model uses only reports inside a run, so it cannot say anything for a task that has
+    not reported progress.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

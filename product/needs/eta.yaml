@@ -31,6 +31,9 @@ needs:
     sources:
       - {kind: primary, date: 2026-11-12, who: maintainer, quote: "learn simple models of prediction based on possible progress status if available at times"}
       - {kind: primary, date: 2026-11-12, who: maintainer, quote: "like how many files have ended"}
+    proofs:
+      - "test:tests/test_progress.py::test_eta_from_progress_beats_the_constant_rate_guess_and_covers_the_truth"
+      - "test:tests/test_progress.py::test_the_interval_narrows_as_the_task_progresses"
 
   - id: ET-4
     text: >
