@@ -22,3 +22,8 @@ needs:
       Krippendorff alpha (which handles missing ratings).
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_agreement.py::test_cohens_kappa_matches_the_textbook_example"
+      - "test:tests/test_agreement.py::test_fleiss_kappa_matches_the_worked_example"
+      - "test:tests/test_agreement.py::test_alpha_matches_the_reference_values_with_missing_ratings"
+      - "test:tests/test_agreement.py::test_nominal_alpha_follows_its_definition_over_pairs_of_values"

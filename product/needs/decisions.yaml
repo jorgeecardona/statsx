@@ -758,3 +758,32 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-30
+  text: 'Agreement between raters is measured by three coefficients, each with a percentile
+    bootstrap interval that resamples the items or units (decision D-21). Cohen''s kappa for
+    two raters, (po - pe) / (1 - pe), Cohen (1960), Educational and Psychological Measurement
+    20(1):37-46, DOI 10.1177/001316446002000104, with the linear or quadratic weights of
+    Cohen (1968), Psychological Bulletin 70(4):213-220, DOI 10.1037/h0026256, for ordered
+    categories. Fleiss'' kappa for a fixed number of raters per item from a table of counts,
+    Fleiss (1971), Psychological Bulletin 76(5):378-382, DOI 10.1037/h0031619.
+    Krippendorff''s alpha, 1 - Do / De from the coincidence matrix, for any number of raters,
+    missing ratings, and nominal, ordinal, interval or ratio differences, Krippendorff (2011),
+    ''Computing Krippendorff''s alpha-reliability'', University of Pennsylvania, with the
+    bootstrap over units of Krippendorff (2016).'
+  needs:
+  - CA-3
+  alternatives:
+  - 'Analytic standard errors of kappa (Fleiss, Cohen & Everitt 1969): not chosen, they exist
+    for plain kappa only; one bootstrap serves all three coefficients and the weights.'
+  - 'Gwet''s AC1: not offered, the need names the three coefficients.'
+  consequences: 'Fleiss'' kappa on the worked example is 0.2099 (published 0.210); Cohen''s
+    kappa on the textbook table is 0.4; the weighted kappa matches its definition; alpha
+    matches the krippendorff package (nominal 0.7573, ordinal 0.8923, interval 0.8917, ratio
+    0.8952 on a 4-rater, 15-unit data set with missing ratings) to 1e-15, checked once outside
+    the test suite, and matches the pair-counting definition for nominal data. The interval
+    can reach 1.0 when some resamples agree perfectly. Kappa is low when one category is very
+    common even if raw agreement is high; the docstring says so.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
