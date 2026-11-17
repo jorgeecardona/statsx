@@ -589,3 +589,53 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-24
+  text: 'Two posteriors are compared by Monte Carlo on paired independent draws: P(A > B)
+    is the share of draws with A - B above 0, and practical equivalence is the share with
+    |A - B| within a margin the caller gives, the region of practical equivalence of
+    Kruschke (2018), ''Rejecting or accepting parameter values in Bayesian estimation'',
+    Advances in Methods and Practices in Psychological Science 1(2):270-280, DOI
+    10.1177/2515245918771304. A posterior is a distribution with a sample method (Beta,
+    Gamma, Normal, LogNormal) or an array of draws. The Beta, Gamma and Normal samplers are
+    in Rust: gamma by Marsaglia & Tsang (2000), beta as the ratio of two gammas computed
+    from log gammas, normal by inversion, all from the generator of decision D-4. The result
+    carries the Monte Carlo standard error.'
+  needs:
+  - BA-2
+  alternatives:
+  - 'Exact integrals (Cook 2005, ''Exact calculation of beta inequalities''): not chosen as
+    the method, they exist for a few pairs only; they are the test reference for Beta.'
+  - 'A default margin: not chosen, the margin is a decision about the quantity and has no
+    universal value, so the caller must give it.'
+  consequences: 'At 400000 draws the Monte Carlo error is about 0.0008; tests compare with the
+    exact value for two Betas (Cook), two Normals and two Gammas with one rate. The draws of
+    one posterior must not be paired with the other by an order they share (sorted draws would
+    give the wrong answer); the docstring says so.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
+- id: D-25
+  text: 'An expert''s calibrated interval (low, high) at a level (default 90%) gives the
+    lognormal whose central interval at that level is (low, high): mu = (ln low + ln
+    high) / 2 and sigma = (ln high - ln low) / (2 z), with z the normal quantile at
+    (1 + level) / 2. This is the quantile-matching elicitation of O''Hagan, Buck,
+    Daneshkhah, Eiser, Garthwaite, Jenkinson, Oakley & Rakow (2006), ''Uncertain
+    Judgements: Eliciting Experts'' Probabilities'', Wiley, DOI 10.1002/0470033312, for a
+    positive quantity, with the lognormal of Gelman et al. (2013), ''Bayesian Data
+    Analysis'', 3rd ed., appendix A.'
+  needs:
+  - BA-3
+  alternatives:
+  - 'Fit a Gamma or Beta to the interval: not chosen, the need names the lognormal; a
+    gamma needs a numerical solve for two quantiles.'
+  - 'Use the interval ends as the 5th and 95th percentiles of a normal on the raw scale:
+    not chosen, it gives negative values for a positive quantity.'
+  consequences: 'The result is exact: the 5% and 95% quantiles of the prior are the expert''s
+    bounds to 1e-12. The function trusts that the expert is calibrated and cannot check it;
+    the docstring says so. The median is the geometric middle of the bounds, not the
+    arithmetic middle, and the mean is above the median.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

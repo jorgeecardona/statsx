@@ -1,6 +1,7 @@
-"""Summaries of posterior draws: quantiles, equal-tailed credible interval, HDI (ES-4).
+"""Summaries of posterior draws (ES-4), and the comparison of two posteriors (BA-2).
 
-Each summary is one function. They work on any sample of draws of one quantity.
+Each summary is one function. They work on any sample of draws of one quantity. ``compare``
+gives P(A > B) and the probability of practical equivalence for two independent posteriors.
 
 References:
     Hyndman, R. J., & Fan, Y. (1996). Sample quantiles in statistical packages. *The American
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
@@ -91,3 +93,88 @@ def hdi(draws: npt.ArrayLike, level: float = 0.95) -> Interval:
     widths = x[inside:] - x[: x.size - inside]
     start = int(np.argmin(widths))
     return Interval(float(x[start]), float(x[start + inside]), level)
+
+
+@runtime_checkable
+class Sampler(Protocol):
+    """A posterior that can be sampled: ``Beta``, ``Gamma``, ``Normal`` and ``LogNormal``."""
+
+    def sample(self, n: int, *, seed: int = 0) -> npt.NDArray[np.float64]:
+        """Return ``n`` draws."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class Comparison:
+    """P(A > B), P(B > A), the probability of practical equivalence, and the difference.
+
+    Args:
+        p_a_greater: Probability that A is above B.
+        p_b_greater: Probability that B is above A.
+        p_equivalent: Probability that the difference A - B lies within ``margin`` of 0.
+        margin: The practical equivalence margin that was used.
+        difference: Equal-tailed credible interval of A - B.
+        n_draws: Number of paired draws behind the probabilities.
+        mc_error: The largest Monte Carlo standard error of the three probabilities.
+    """
+
+    p_a_greater: float
+    p_b_greater: float
+    p_equivalent: float
+    margin: float
+    difference: Interval
+    n_draws: int
+    mc_error: float
+
+
+def _posterior_draws(
+    value: Sampler | npt.ArrayLike, n_draws: int, seed: int
+) -> npt.NDArray[np.float64]:
+    if isinstance(value, Sampler):
+        return value.sample(n_draws, seed=seed)
+    return _draws(value)
+
+
+def compare(  # noqa: PLR0913 (two posteriors and the settings of the comparison)
+    a: Sampler | npt.ArrayLike,
+    b: Sampler | npt.ArrayLike,
+    *,
+    margin: float,
+    level: float = 0.95,
+    n_draws: int = 100_000,
+    seed: int = 0,
+) -> Comparison:
+    """Compare two independent posteriors: P(A > B) and the probability of practical equivalence.
+
+    Each posterior is either a distribution with a ``sample`` method (``Beta``, ``Gamma``,
+    ``Normal``, ``LogNormal``) or an array of its draws. The two are treated as independent:
+    draw ``i`` of A is paired with draw ``i`` of B, so the draws of one posterior must not be
+    sorted or ordered together with the other. The probabilities are Monte Carlo estimates.
+
+    Args:
+        a: The first posterior.
+        b: The second posterior.
+        margin: Practical equivalence: A and B are equivalent when ``|A - B| <= margin``.
+            Must be > 0, in the unit of the quantity.
+        level: Coverage of the credible interval of A - B.
+        n_draws: Draws taken from a distribution; ignored for an array, which gives its length.
+        seed: Seed of the draws (B uses ``seed + 1``).
+
+    Raises:
+        ValueError: If ``margin`` is not positive, ``level`` is not in (0, 1), an array has fewer
+            than 2 draws, or ``n_draws`` is below 2.
+    """
+    if not margin > 0.0:
+        raise ValueError(f"margin must be > 0, got {margin}")
+    _level(level)
+    if n_draws < 2:  # noqa: PLR2004
+        raise ValueError("n_draws must be at least 2")
+    x = _posterior_draws(a, n_draws, seed)
+    y = _posterior_draws(b, n_draws, seed + 1)
+    n = min(x.size, y.size)
+    diff = x[:n] - y[:n]
+    p_a = float(np.mean(diff > 0.0))
+    p_b = float(np.mean(diff < 0.0))
+    p_eq = float(np.mean(np.abs(diff) <= margin))
+    error = max(math.sqrt(p * (1.0 - p) / n) for p in (p_a, p_b, p_eq))
+    return Comparison(p_a, p_b, p_eq, margin, credible_interval(diff, level), n, error)

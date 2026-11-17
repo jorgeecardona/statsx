@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.posterior.compare`: P(A > B) and the probability of practical equivalence of two
+  posteriors, with the credible interval of the difference. `Beta`, `Gamma` and `Normal` have a
+  `sample` method.
+- `statsx.prior.lognormal_from_interval`: the lognormal prior that matches an expert's calibrated
+  90% interval.
 - `statsx.proportion.proportion_interval`: Wilson, Jeffreys, Clopper-Pearson and Agresti-Coull
   intervals for a proportion. The module notes state the small-N coverage of each, and a test
   checks it.

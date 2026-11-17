@@ -18,6 +18,10 @@ needs:
       equivalence.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_compare.py::test_p_a_greater_matches_the_exact_value_for_two_betas"
+      - "test:tests/test_compare.py::test_two_normals_match_the_exact_probabilities"
+      - "test:tests/test_compare.py::test_a_wider_margin_gives_a_higher_probability_of_equivalence"
 
   - id: BA-3
     text: >
@@ -25,6 +29,9 @@ needs:
       prior.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_compare.py::test_a_90_percent_interval_gives_the_matching_lognormal_prior"
+      - "test:tests/test_compare.py::test_the_level_can_be_changed_and_the_prior_gets_wider_with_a_lower_level"
 
   - id: BA-4
     text: >

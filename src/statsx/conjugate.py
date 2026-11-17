@@ -14,6 +14,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import numpy as np
+import numpy.typing as npt
+
 from statsx import _accel
 
 
@@ -35,6 +38,10 @@ class Beta:
         s = self.alpha + self.beta
         return self.alpha * self.beta / (s * s * (s + 1.0))
 
+    def sample(self, n: int, *, seed: int = 0) -> npt.NDArray[np.float64]:
+        """Return ``n`` draws; the same seed gives the same draws."""
+        return _accel.sample_beta(self.alpha, self.beta, n, seed)
+
 
 @dataclass(frozen=True, slots=True)
 class Gamma:
@@ -53,6 +60,10 @@ class Gamma:
         """Return shape / rate squared."""
         return self.shape / (self.rate * self.rate)
 
+    def sample(self, n: int, *, seed: int = 0) -> npt.NDArray[np.float64]:
+        """Return ``n`` draws; the same seed gives the same draws."""
+        return _accel.sample_gamma(self.shape, self.rate, n, seed)
+
 
 @dataclass(frozen=True, slots=True)
 class Normal:
@@ -65,6 +76,10 @@ class Normal:
     def variance(self) -> float:
         """Return sd squared."""
         return self.sd * self.sd
+
+    def sample(self, n: int, *, seed: int = 0) -> npt.NDArray[np.float64]:
+        """Return ``n`` draws; the same seed gives the same draws."""
+        return _accel.sample_normal(self.mean, self.sd, n, seed)
 
 
 @dataclass(frozen=True, slots=True)
