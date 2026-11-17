@@ -966,3 +966,34 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-37
+  text: 'The caller spends a budget over arms with Beta posteriors by three policies, each from
+    its paper. Thompson sampling (Thompson 1933, Biometrika 25(3/4):285-294, DOI
+    10.2307/2332286; analysis by Agrawal & Goyal 2012, COLT, PMLR 23:39.1-39.26): draw one value
+    from each Beta posterior per pull and pull the arm with the largest draw, so an arm gets
+    pulls in proportion to its posterior probability of being best. Bayes-UCB (Kaufmann, Cappe &
+    Garivier 2012, AISTATS, PMLR 22:592-600): pull the arm with the largest posterior quantile
+    at level 1 - 1 / (t (log n)^c), with c = 0 by default (the value the authors found best in
+    experiments; their regret theorem needs c >= 5). Successive halving (Karnin, Koren & Somekh
+    2013, ICML, PMLR 28(3):1238-1246): ceil(log2 n) rounds, each surviving arm pulled
+    floor(B / (|S_r| ceil(log2 n))) times in round r, the best ceil(|S_r| / 2) arms by that
+    round''s success rate kept, the last arm recommended. Beta quantiles and Beta draws use the
+    functions already written here in Rust.'
+  needs:
+  - SQ-3
+  alternatives:
+  - 'UCB1 (Auer, Cesa-Bianchi & Fischer 2002), which does not use the posterior: not offered,
+    the need names policies over Beta posteriors.'
+  - 'Cumulative success rate in successive halving: rejected, the paper uses the rate of the
+    current round only.'
+  consequences: 'Three arms with success probabilities 0.3, 0.5, 0.6 and 1000 pulls, mean over
+    20 runs: regret 14.4 for Thompson sampling and 16.0 for Bayes-UCB, against 133 for an even
+    split. Against uniform, Thompson gives the second arm 2/3 of the pulls, the exact
+    probability. Successive halving over 8 arms (seven at 0.4, one at 0.8) found the best arm in
+    54% of 300 runs with a budget of 48 pulls and in 100% with 2000. Thompson sampling and
+    Bayes-UCB choose one pull (or a batch, for Thompson) and need the result before the next;
+    halving needs a pull function that returns the successes.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

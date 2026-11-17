@@ -30,6 +30,11 @@ needs:
       halving over Beta posteriors.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_bandit.py::test_thompson_gives_each_arm_pulls_in_proportion_to_its_chance_of_being_best"
+      - "test:tests/test_bandit.py::test_bayes_ucb_index_is_the_posterior_quantile_at_the_stated_level"
+      - "test:tests/test_bandit.py::test_the_halving_schedule_follows_the_paper"
+      - "test:tests/test_bandit.py::test_more_budget_finds_the_best_arm_more_often"
 
   - id: SQ-4
     text: >

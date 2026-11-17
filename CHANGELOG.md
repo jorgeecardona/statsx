@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.bandit`: `thompson_allocation`, `bayes_ucb_indices`, `bayes_ucb_arm` and
+  `successive_halving` to spend a budget over arms with Beta posteriors.
 - `statsx.alwaysvalid.confidence_sequence` and `e_process`: always-valid confidence sequence for a
   mean and e-value for "the mean is mu0", valid when you look after every observation and stop early.
 - `statsx.groupsequential.group_sequential_bounds`: O'Brien-Fleming and Pocock critical values for
