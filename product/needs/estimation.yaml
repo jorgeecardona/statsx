@@ -24,6 +24,10 @@ needs:
       When the caller bootstraps, they can get percentile, basic, or BCa intervals.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_bootstrap.py::test_the_basic_interval_reflects_the_percentile_interval_around_the_estimate"
+      - "test:tests/test_bootstrap.py::test_the_bca_interval_follows_its_definition"
+      - "test:tests/test_bootstrap.py::test_bca_with_clusters_drops_one_cluster_at_a_time"
 
   - id: ES-4
     text: >

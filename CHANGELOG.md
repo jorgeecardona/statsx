@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `bootstrap(..., method="basic" | "bca")`: basic and BCa intervals next to the percentile
+  interval. The result records the method. BCa needs `IID` or `Clustered` resampling.
 - `statsx.posterior`: `quantiles`, `credible_interval` (equal-tailed) and `hdi` (highest density
   interval) of posterior draws, one function each.
 - `statsx.progress.fit_progress`: the time left of a running task, with an interval, from its

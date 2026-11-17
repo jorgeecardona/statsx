@@ -504,3 +504,33 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-21
+  text: 'The bootstrap gives three intervals. Percentile: the quantiles of the replicates,
+    Efron & Tibshirani (1993), ''An Introduction to the Bootstrap'', DOI
+    10.1201/9780429246593. Basic: the quantiles reflected around the estimate, 2 t -
+    q(1 - a/2) to 2 t - q(a/2), Davison & Hinkley (1997), ''Bootstrap Methods and their
+    Application'', chapter 5, DOI 10.1017/CBO9780511802843. BCa: percentiles corrected for
+    bias (z0 from the share of replicates below the estimate) and skew (acceleration from
+    the jackknife), Efron (1987), ''Better bootstrap confidence intervals'', JASA
+    82(397):171-185, DOI 10.1080/01621459.1987.10478410. BCa drops one observation (i.i.d.)
+    or one cluster (clustered) for the jackknife; it is refused for stratified and block
+    resampling, where that jackknife is not the right one. The normal CDF and quantile
+    come from the Python standard library (statistics.NormalDist, AS 241).'
+  needs:
+  - ES-3
+  alternatives:
+  - 'Bootstrap-t (studentized): not chosen now, it needs a variance estimate for every
+    replicate, which an arbitrary statistic does not give.'
+  - 'BCa for stratified and block resampling with an adapted jackknife: not chosen, the
+    formula for those units is not in the sources cited here.'
+  consequences: 'On samples of a log-normal(0, 1) (mean 1.65), 90% intervals for the
+    mean from 1999 resamples covered the true mean in 83% (percentile), 81% (basic) and
+    82% (BCa) of 600 samples at n = 25, and 89%, 87% and 87% at n = 100. BCa did not beat
+    the percentile interval in this setting; its interval was wider (1.38 against 1.24 at
+    n = 25). Our BCa interval agreed with SciPy''s BCa interval to within resampling
+    noise (at most 0.016) on 6 samples; this check ran once, outside the test suite, so
+    SciPy stays out of the dependencies.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
