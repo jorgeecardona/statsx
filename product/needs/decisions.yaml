@@ -639,3 +639,33 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-26
+  text: 'A cost with uncertain inputs is simulated by Monte Carlo, Metropolis & Ulam (1949),
+    JASA 44(247):335-341, DOI 10.1080/01621459.1949.10483310: each uncertain input is drawn
+    independently with its own seed (the seed plus its position), the cost model is called
+    once with arrays of draws, and the result is the cost distribution with its mean (and
+    the Monte Carlo error of that mean), a central interval, quantiles and tail
+    probabilities. The expected value of perfect information is E[max over actions of
+    utility] - max over actions of E[utility], Raiffa & Schlaifer (1961), ''Applied
+    Statistical Decision Theory'', Harvard University Press, computed from joint draws of the
+    utilities as in Claxton (1999), Journal of Health Economics 18(3):341-364, DOI
+    10.1016/S0167-6296(98)00039-3. For two actions the break-even probability of acting is
+    loss / (gain + loss); for a net benefit that depends on a threshold, the break-even point
+    is the root found by bisection.'
+  needs:
+  - DC-1
+  - DC-2
+  alternatives:
+  - 'Correlated inputs: not offered now, the inputs are independent; a caller with
+    correlated inputs can build joint draws and pass one array.'
+  - 'Expected value of partial perfect information (EVPPI) by regression metamodels
+    (Strong, Oakley & Brennan 2014): not chosen now, the need asks for the expected value of
+    information of the whole decision.'
+  consequences: 'The same seed gives the same draws (tested). The Monte Carlo error of the
+    mean is reported. The model must be written with NumPy operations on arrays, since it is
+    called once. Draws of the inputs are independent; the draws of a decision''s utilities
+    must come from the same joint draw of the inputs, which the caller arranges.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

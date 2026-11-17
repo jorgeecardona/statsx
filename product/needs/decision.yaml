@@ -8,6 +8,10 @@ needs:
       distribution of the cost with a fixed seed.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_decision.py::test_the_cost_distribution_has_the_exact_mean_and_a_fixed_seed"
+      - "test:tests/test_decision.py::test_the_distribution_gives_quantiles_an_interval_and_a_tail_probability"
+      - "test:tests/test_decision.py::test_a_lognormal_input_from_an_expert_interval_can_drive_the_cost"
 
   - id: DC-2
     text: >
@@ -15,3 +19,7 @@ needs:
       information.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_decision.py::test_the_value_of_perfect_information_matches_the_closed_form"
+      - "test:tests/test_decision.py::test_the_break_even_probability_is_the_loss_ratio"
+      - "test:tests/test_decision.py::test_break_even_finds_the_threshold_where_the_net_benefit_changes_sign"
