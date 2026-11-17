@@ -40,6 +40,9 @@ needs:
       can see it flagged as an anomaly given trend and season.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_trend.py::test_months_outside_the_expected_band_are_flagged_as_anomalies"
+      - "test:tests/test_trend.py::test_clean_series_are_rarely_flagged"
 
   - id: TS-5
     text: >

@@ -1,4 +1,4 @@
-"""Trend and forecast of a count series (TS-1, TS-2, TS-3, TS-5).
+"""Trend, forecast and anomalies of a count series (TS-1 to TS-5).
 
 ``fit_trend`` fits a negative binomial structural time series: a level, a slope, a random-walk
 drift, and a Fourier season. The posterior comes from the nested Laplace approximation, corrected
@@ -161,6 +161,33 @@ class Forecast:
 
 
 @dataclass(frozen=True, slots=True)
+class Anomalies:
+    """Months whose observed count falls outside the band the model expected for them (TS-4).
+
+    The band is the central posterior predictive band of a new count for that month, given the
+    trend and the season. Each array has one value per fitted month.
+
+    Args:
+        level: Coverage of the band, for example 0.95.
+        observed: The observed counts.
+        lower: Lower end of the band.
+        upper: Upper end of the band.
+        direction: -1 where the count is below the band, 1 where it is above, 0 inside.
+    """
+
+    level: float
+    observed: npt.NDArray[np.float64]
+    lower: npt.NDArray[np.float64]
+    upper: npt.NDArray[np.float64]
+    direction: npt.NDArray[np.int64]
+
+    @property
+    def months(self) -> tuple[int, ...]:
+        """Return the indexes (from 0) of the flagged months."""
+        return tuple(int(i) for i in np.flatnonzero(self.direction))
+
+
+@dataclass(frozen=True, slots=True)
 class TrendFit:
     """A checked fit. Only ``fit_trend`` builds it, and only after the check passed.
 
@@ -172,6 +199,7 @@ class TrendFit:
         check: The fit check, which passed.
         period: Season length in months.
         harmonics: Number of Fourier harmonics.
+        counts: The observed counts the model was fitted to.
     """
 
     latent: npt.NDArray[np.float64]
@@ -179,6 +207,7 @@ class TrendFit:
     check: FitCheck
     period: int
     harmonics: int
+    counts: npt.NDArray[np.float64]
 
     @property
     def n_months(self) -> int:
@@ -244,6 +273,21 @@ class TrendFit:
         mean = np.exp(eta)
         counts = rng.negative_binomial(alpha, alpha / (alpha + mean)).astype(np.float64)
         return Forecast(trend, mean, counts, months)
+
+    def anomalies(self, level: float = 0.95, *, seed: int = 0) -> Anomalies:
+        """Return the months whose count is outside the central ``level`` band of a new count.
+
+        The band comes from the draws of ``forecast``, so it is given the trend and the season.
+        The fit has already seen these counts: a month far from the trend can pull the trend
+        toward it, so the flags are a posterior predictive check, not a test with a p-value.
+
+        Raises:
+            ValueError: If ``level`` is not in (0, 1).
+        """
+        band = self.forecast(1, seed=seed).bands((level,))[0]
+        lower, upper = band.lower[: self.n_months], band.upper[: self.n_months]
+        direction = np.where(self.counts < lower, -1, np.where(self.counts > upper, 1, 0))
+        return Anomalies(level, self.counts, lower, upper, direction.astype(np.int64))
 
     def p_increasing(self) -> float:
         """Return the posterior probability that the slope is above 0 (TS-3)."""
@@ -340,4 +384,4 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     )
     check = _check(diagnostics, n_draws)
     check.require()
-    return TrendFit(latent, hyper, check, period, harmonics)
+    return TrendFit(latent, hyper, check, period, harmonics, y)

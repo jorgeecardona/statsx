@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `TrendFit.anomalies`: flags the months whose count is outside the 95% band the model
+  expected for them, with the band and the direction for every month.
 - `TrendFit.forecast`: nested 50/80/95% credible bands for each fitted and future month
   (`Forecast.bands`), of the log trend, the expected count or a new count. The trend bands
   widen with the horizon.

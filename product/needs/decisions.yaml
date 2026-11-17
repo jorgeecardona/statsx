@@ -292,3 +292,28 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-13
+  text: 'An observed month is flagged as an anomaly when its count lies outside the
+    central 95% band of the posterior predictive distribution of a new count for that
+    month, given the trend and the season. This is a posterior predictive check, Gelman,
+    Carlin, Stern, Dunson, Vehtari & Rubin (2013), ''Bayesian Data Analysis'', 3rd ed.,
+    chapter 6, CRC Press, DOI 10.1201/b16018. The report gives the band, the observed
+    count and the direction (below or above) for every month.'
+  needs:
+  - TS-4
+  alternatives:
+  - 'Leave-one-out predictive intervals (PSIS-LOO, Vehtari, Gelman & Gabry 2017): not
+    chosen now, the in-sample band is simpler and the Laplace draws would need a
+    second importance step; the in-sample band is conservative.'
+  - 'A p-value from a test statistic: not chosen, the need asks for the band the model
+    expected, and the project reports posteriors, not p-values.'
+  consequences: 'The fit has seen the month it checks, so a large outlier can pull the
+    trend and the band toward itself; the flags are conservative. On synthetic series
+    with no outlier (60 months, 30 series each) 0.7% of months were flagged at mean 3 and
+    1.4% at mean 30, below the nominal 5%. At mean 30 with strong overdispersion (size 5)
+    a count of twice the expected value was flagged 33% of the time and four times the
+    expected value 73% of the time.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

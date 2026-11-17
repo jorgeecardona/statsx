@@ -203,3 +203,26 @@ def test_forecast_is_reproducible_and_validated() -> None:
         a.bands((0.8, 0.5))
     with pytest.raises(ValueError, match="levels"):
         a.bands(())
+
+
+def test_months_outside_the_expected_band_are_flagged_as_anomalies() -> None:
+    counts, _, _ = _series(seed=6, level=30.0, slope=0.2, alpha=20.0, season=0.6)
+    spiked = counts.copy()
+    spiked[30] = counts[30] * 6 + 40
+    spiked[45] = 0
+    report = fit_trend(spiked, seed=0).anomalies(0.95)
+    assert report.level == 0.95
+    assert report.direction[30] == 1
+    assert report.direction[45] == -1
+    assert {30, 45} <= set(report.months)
+    assert np.all(report.lower <= report.upper)
+
+
+def test_clean_series_are_rarely_flagged() -> None:
+    flagged: list[float] = []
+    for seed in range(8):
+        counts, _, _ = _series(seed=200 + seed, level=30.0, slope=0.2, alpha=20.0)
+        report = fit_trend(counts, seed=seed).anomalies(0.95)
+        flagged.append(len(report.months) / MONTHS)
+    # The nominal rate is 5%; the draws also include the posterior uncertainty, so it is lower.
+    assert np.mean(flagged) < 0.1
