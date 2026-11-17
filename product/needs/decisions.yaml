@@ -1132,3 +1132,31 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-42
+  text: 'The caller plans a comparison of two independent groups of means with the pooled
+    two-sample t test. With n items per group and within-group sd sigma, the statistic under a
+    true difference is noncentral t with 2 (n - 1) degrees of freedom and noncentrality
+    effect / (sigma sqrt(2 / n)); the power is its tail beyond the critical value (Cohen 1988,
+    Statistical Power Analysis for the Behavioral Sciences, 2nd ed., chapter 2), computed with the
+    noncentral t of AS 243 already written here. The equivalence version is Schuirmann (1987),
+    Journal of Pharmacokinetics and Biopharmaceutics 15(6):657-680, DOI 10.1007/BF01068419, with
+    the exact power of Owen (1965), Biometrika 52(3-4):437-446, DOI 10.1093/biomet/52.3-4.437,
+    as an integral over the sample sd; the paired code is reused with degrees of freedom
+    2 (n - 1) and standard error sigma sqrt(2 / n). The sd is the same in both groups; plan with
+    the larger one.'
+  needs:
+  - DE-4
+  alternatives:
+  - 'Welch (unequal variance) power: not offered, it needs an approximation of the degrees of
+    freedom that I did not verify in a source; planning with the larger sd covers it.'
+  consequences: 'Power at n = 64 per group and d = 0.5 is 0.8014596, and the sample sizes for
+    d = 0.8, 0.5 and 0.2 are 26, 64 and 394, as in Cohen and G*Power. Simulations of 40000 tests
+    agree with the analytic power within 0.01 for the difference test and for TOST, and the null
+    rejects at 5%. The minimum detectable difference at 80% power is 2.02, 1.32, 0.91 and 0.63
+    within-group sds for 5, 10, 20 and 40 per group. For a noise sd of 2% on the log scale, 5, 10
+    and 20 timings per version find a speedup of 4.1%, 2.7% and 1.8%; 18 per version are needed
+    for a 2% difference and 19 to show equivalence within 2%.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'

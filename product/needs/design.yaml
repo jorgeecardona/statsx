@@ -33,3 +33,16 @@ needs:
       - "test:tests/test_allocation.py::test_the_neyman_allocation_follows_n_h_proportional_to_size_times_sd"
       - "test:tests/test_allocation.py::test_the_allocation_is_the_smallest_total_that_meets_the_margin"
       - "test:tests/test_allocation.py::test_neyman_needs_fewer_items_than_proportional_allocation_for_the_same_margin"
+
+  - id: DE-4
+    text: >
+      When the caller plans a comparison of two independent groups of measurements (for example
+      timings of two versions), they can get the power, the sample size per group, the minimum
+      detectable effect, and the equivalence (TOST) versions, from the exact noncentral t.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "request from the ComputeML benchmark agent: design had paired tests only (private, not linked)"}
+    proofs:
+      - "test:tests/test_design_two_sample.py::test_the_power_matches_cohens_classic_sample_sizes"
+      - "test:tests/test_design_two_sample.py::test_a_simulation_of_the_two_sample_test_has_the_analytic_power"
+      - "test:tests/test_design_two_sample.py::test_the_minimum_detectable_effect_reaches_the_power_at_that_effect"
+      - "test:tests/test_design_two_sample.py::test_the_equivalence_power_matches_a_simulation_and_the_sample_size_reaches_it"

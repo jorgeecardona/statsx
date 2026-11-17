@@ -10,12 +10,16 @@ Tests covered:
 - Paired differences, or one sample against a value: the t test, with the exact power from the
   noncentral t distribution. ``n`` is the number of pairs; ``effect`` is the mean difference and
   ``sd`` the standard deviation of the differences.
+- Two groups of means: the pooled two-sample t test, with the exact power from the noncentral t
+  distribution. ``n`` is the number of items in each group; ``effect`` is the difference of the
+  means and ``sd`` the standard deviation within a group.
 - Two proportions: the pooled z test. The power is the normal approximation of Fleiss, Levin &
   Paik; ``exact=True`` on ``power_two_proportions`` counts every outcome of the two binomials
   instead. ``n`` is the number in each group. Exact power is not a smooth function of ``n``
   (it moves up and down), so ``sample_size_two_proportions`` gives the n of the approximation.
-- Equivalence (TOST) of a paired difference, and of a difference of two proportions, against an
-  ``EquivalenceMargin`` (the one definition of ``statsx.equivalence``). The paired power is exact
+- Equivalence (TOST) of a paired difference, of a difference of two means, and of a difference of
+  two proportions, against an
+  ``EquivalenceMargin`` (the one definition of ``statsx.equivalence``). The paired and two-sample power is exact
   (a numerical integral over the sample standard deviation); the proportions use the normal
   approximation of Blackwelder (1982).
 
@@ -67,7 +71,7 @@ class Design:
 
     Args:
         test: The test the answer is for.
-        n: Pairs (paired tests) or items per group (two proportions).
+        n: Pairs (paired tests) or items per group (two-sample tests and two proportions).
         effect: The true effect assumed: a difference in the unit of the data, or in proportion.
         power: The chance that the test finds the effect.
         alpha: The test's level.
@@ -132,9 +136,11 @@ def _solve_effect(
     return high
 
 
-def _t_power(effect: float, sd: float, n: int, alpha: float, alternative: Alternative) -> float:
-    df = n - 1.0
-    delta = effect * math.sqrt(n) / sd
+def _t_power_df(  # noqa: PLR0913, PLR0917 (all inputs of one power)
+    effect: float, sd: float, df: float, n_eff: float, alpha: float, alternative: Alternative
+) -> float:
+    """Return the t test power; the standard error of the statistic is ``sd / sqrt(n_eff)``."""
+    delta = effect * math.sqrt(n_eff) / sd
     if alternative == "greater":
         critical = _accel.t_ppf(np.array([1.0 - alpha]), df)[0]
         return 1.0 - _accel.nct_cdf(np.array([critical]), df, delta)[0]
@@ -142,6 +148,17 @@ def _t_power(effect: float, sd: float, n: int, alpha: float, alternative: Altern
     upper = 1.0 - _accel.nct_cdf(np.array([critical]), df, delta)[0]
     lower = _accel.nct_cdf(np.array([-critical]), df, delta)[0]
     return float(upper + lower)
+
+
+def _t_power(effect: float, sd: float, n: int, alpha: float, alternative: Alternative) -> float:
+    return _t_power_df(effect, sd, n - 1.0, float(n), alpha, alternative)
+
+
+def _t_power_two_sample(
+    effect: float, sd: float, n: int, alpha: float, alternative: Alternative
+) -> float:
+    """Pooled two-sample t test: ``2 (n - 1)`` degrees of freedom, standard error ``sd sqrt(2/n)``."""
+    return _t_power_df(effect, sd, 2.0 * (n - 1.0), n / 2.0, alpha, alternative)
 
 
 def power_paired(
@@ -213,6 +230,81 @@ def minimum_detectable_effect_paired(
         lambda e: _t_power(e, sd, int(n), alpha, alternative), power, 0.0, 20.0 * sd
     )
     return power_paired(effect, sd, int(n), alpha=alpha, alternative=alternative)
+
+
+def power_two_sample(
+    effect: float,
+    sd: float,
+    n: int,
+    *,
+    alpha: float = 0.05,
+    alternative: Alternative = "two-sided",
+) -> Design:
+    """Return the power of the two-sample t test to find a difference of means ``effect``.
+
+    The groups have ``n`` items each and the same standard deviation ``sd``. The power is exact,
+    from the noncentral t distribution with ``2 (n - 1)`` degrees of freedom and noncentrality
+    ``effect / (sd sqrt(2 / n))``. With unequal spreads, plan with the larger standard deviation.
+
+    Args:
+        effect: The true difference of the two means (positive for ``"greater"``).
+        sd: The standard deviation within each group. Must be > 0.
+        n: Items per group, at least 2.
+        alpha: The test's level, in (0, 0.5).
+        alternative: ``"two-sided"`` or ``"greater"``.
+
+    Raises:
+        ValueError: If an input is out of range.
+    """
+    _check_alpha(alpha)
+    _check_n(n, 2)
+    if not sd > 0.0 or not math.isfinite(effect):
+        raise ValueError("sd must be > 0 and effect finite")
+    return Design(
+        f"two-sample t test ({alternative})",
+        int(n),
+        effect,
+        _t_power_two_sample(effect, sd, int(n), alpha, alternative),
+        alpha,
+        "items independent and about normal, with the same sd in both groups",
+    )
+
+
+def sample_size_two_sample(
+    effect: float,
+    sd: float,
+    *,
+    power: float = 0.8,
+    alpha: float = 0.05,
+    alternative: Alternative = "two-sided",
+) -> Design:
+    """Return the smallest number of items per group whose power for ``effect`` is ``power``."""
+    _check_alpha(alpha)
+    _check_power(power)
+    if not sd > 0.0 or not effect != 0.0 or not math.isfinite(effect):
+        raise ValueError("sd must be > 0 and effect finite and not 0")
+    n = _smallest_n(lambda k: _t_power_two_sample(effect, sd, k, alpha, alternative), power, 2)
+    return power_two_sample(effect, sd, n, alpha=alpha, alternative=alternative)
+
+
+def minimum_detectable_effect_two_sample(
+    sd: float,
+    n: int,
+    *,
+    power: float = 0.8,
+    alpha: float = 0.05,
+    alternative: Alternative = "two-sided",
+) -> Design:
+    """Return the smallest difference of means that ``n`` per group find with ``power`` (DE-2)."""
+    _check_alpha(alpha)
+    _check_power(power)
+    _check_n(n, 2)
+    if not sd > 0.0:
+        raise ValueError("sd must be > 0")
+    effect = _solve_effect(
+        lambda e: _t_power_two_sample(e, sd, int(n), alpha, alternative), power, 0.0, 20.0 * sd
+    )
+    return power_two_sample(effect, sd, int(n), alpha=alpha, alternative=alternative)
 
 
 def _check_p(*values: float) -> None:
@@ -369,13 +461,16 @@ def _quadrature() -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     return nodes, weights
 
 
-def _tost_paired_power(  # noqa: PLR0913, PLR0917 (all inputs of one power)
-    effect: float, sd: float, n: int, alpha: float, low: float, high: float
+def _tost_power(  # noqa: PLR0913, PLR0917 (all inputs of one power)
+    effect: float, sd: float, df: float, n_eff: float, alpha: float, low: float, high: float
 ) -> float:
-    """Exact TOST power: an integral over the sample sd of the chance the mean is inside."""
-    df = n - 1.0
+    """Exact TOST power: an integral over the sample sd of the chance the mean is inside.
+
+    The standard error of the estimated difference is ``sd / sqrt(n_eff)``, and the sample sd has
+    ``df`` degrees of freedom.
+    """
     tc = _accel.t_ppf(np.array([1.0 - alpha]), df)[0]
-    root_n = math.sqrt(n)
+    root_n = math.sqrt(n_eff)
     spread = 12.0 / math.sqrt(df)
     w_low, w_high = max(1e-6, 1.0 - min(spread, 0.999)), 1.0 + spread * 2.0
     nodes, weights = _quadrature()
@@ -394,6 +489,18 @@ def _tost_paired_power(  # noqa: PLR0913, PLR0917 (all inputs of one power)
     inside: npt.NDArray[np.float64] = np.maximum(cdf(upper_edge) - cdf(lower_edge), 0.0)
     integrand: npt.NDArray[np.float64] = scale * np.exp(log_density) * inside
     return float(integrand.sum())
+
+
+def _tost_paired_power(  # noqa: PLR0913, PLR0917 (all inputs of one power)
+    effect: float, sd: float, n: int, alpha: float, low: float, high: float
+) -> float:
+    return _tost_power(effect, sd, n - 1.0, float(n), alpha, low, high)
+
+
+def _tost_two_sample_power(  # noqa: PLR0913, PLR0917 (all inputs of one power)
+    effect: float, sd: float, n: int, alpha: float, low: float, high: float
+) -> float:
+    return _tost_power(effect, sd, 2.0 * (n - 1.0), n / 2.0, alpha, low, high)
 
 
 def power_equivalence_paired(
@@ -447,6 +554,61 @@ def sample_size_equivalence_paired(
         raise ValueError("sd must be > 0 and the true effect inside the margin")
     n = _smallest_n(lambda k: _tost_paired_power(effect, sd, k, alpha, m.low, m.high), power, 2)
     return power_equivalence_paired(effect, sd, m, n, alpha=alpha)
+
+
+def power_equivalence_two_sample(
+    effect: float,
+    sd: float,
+    margin: EquivalenceMargin | float,
+    n: int,
+    *,
+    alpha: float = 0.05,
+) -> Design:
+    """Return the power of the two-sample TOST to show the difference of means is inside ``margin``.
+
+    The groups have ``n`` items each and the same standard deviation ``sd``. ``effect`` is the
+    true difference of means (0 for no difference). The power is exact, as for
+    ``power_equivalence_paired``, with ``2 (n - 1)`` degrees of freedom.
+
+    Raises:
+        ValueError: If an input is out of range.
+    """
+    _check_alpha(alpha)
+    _check_n(n, 2)
+    m = as_margin(margin)
+    if not sd > 0.0 or not math.isfinite(effect):
+        raise ValueError("sd must be > 0 and effect finite")
+    return Design(
+        "two-sample TOST (equivalence)",
+        int(n),
+        effect,
+        _tost_two_sample_power(effect, sd, int(n), alpha, m.low, m.high),
+        alpha,
+        "items independent and about normal, with the same sd in both groups; "
+        f"margin ({m.low}, {m.high})",
+    )
+
+
+def sample_size_equivalence_two_sample(
+    sd: float,
+    margin: EquivalenceMargin | float,
+    *,
+    effect: float = 0.0,
+    power: float = 0.8,
+    alpha: float = 0.05,
+) -> Design:
+    """Return the smallest number per group whose two-sample TOST power is at least ``power``.
+
+    Raises:
+        ValueError: If ``effect`` is not inside the margin (equivalence can never be shown).
+    """
+    _check_alpha(alpha)
+    _check_power(power)
+    m = as_margin(margin)
+    if not sd > 0.0 or not m.low < effect < m.high:
+        raise ValueError("sd must be > 0 and the true effect inside the margin")
+    n = _smallest_n(lambda k: _tost_two_sample_power(effect, sd, k, alpha, m.low, m.high), power, 2)
+    return power_equivalence_two_sample(effect, sd, m, n, alpha=alpha)
 
 
 def _tost_proportions_power(  # noqa: PLR0913, PLR0917 (all inputs of one power)

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.design`: power, sample size, minimum detectable effect and TOST for two independent groups
+  of means (`power_two_sample`, `sample_size_two_sample`, `minimum_detectable_effect_two_sample`,
+  `power_equivalence_two_sample`, `sample_size_equivalence_two_sample`).
 - `statsx.conjugate.NormalInverseGamma`: posterior for the mean and variance of a normal sample, with
   `update`, an exact t credible interval, `sample` (works in `compare`) and `reference` (the
   classical t interval). Docs recipe "Compare two timing runs".

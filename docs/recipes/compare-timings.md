@@ -93,6 +93,40 @@ speedup of B  1.010 to 1.075
 The speedup is \(e^{\mu_A - \mu_B}\), so a value above 1 means B is faster. The interval is the 95%
 credible interval of the ratio.
 
+## How many runs do you need
+
+Plan before you measure. For two groups of \(n\) timings with within-group noise \(\sigma\) (on the
+log scale), the two-sample t statistic under a true log-difference \(\Delta\) is noncentral t with
+\(2(n-1)\) degrees of freedom and noncentrality \(\Delta / (\sigma\sqrt{2/n})\). The power is its
+tail beyond the critical value, and `minimum_detectable_effect_two_sample` inverts it.
+
+```python
+import math
+from statsx.design import (
+    minimum_detectable_effect_two_sample,
+    sample_size_equivalence_two_sample,
+    sample_size_two_sample,
+)
+
+sigma = 0.02  # noise sd of log time, about 2%
+for n in (5, 10, 20):
+    d = minimum_detectable_effect_two_sample(sigma, n)  # 80% power, alpha 0.05
+    print(n, "per version finds a speedup of", round(100 * (math.exp(d.effect) - 1), 1), "%")
+print("n for a 2% difference:", sample_size_two_sample(math.log(1.02), sigma).n)
+print("n to show equivalence within 2%:", sample_size_equivalence_two_sample(sigma, math.log(1.02)).n)
+```
+
+```text
+5 per version finds a speedup of 4.1 %
+10 per version finds a speedup of 2.7 %
+20 per version finds a speedup of 1.8 %
+n for a 2% difference: 18
+n to show equivalence within 2%: 19
+```
+
+The noise \(\sigma\) is a guess. Take it from earlier runs of the same setup, and plan with a
+larger value than you expect.
+
 ## What this does not tell you
 
 - The unit of replication is a **run**. If the 5 timings of a version come from one process, they
