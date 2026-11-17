@@ -902,3 +902,32 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-35
+  text: 'For a planned number of looks, the critical values keep the overall error rate at
+    alpha. Pocock (1977), Biometrika 64(2):191-199, DOI 10.1093/biomet/64.2.191: the same
+    critical value at every look. O''Brien-Fleming (1979), Biometrics 35(3):549-556, DOI
+    10.2307/2530245: a constant boundary on the scale of the partial sum, so the critical value
+    of Z is C / sqrt(t) and very strict early. The constant is found by the recursive
+    numerical integration of the Brownian motion, Armitage, McPherson & Rowe (1969), JRSS A
+    132(2):235-244, DOI 10.2307/2343787, on an 801-point trapezoid grid per look, with the
+    secant method for the constant, as in Jennison & Turnbull (2000), ''Group Sequential
+    Methods with Applications to Clinical Trials'', chapter 2, Chapman & Hall/CRC, DOI
+    10.1201/9781584888581. The design gives the Z bound, the nominal p-value and the error
+    spent at each look. Information times can be unequal; two-sided and one-sided stopping are
+    supported.'
+  needs:
+  - SQ-2
+  alternatives:
+  - 'Lan-DeMets spending functions (1983), which allow looks at unplanned times: not offered
+    now; the need names the two classical boundaries for a fixed number of looks.'
+  - 'Haybittle-Peto (fixed 3.0 for interim looks): not offered, it is not in the need.'
+  consequences: 'The constants match the published tables: Pocock 2.178, 2.289, 2.361, 2.413
+    for 2 to 5 looks, and O''Brien-Fleming 4.562, 3.226, 2.634, 2.281, 2.040 for 5 looks, at a
+    two-sided 5%. A simulation of 60000 four-look trials with no effect stopped in 5.0% (both
+    designs), against more than 10% when 1.96 is used at every look. The error spent at the
+    first of 5 looks is 0.0158 (Pocock) and 0.00001 (O''Brien-Fleming). A design takes about
+    1 s. The result is for a normal statistic with known information times.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

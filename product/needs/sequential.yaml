@@ -14,6 +14,10 @@ needs:
       When the caller plans a fixed number of looks, they can get O'Brien-Fleming or Pocock boundaries.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_groupsequential.py::test_pocock_constants_match_the_published_table"
+      - "test:tests/test_groupsequential.py::test_obrien_fleming_bounds_match_the_published_values_for_five_looks"
+      - "test:tests/test_groupsequential.py::test_a_simulation_of_the_stopping_rule_has_the_stated_error_rate"
 
   - id: SQ-3
     text: >

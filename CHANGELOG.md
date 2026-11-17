@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.groupsequential.group_sequential_bounds`: O'Brien-Fleming and Pocock critical values for
+  a planned number of looks, with the nominal p-value and the error spent at each look.
 - `statsx.design`: power, sample size and minimum detectable effect for paired differences, two
   proportions, and equivalence (TOST) of a paired difference or two proportions. The noncentral t
   distribution is in Rust.
