@@ -14,7 +14,7 @@
 //! `arrow`.
 
 use crate::arrow::Arrow;
-use crate::negbin::{d_eta, logpmf};
+use crate::negbin::{d_eta, logpmf, poisson_d_eta, poisson_logpmf};
 use crate::psis::psis;
 use crate::rng::Rng;
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
@@ -35,6 +35,8 @@ pub struct Spec {
     pub sigma_scale: f64,
     /// Scale s of the half-normal prior on phi.
     pub phi_scale: f64,
+    /// Poisson counts: no dispersion, so the grid has one column and phi has no prior.
+    pub poisson: bool,
 }
 
 /// Mode of the latent field at fixed hyperparameters, with the factor of its Hessian.
@@ -125,7 +127,12 @@ impl Spec {
 
     /// Log prior of (u, v) with the Jacobian of the log transform.
     pub fn log_prior_hyper(&self, u: f64, v: f64) -> f64 {
-        half_normal_ln(u.exp(), self.sigma_scale) + u + half_normal_ln(v.exp(), self.phi_scale) + v
+        let drift = half_normal_ln(u.exp(), self.sigma_scale) + u;
+        if self.poisson {
+            drift
+        } else {
+            drift + half_normal_ln(v.exp(), self.phi_scale) + v
+        }
     }
 
     /// 0.5 log det Q for the latent prior precision Q.
@@ -144,6 +151,9 @@ impl Spec {
     }
 
     fn loglik(&self, eta: &[f64], alpha: f64) -> f64 {
+        if self.poisson {
+            return self.y.iter().zip(eta).map(|(&y, &e)| poisson_logpmf(y, e)).sum();
+        }
         self.y.iter().zip(eta).map(|(&y, &e)| logpmf(y, e, alpha)).sum()
     }
 
@@ -176,7 +186,11 @@ impl Spec {
         let mut g = vec![0.0; nf + t_len];
         let mut w = vec![0.0; t_len];
         for t in 0..t_len {
-            let (score, h) = d_eta(self.y[t], eta[t], alpha);
+            let (score, h) = if self.poisson {
+                poisson_d_eta(self.y[t], eta[t])
+            } else {
+                d_eta(self.y[t], eta[t], alpha)
+            };
             w[t] = -h;
             g[nf + t] = score;
             for k in 0..nf {
@@ -292,13 +306,17 @@ impl Spec {
         let start = self.start();
         let coarse = self.grid_pass(
             &linspace(cfg.u_range.0, cfg.u_range.1, cfg.coarse.0),
-            &linspace(cfg.v_range.0, cfg.v_range.1, cfg.coarse.1),
+            &if self.poisson { vec![0.0] } else { linspace(cfg.v_range.0, cfg.v_range.1, cfg.coarse.1) },
             &start,
         );
         let (mu_u, mu_v, sd_u, sd_v) = grid_moments(&coarse);
         let fine = self.grid_pass(
             &linspace(mu_u - cfg.span * sd_u.max(cfg.min_sd), mu_u + cfg.span * sd_u.max(cfg.min_sd), cfg.fine.0),
-            &linspace(mu_v - cfg.span * sd_v.max(cfg.min_sd), mu_v + cfg.span * sd_v.max(cfg.min_sd), cfg.fine.1),
+            &if self.poisson {
+                vec![0.0]
+            } else {
+                linspace(mu_v - cfg.span * sd_v.max(cfg.min_sd), mu_v + cfg.span * sd_v.max(cfg.min_sd), cfg.fine.1)
+            },
             &start,
         );
         self.draw(&fine, n_draws, seed, coarse.unconverged + fine.unconverged, coarse.not_pd + fine.not_pd)
@@ -306,7 +324,9 @@ impl Spec {
 
     fn draw(&self, grid: &Grid, n_draws: usize, seed: u64, unconverged: usize, not_pd: usize) -> Fit {
         let (nu, nv, p) = (grid.us.len(), grid.vs.len(), self.p());
-        let (du, dv) = (grid.us[1] - grid.us[0], grid.vs[1] - grid.vs[0]);
+        let du = grid.us[1] - grid.us[0];
+        // A single column (Poisson) has no dispersion to draw: v is a placeholder.
+        let dv = if nv > 1 { grid.vs[1] - grid.vs[0] } else { 1.0 };
         let pg = normalized(&grid.log_marg);
         let edge_mass = edge_mass(&pg, nu, nv);
         let cdf: Vec<f64> = pg
@@ -326,7 +346,7 @@ impl Spec {
             let cell = cdf.partition_point(|&c| c < r).min(pg.len() - 1);
             let (i, j) = (cell / nv, cell % nv);
             let u = grid.us[i] + (rng.uniform() - 0.5) * du;
-            let v = grid.vs[j] + (rng.uniform() - 0.5) * dv;
+            let v = if nv > 1 { grid.vs[j] + (rng.uniform() - 0.5) * dv } else { grid.vs[j] };
             let (sigma, alpha) = (u.exp(), alpha_of(v));
             let z: Vec<f64> = (0..p).map(|_| rng.normal()).collect();
             match self.find_mode(sigma, alpha, &grid.modes[cell]) {
@@ -348,7 +368,7 @@ impl Spec {
                     xs.extend(&grid.modes[cell]);
                 }
             }
-            hyper.extend([u, v]);
+            hyper.extend([u, if self.poisson { f64::NAN } else { v }]);
         }
         let (weights, khat, ess) = if log_w.iter().any(|w| w.is_finite()) {
             let r = psis(&log_w);
@@ -402,7 +422,12 @@ fn normalized(log_marg: &[f64]) -> Vec<f64> {
 fn edge_mass(pg: &[f64], nu: usize, nv: usize) -> f64 {
     let row = |i: usize| (0..nv).map(|j| pg[i * nv + j]).sum::<f64>();
     let col = |j: usize| (0..nu).map(|i| pg[i * nv + j]).sum::<f64>();
-    row(0).max(row(nu - 1)).max(col(0)).max(col(nv - 1))
+    let rows = row(0).max(row(nu - 1));
+    if nv > 1 {
+        rows.max(col(0)).max(col(nv - 1))
+    } else {
+        rows
+    }
 }
 
 /// Posterior mean and standard deviation of u and v on the grid.
@@ -425,7 +450,8 @@ fn grid_moments(grid: &Grid) -> (f64, f64, f64, f64) {
 /// Fit the structural series and return (latent draws, hyperparameter draws, diagnostics).
 ///
 /// `design` is T x nf. Draws have shape (n_draws, nf + T): the fixed effects, then the drift.
-/// Hyperparameter draws have shape (n_draws, 2): log sigma and log phi. Diagnostics are
+/// `likelihood` is "negative_binomial" or "poisson". Hyperparameter draws have shape
+/// (n_draws, 2): log sigma and log phi (NaN for Poisson). Diagnostics are
 /// (k-hat, ESS, edge mass, unconverged grid points, non-PD grid points, failed draws, grid size).
 #[pyfunction]
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -437,6 +463,7 @@ pub fn fit_structural<'py>(
     prior_prec: PyReadonlyArray1<'py, f64>,
     sigma_scale: f64,
     phi_scale: f64,
+    likelihood: &str,
     n_draws: usize,
     seed: u64,
 ) -> PyResult<(Bound<'py, PyArray2<f64>>, Bound<'py, PyArray2<f64>>, (f64, f64, f64, f64, f64, f64, f64))> {
@@ -459,6 +486,9 @@ pub fn fit_structural<'py>(
     if !(sigma_scale > 0.0 && phi_scale > 0.0) || n_draws < 2 {
         return Err(PyValueError::new_err("prior scales must be > 0 and n_draws at least 2"));
     }
+    if likelihood != "negative_binomial" && likelihood != "poisson" {
+        return Err(PyValueError::new_err("likelihood must be 'negative_binomial' or 'poisson'"));
+    }
     let spec = Spec {
         y: yv,
         f: dv.iter().cloned().collect(),
@@ -467,6 +497,7 @@ pub fn fit_structural<'py>(
         prior_prec: pp,
         sigma_scale,
         phi_scale,
+        poisson: likelihood == "poisson",
     };
     let fit = py.allow_threads(|| spec.fit(n_draws, seed, &GridConfig::default()));
     let p = nf + t_len;
@@ -519,6 +550,7 @@ mod tests {
             prior_prec: vec![0.25, 1.0, 1.0, 1.0, 1.0, 1.0],
             sigma_scale: 0.2,
             phi_scale: 1.0,
+            poisson: false,
         }
     }
 

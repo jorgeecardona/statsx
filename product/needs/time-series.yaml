@@ -62,6 +62,12 @@ needs:
       shape.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_trend.py::test_regressor_terms_are_learned_and_needed_for_the_forecast"
+      - "test:tests/test_trend.py::test_forecast_follows_the_future_regressor"
+      - "test:tests/test_trend.py::test_poisson_recovers_the_trend_of_poisson_counts"
+      - "test:tests/test_trend.py::test_poisson_on_overdispersed_counts_puts_the_noise_in_the_trend"
+      - "test:tests/test_trend.py::test_the_season_period_and_harmonics_are_chosen_by_the_caller"
 
   - id: TS-7
     text: >

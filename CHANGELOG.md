@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fit_trend` takes `regressors` (terms in the log mean, needed again for the forecast months)
+  and `likelihood="poisson"`. The negative binomial stays the default: a Poisson fit of
+  overdispersed counts puts the extra variance into the trend.
 - `TrendFit.anomalies`: flags the months whose count is outside the 95% band the model
   expected for them, with the band and the direction for every month.
 - `TrendFit.forecast`: nested 50/80/95% credible bands for each fitted and future month

@@ -226,3 +226,89 @@ def test_clean_series_are_rarely_flagged() -> None:
         flagged.append(len(report.months) / MONTHS)
     # The nominal rate is 5%; the draws also include the posterior uncertainty, so it is lower.
     assert np.mean(flagged) < 0.1
+
+
+def _with_regressor(seed: int, effect: float) -> tuple[np.ndarray, np.ndarray]:
+    """Counts whose log mean has ``effect`` per unit of a regressor with sd 1.5."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(MONTHS + 12)
+    x = rng.normal(0.0, 1.5, MONTHS + 12)
+    mu = np.exp(math.log(30.0) + effect * x + 0.4 * np.cos(2 * np.pi * t / 12))
+    return rng.negative_binomial(20.0, 20.0 / (20.0 + mu)), x
+
+
+def test_regressor_terms_are_learned_and_needed_for_the_forecast() -> None:
+    counts, x = _with_regressor(seed=1, effect=0.4)
+    fit = fit_trend(counts[:MONTHS], regressors=x[:MONTHS], seed=0)
+    coefficient = fit.regressor_coefficients[:, 0]
+    assert fit.n_regressors == 1
+    low, high = np.quantile(coefficient, [0.05, 0.95])
+    assert low < 0.4 < high
+    assert low > 0.0
+    forecast = fit.forecast(12, regressors=x[MONTHS:], seed=0)
+    assert forecast.counts.shape == (fit.latent.shape[0], MONTHS + 12)
+    with pytest.raises(ValueError, match="pass them"):
+        fit.forecast(12)
+    with pytest.raises(ValueError, match="shape"):
+        fit.forecast(12, regressors=x[MONTHS:-1])
+
+
+def test_forecast_follows_the_future_regressor() -> None:
+    counts, x = _with_regressor(seed=2, effect=0.5)
+    fit = fit_trend(counts[:MONTHS], regressors=x[:MONTHS], seed=0)
+    high = fit.forecast(6, regressors=np.full(6, 3.0), seed=0)
+    low = fit.forecast(6, regressors=np.full(6, -3.0), seed=0)
+    assert np.median(high.mean[:, -6:]) > 3 * np.median(low.mean[:, -6:])
+
+
+def test_poisson_on_overdispersed_counts_puts_the_noise_in_the_trend() -> None:
+    counts, trend, _ = _series(seed=5, level=30.0, slope=0.2, alpha=3.0)
+    poisson = fit_trend(counts, likelihood="poisson", seed=0)
+    negbin = fit_trend(counts, likelihood="negative_binomial", seed=0)
+    assert poisson.likelihood == "poisson"
+    assert np.all(np.isnan(poisson.hyper[:, 1]))
+    forecast = poisson.forecast(6, seed=0)
+    assert np.all(forecast.counts == np.round(forecast.counts))
+    error = {
+        name: float(np.sqrt(np.mean((np.median(fit.trend, axis=0) - trend) ** 2)))
+        for name, fit in (("poisson", poisson), ("negbin", negbin))
+    }
+    # Poisson has no dispersion, so the random-walk drift absorbs the extra variance.
+    assert error["poisson"] > 2 * error["negbin"], error
+    assert np.median(np.exp(poisson.hyper[:, 0])) > 5 * np.median(np.exp(negbin.hyper[:, 0]))
+
+
+def test_poisson_recovers_the_trend_of_poisson_counts() -> None:
+    rng = np.random.default_rng(9)
+    t = np.arange(MONTHS)
+    trend = math.log(20.0) + 0.3 * (t - 29.5) / 12
+    counts = rng.poisson(np.exp(trend + 0.5 * np.cos(2 * np.pi * t / 12)))
+    fit = fit_trend(counts, likelihood="poisson", seed=0)
+    assert np.sqrt(np.mean((np.median(fit.trend, axis=0) - trend) ** 2)) < 0.15
+
+
+def test_the_season_period_and_harmonics_are_chosen_by_the_caller() -> None:
+    rng = np.random.default_rng(3)
+    months = 48
+    t = np.arange(months)
+    trend = math.log(25.0) + 0.1 * (t - 23.5) / 4
+    counts = rng.poisson(np.exp(trend + 0.6 * np.cos(2 * np.pi * t / 4)))
+    fit = fit_trend(counts, period=4, harmonics=1, likelihood="poisson", seed=0)
+    assert (fit.period, fit.harmonics) == (4, 1)
+    assert fit.latent.shape[1] == 2 + 2 * 1 + months
+    assert np.sqrt(np.mean((np.median(fit.trend, axis=0) - trend) ** 2)) < 0.2
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"likelihood": "gamma"}, "likelihood"),
+        ({"regressors": np.ones(MONTHS)}, "constant"),
+        ({"regressors": np.arange(MONTHS - 1.0)}, "rows"),
+        ({"regressors": np.full((MONTHS, 1), np.nan)}, "finite"),
+    ],
+)
+def test_bad_model_choices_are_refused(kwargs: dict[str, object], message: str) -> None:
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
+    with pytest.raises(ValueError, match=message):
+        fit_trend(counts, **kwargs)  # type: ignore[arg-type]

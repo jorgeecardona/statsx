@@ -1,4 +1,4 @@
-"""Trend, forecast and anomalies of a count series (TS-1 to TS-5).
+"""Trend, forecast and anomalies of a count series (TS-1 to TS-6).
 
 ``fit_trend`` fits a negative binomial structural time series: a level, a slope, a random-walk
 drift, and a Fourier season. The posterior comes from the nested Laplace approximation, corrected
@@ -107,6 +107,7 @@ _ETA_LIMIT = 30.0
 _DISPERSION_FLOOR = 1e-3
 
 BandOf = Literal["counts", "mean", "trend"]
+Likelihood = Literal["negative_binomial", "poisson"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +201,10 @@ class TrendFit:
         period: Season length in months.
         harmonics: Number of Fourier harmonics.
         counts: The observed counts the model was fitted to.
+        likelihood: ``"negative_binomial"`` or ``"poisson"``.
+        regressors: The regressors as fitted, standardized, shape (months, regressors).
+        regressor_center: Mean of each regressor before standardizing.
+        regressor_scale: Standard deviation of each regressor before standardizing.
     """
 
     latent: npt.NDArray[np.float64]
@@ -208,11 +213,29 @@ class TrendFit:
     period: int
     harmonics: int
     counts: npt.NDArray[np.float64]
+    likelihood: Likelihood
+    regressors: npt.NDArray[np.float64]
+    regressor_center: npt.NDArray[np.float64]
+    regressor_scale: npt.NDArray[np.float64]
 
     @property
     def n_months(self) -> int:
         """Return the number of months fitted."""
-        return self.latent.shape[1] - 2 - 2 * self.harmonics
+        return self.counts.size
+
+    @property
+    def n_regressors(self) -> int:
+        """Return the number of regressors."""
+        return self.regressors.shape[1]
+
+    @property
+    def regressor_coefficients(self) -> npt.NDArray[np.float64]:
+        """Return draws of the effect of each regressor on the log mean, per unit of the regressor.
+
+        Shape (draws, regressors).
+        """
+        start = 2 + 2 * self.harmonics
+        return self.latent[:, start : start + self.n_regressors] / self.regressor_scale
 
     @property
     def slope(self) -> npt.NDArray[np.float64]:
@@ -239,40 +262,75 @@ class TrendFit:
         lower, upper = np.quantile(self.trend, [tail, 1.0 - tail], axis=0)
         return Band(level, lower, upper)
 
-    def forecast(self, horizon: int, *, seed: int = 0) -> Forecast:
+    def forecast(
+        self,
+        horizon: int,
+        *,
+        regressors: npt.ArrayLike | None = None,
+        seed: int = 0,
+    ) -> Forecast:
         """Return draws for the fitted months and the next ``horizon`` months.
 
         Each posterior draw continues its own random walk: the drift gains ``sigma`` times a
         standard normal step per month, so the trend band widens with the horizon. The season
-        repeats. New counts are drawn from the negative binomial with that draw's dispersion.
+        repeats. New counts are drawn from the negative binomial with that draw's dispersion, or
+        from the Poisson.
 
         Args:
             horizon: Number of months ahead, at least 1.
+            regressors: The regressors for the forecast months, shape (horizon, regressors).
+                Required when the model has regressors.
             seed: Seed of the NumPy generator; the same seed gives the same draws.
 
         Raises:
-            ValueError: If ``horizon`` is below 1.
+            ValueError: If ``horizon`` is below 1, or the regressors are missing or misshaped.
         """
         if horizon < 1:
             raise ValueError(f"horizon must be at least 1, got {horizon}")
         months, draws = self.n_months, self.latent.shape[0]
-        columns = 2 + 2 * self.harmonics
+        columns = 2 + 2 * self.harmonics + self.n_regressors
+        future_regressors = self._standardize(regressors, horizon)
         rng = np.random.default_rng(seed)
         sigma = np.exp(self.hyper[:, [0]])
-        alpha = 1.0 / (np.exp(2.0 * self.hyper[:, [1]]) + _DISPERSION_FLOOR)
         fixed, drift = self.latent[:, :columns], self.latent[:, columns:]
         future = np.arange(months, months + horizon, dtype=np.float64)
-        rows = _design_rows(future, months, self.period, self.harmonics)
-        steps = sigma * rng.standard_normal((draws, horizon))
-        drift_future = drift[:, [-1]] + np.cumsum(steps, axis=1)
-        all_rows = _design(months, self.period, self.harmonics)
-        centred = np.vstack([all_rows, rows])
-        eta = fixed @ centred.T + np.hstack([drift, drift_future])
-        eta = np.clip(eta, -_ETA_LIMIT, _ETA_LIMIT)
-        trend = fixed[:, [0]] + fixed[:, [1]] * centred[:, 1] + np.hstack([drift, drift_future])
+        design = np.vstack(
+            [
+                np.hstack([_design(months, self.period, self.harmonics), self.regressors]),
+                np.hstack(
+                    [
+                        _design_rows(future, months, self.period, self.harmonics),
+                        future_regressors,
+                    ]
+                ),
+            ]
+        )
+        drift_future = drift[:, [-1]] + np.cumsum(sigma * rng.standard_normal((draws, horizon)), 1)
+        drift_all = np.hstack([drift, drift_future])
+        eta = np.clip(fixed @ design.T + drift_all, -_ETA_LIMIT, _ETA_LIMIT)
+        trend = fixed[:, [0]] + fixed[:, [1]] * design[:, 1] + drift_all
         mean = np.exp(eta)
-        counts = rng.negative_binomial(alpha, alpha / (alpha + mean)).astype(np.float64)
+        if self.likelihood == "poisson":
+            counts = rng.poisson(mean).astype(np.float64)
+        else:
+            alpha = 1.0 / (np.exp(2.0 * self.hyper[:, [1]]) + _DISPERSION_FLOOR)
+            counts = rng.negative_binomial(alpha, alpha / (alpha + mean)).astype(np.float64)
         return Forecast(trend, mean, counts, months)
+
+    def _standardize(self, regressors: npt.ArrayLike | None, rows: int) -> npt.NDArray[np.float64]:
+        """Return future regressors on the fitted scale, shape (rows, regressors)."""
+        if self.n_regressors == 0:
+            if regressors is not None:
+                raise ValueError("the model has no regressors")
+            return np.empty((rows, 0))
+        if regressors is None:
+            raise ValueError(f"the model has {self.n_regressors} regressors: pass them")
+        x = _as_columns(regressors)
+        if x.shape != (rows, self.n_regressors):
+            raise ValueError(
+                f"regressors must have shape {(rows, self.n_regressors)}, got {x.shape}"
+            )
+        return (x - self.regressor_center) / self.regressor_scale
 
     def anomalies(self, level: float = 0.95, *, seed: int = 0) -> Anomalies:
         """Return the months whose count is outside the central ``level`` band of a new count.
@@ -303,6 +361,15 @@ def _design_rows(
         angle = 2.0 * np.pi * k * t / period
         columns += [np.cos(angle), np.sin(angle)]
     return np.column_stack(columns)
+
+
+def _as_columns(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    x = np.asarray(values, dtype=np.float64)
+    if x.ndim == 1:
+        x = x[:, None]
+    if x.ndim != 2 or not np.all(np.isfinite(x)):  # noqa: PLR2004 (months x regressors)
+        raise ValueError("regressors must be finite, shape (months,) or (months, regressors)")
+    return x
 
 
 def _design(months: int, period: int, harmonics: int) -> npt.NDArray[np.float64]:
@@ -338,22 +405,30 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     *,
     period: int = 12,
     harmonics: int = 2,
+    regressors: npt.ArrayLike | None = None,
+    likelihood: Likelihood = "negative_binomial",
     n_draws: int = 2000,
     seed: int = 0,
     drift_scale: float = 0.2,
     dispersion_scale: float = 1.0,
 ) -> TrendFit:
-    """Fit a negative binomial structural series and return the checked posterior.
+    """Fit a structural series of counts and return the checked posterior.
 
-    The log mean is a level, a slope, a Fourier season and a random-walk drift. The intercept
-    prior is centred on the log of the mean count; its sd is 2, and the sd of the slope and of
-    each Fourier coefficient is 1. The drift sd and the dispersion ``phi`` (size = 1 / (phi^2 +
+    The log mean is a level, a slope, a Fourier season, regressor terms and a random-walk drift.
+    The counts are negative binomial or Poisson. The intercept
+    prior is centred on the log of the mean count; its sd is 2, and the sd of the slope, of each
+    Fourier coefficient and of each regressor coefficient (regressors are standardized) is 1.
+    The drift sd and, for the negative binomial, the dispersion ``phi`` (size = 1 / (phi^2 +
     0.001)) have half-normal priors.
 
     Args:
         counts: Non-negative counts, one per month, at least two seasons long.
         period: Season length in months.
         harmonics: Number of Fourier harmonics, at most ``period // 2``.
+        regressors: Optional regressor terms, shape (months,) or (months, regressors). None of
+            them may be constant. Their effect is in ``TrendFit.regressor_coefficients``, not in
+            the trend.
+        likelihood: ``"negative_binomial"`` or ``"poisson"``.
         n_draws: Number of posterior draws, at least 400.
         seed: Seed of the random number generator; the same seed gives the same draws.
         drift_scale: Scale of the half-normal prior on the drift sd.
@@ -373,15 +448,29 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         raise ValueError("need period >= 2, 1 <= harmonics <= period // 2, and 2 seasons of data")
     if n_draws < MIN_DRAWS:
         raise ValueError(f"n_draws must be at least {MIN_DRAWS}, got {n_draws}")
-    design = np.ascontiguousarray(_design(y.size, period, harmonics))
+    if likelihood not in ("negative_binomial", "poisson"):
+        raise ValueError(f"likelihood must be 'negative_binomial' or 'poisson', got {likelihood!r}")
+    if regressors is None:
+        x = np.empty((y.size, 0))
+    else:
+        x = _as_columns(regressors)
+        if x.shape[0] != y.size:
+            raise ValueError(f"regressors have {x.shape[0]} rows for {y.size} months")
+    center, scale = x.mean(axis=0), x.std(axis=0)
+    if np.any(scale == 0.0):
+        raise ValueError("a regressor is constant")
+    standardized = (x - center) / scale
+    design = np.ascontiguousarray(np.hstack([_design(y.size, period, harmonics), standardized]))
     columns = design.shape[1]
     prior_mean = np.zeros(columns)
     prior_mean[0] = math.log(float(y.mean()) + 0.1)
     prior_prec = np.ones(columns)
     prior_prec[0] = 0.25
     latent, hyper, diagnostics = _accel.fit_structural(
-        y, design, prior_mean, prior_prec, drift_scale, dispersion_scale, n_draws, seed
+        y, design, prior_mean, prior_prec, drift_scale, dispersion_scale, likelihood, n_draws, seed
     )
     check = _check(diagnostics, n_draws)
     check.require()
-    return TrendFit(latent, hyper, check, period, harmonics, y)
+    return TrendFit(
+        latent, hyper, check, period, harmonics, y, likelihood, standardized, center, scale
+    )

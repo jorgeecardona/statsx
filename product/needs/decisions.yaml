@@ -317,3 +317,32 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-14
+  text: 'Regressor terms enter the log mean as fixed coefficients in the latent field,
+    next to the level, slope and Fourier season, as in a structural time series with
+    explanatory variables, Harvey (1989), ''Forecasting, Structural Time Series Models
+    and the Kalman Filter'', Cambridge University Press, DOI 10.1017/CBO9781107049994.
+    Each regressor is standardized (mean 0, sd 1) and its coefficient has a N(0, 1)
+    prior. The Poisson likelihood is the limit of the negative binomial as alpha goes
+    to infinity (Cameron & Trivedi 2013, chapter 3, as in D-11): it has no dispersion
+    parameter, so the hyperparameter grid has one dimension. The season period and the
+    number of harmonics are arguments.'
+  needs:
+  - TS-6
+  - TS-7
+  alternatives:
+  - 'Regressor coefficients that follow a random walk (time-varying effects): not chosen,
+    the caller asked for regressor terms, and a constant effect keeps the Laplace
+    approximation to about 2 hyperparameters.'
+  - 'Poisson as a negative binomial with a fixed large alpha: not chosen, it is not
+    exact and the Poisson derivatives are simpler.'
+  consequences: 'A Poisson fit of overdispersed counts puts the extra variance into the
+    random-walk drift: on synthetic series (mean 30, size 3) the drift sd was 0.7-0.9
+    against a true 0.04, and the trend error 0.5-0.7 against 0.1 for the negative binomial.
+    The trend of such a fit is not free of noise, so the negative binomial is the default.
+    A regressor effect is separate from the trend: the trend is level + slope + drift,
+    and a forecast needs the regressors for the forecast months.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

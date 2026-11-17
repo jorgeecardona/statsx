@@ -38,6 +38,7 @@ def fit_structural(
     prior_prec: npt.NDArray[np.float64],
     sigma_scale: float,
     phi_scale: float,
+    likelihood: str,
     n_draws: int,
     seed: int,
 ) -> tuple[

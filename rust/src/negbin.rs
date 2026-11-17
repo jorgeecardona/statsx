@@ -16,6 +16,17 @@ pub fn logpmf(y: f64, eta: f64, alpha: f64) -> f64 {
     lgamma(y + alpha) - lgamma(alpha) - lgamma(y + 1.0) + alpha * log_a_frac + y_term
 }
 
+/// log p(y | eta) for a Poisson count with mean exp(eta): the limit alpha -> infinity of `logpmf`.
+pub fn poisson_logpmf(y: f64, eta: f64) -> f64 {
+    y * eta - eta.exp() - lgamma(y + 1.0)
+}
+
+/// First and second derivatives of `poisson_logpmf` in eta.
+pub fn poisson_d_eta(y: f64, eta: f64) -> (f64, f64) {
+    let mu = eta.exp();
+    (y - mu, -mu)
+}
+
 /// First and second derivatives of `logpmf` in eta.
 pub fn d_eta(y: f64, eta: f64, alpha: f64) -> (f64, f64) {
     let mu = eta.exp();
@@ -55,6 +66,20 @@ mod tests {
             let da = d_alpha(y, eta, alpha);
             assert!((da - fd_a).abs() < 1e-6 * da.abs().max(1.0), "alpha {y} {eta} {alpha}");
         }
+    }
+
+    #[test]
+    fn poisson_is_the_limit_of_the_negative_binomial() {
+        // The gap is about mu^2 / alpha; alpha = 1e6 keeps lgamma cancellation below 1e-8.
+        for &(y, eta) in &[(0.0, -1.0), (4.0, 1.2), (30.0, 3.0)] {
+            let nb = logpmf(y, eta, 1e6);
+            assert!((poisson_logpmf(y, eta) - nb).abs() < 1e-3, "{y} {eta}");
+            let (g, h) = poisson_d_eta(y, eta);
+            let (gn, hn) = d_eta(y, eta, 1e6);
+            assert!((g - gn).abs() < 1e-3 * g.abs().max(1.0) && (h - hn).abs() < 1e-3 * h.abs().max(1.0));
+        }
+        // mpmath at 30 digits: 3 * 0.5 - exp(0.5) - log(3!).
+        assert!((poisson_logpmf(3.0, 0.5) + 1.940_480_739_928_183).abs() < 1e-12, "{}", poisson_logpmf(3.0, 0.5));
     }
 
     #[test]
