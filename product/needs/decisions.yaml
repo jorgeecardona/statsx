@@ -843,3 +843,27 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-33
+  text: 'The sample of a stratified evaluation set is allocated by the variance of the
+    stratified mean, sum of W_h^2 S_h^2 (1/n_h - 1/N_h) with W_h = N_h / N, Cochran (1977),
+    ''Sampling Techniques'', 3rd ed., section 5.5, Wiley. Neyman allocation (n_h proportional
+    to N_h S_h, and to N_h S_h / sqrt(c_h) with a cost per item), Neyman (1934), Journal of
+    the Royal Statistical Society 97(4):558-625, DOI 10.2307/2342192, or proportional
+    allocation. The function finds the smallest total, by bisection, whose split meets the
+    margin of error z * sqrt(variance) at the stated level; strata that would get more than
+    their size are filled and the rest re-split; each stratum gets at least one item. For a
+    proportion the planning standard deviation is sqrt(p (1 - p)).'
+  needs:
+  - DE-3
+  alternatives:
+  - 'A fixed number per stratum: not chosen, it ignores size and spread.'
+  - 'Allocation for several outcomes at once (Cochran 1977, section 5.7 and later):
+    not offered now, one outcome per call.'
+  consequences: 'For strata of 4000, 2500 and 1000 items with sds 4, 10 and 20 and a margin of
+    0.4: Neyman needs 1219 items (320, 499, 400) and proportional 1750 (933, 583, 234). The
+    split follows N_h S_h to within 1 percentage point. The planning sds are guesses; if they
+    are wrong the achieved margin is too. A population needs at least 2 items per stratum.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

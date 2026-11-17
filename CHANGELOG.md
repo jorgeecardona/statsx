@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.allocation.stratified_allocation`: how many items to draw in each stratum for a
+  target margin of error (Neyman or proportional, with optional costs).
 - `statsx.calibration.fit_platt` and `fit_isotonic`: recalibrate a classifier's scores with Platt
   scaling or isotonic regression, both written in Rust.
 - `statsx.calibration.reliability`: reliability diagram numbers, ECE, MCE and the exact Brier

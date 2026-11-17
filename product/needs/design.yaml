@@ -21,3 +21,7 @@ needs:
       target precision.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_allocation.py::test_the_neyman_allocation_follows_n_h_proportional_to_size_times_sd"
+      - "test:tests/test_allocation.py::test_the_allocation_is_the_smallest_total_that_meets_the_margin"
+      - "test:tests/test_allocation.py::test_neyman_needs_fewer_items_than_proportional_allocation_for_the_same_margin"
