@@ -20,6 +20,11 @@ needs:
       effective sample size, plus TVD and Wasserstein distance.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_goodness.py::test_the_chi_square_test_matches_the_worked_die_example"
+      - "test:tests/test_goodness.py::test_the_statistic_scales_with_the_effective_sample_size"
+      - "test:tests/test_goodness.py::test_a_tiny_misfit_is_rejected_at_a_million_rows_but_not_at_the_effective_size"
+      - "test:tests/test_goodness.py::test_the_wasserstein_distance_equals_the_area_between_the_distribution_functions"
 
   - id: DI-3
     text: >

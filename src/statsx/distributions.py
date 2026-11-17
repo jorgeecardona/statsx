@@ -60,10 +60,21 @@ def _normal_ppf(p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     return np.array([inv(float(v)) for v in p.ravel()], dtype=np.float64).reshape(p.shape)
 
 
+def _normal_pdf(z: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    return np.exp(-0.5 * z * z) / math.sqrt(2.0 * math.pi)
+
+
 def _unit_interval(p: npt.ArrayLike) -> npt.NDArray[np.float64]:
     values = np.asarray(p, dtype=np.float64)
     if np.any(values <= 0.0) or np.any(values >= 1.0):
         raise ValueError("probabilities must be strictly between 0 and 1")
+    return values
+
+
+def _closed_unit_interval(u: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    values = np.asarray(u, dtype=np.float64)
+    if np.any(values < 0.0) or np.any(values > 1.0):
+        raise ValueError("u must be between 0 and 1")
     return values
 
 
@@ -197,6 +208,13 @@ class NormalFit:
         """Return ``n`` draws; the same seed gives the same draws."""
         return _accel.sample_normal(self.mean, self.sd, n, seed)
 
+    def quantile_integral(self, u: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Return the integral of the quantile function from 0 to ``u``, for ``u`` in [0, 1]."""
+        v = _closed_unit_interval(u)
+        inner = np.clip(v, 1e-300, 1.0 - 1e-16)
+        pdf = np.where((v <= 0.0) | (v >= 1.0), 0.0, _normal_pdf(_normal_ppf(inner)))
+        return self.mean * v - self.sd * pdf
+
 
 @dataclass(frozen=True, slots=True)
 class LognormalFit:
@@ -227,6 +245,14 @@ class LognormalFit:
         """Return ``n`` draws; the same seed gives the same draws."""
         return np.exp(_accel.sample_normal(self.mu, self.sigma, n, seed))
 
+    def quantile_integral(self, u: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Return the integral of the quantile function from 0 to ``u``, for ``u`` in [0, 1]."""
+        v = _closed_unit_interval(u)
+        inner = np.clip(v, 1e-300, 1.0 - 1e-16)
+        shifted = _normal_cdf(_normal_ppf(inner) - self.sigma)
+        top = np.where(v >= 1.0, 1.0, shifted)
+        return np.where(v <= 0.0, 0.0, math.exp(self.mu + 0.5 * self.sigma**2) * top)
+
 
 @dataclass(frozen=True, slots=True)
 class ShiftedExponentialFit:
@@ -254,6 +280,13 @@ class ShiftedExponentialFit:
     def sample(self, n: int, *, seed: int = 0) -> npt.NDArray[np.float64]:
         """Return ``n`` draws; the same seed gives the same draws."""
         return self.shift + np.random.default_rng(seed).exponential(1.0 / self.rate, n)
+
+    def quantile_integral(self, u: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Return the integral of the quantile function from 0 to ``u``, for ``u`` in [0, 1]."""
+        v = _closed_unit_interval(u)
+        inside = np.minimum(v, 0.5)  # a safe argument for the branch that is not used
+        rest = np.where(v >= 1.0, 0.0, (1.0 - v) * np.log1p(-np.where(v >= 1.0, inside, v)))
+        return self.shift * v + (rest + v) / self.rate
 
 
 def _sd(moments: Moments, *, bias_corrected: bool) -> float:

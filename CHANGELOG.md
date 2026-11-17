@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.goodness`: `goodness_of_fit` and `chi_square_test` at a stated effective sample size, with
+  total variation distance, exact Wasserstein distance and the sample size that would reject the fit.
+  New Rust `chi2_cdf` and `chi2_sf`.
 - `statsx.distributions`: `fit_normal`, `fit_lognormal` and `fit_shifted_exponential` from
   sufficient statistics (`Moments`, `ExponentialStats`) that merge across shards, with cdf, ppf and
   sample.

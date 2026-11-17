@@ -12,6 +12,7 @@ mod calibrate;
 mod conjugate;
 mod diagnostics;
 mod eta;
+mod gamma;
 mod linalg;
 // Used by the D-1 posterior method, which waits on the maintainer's choice.
 #[allow(dead_code)]
@@ -46,6 +47,8 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(calibrate::platt_fit, m)?)?;
     m.add_function(wrap_pyfunction!(beta::t_ppf, m)?)?;
     m.add_function(wrap_pyfunction!(beta::nct_cdf, m)?)?;
+    m.add_function(wrap_pyfunction!(gamma::chi2_cdf, m)?)?;
+    m.add_function(wrap_pyfunction!(gamma::chi2_sf, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_beta, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_gamma, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_normal, m)?)?;

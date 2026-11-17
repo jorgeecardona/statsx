@@ -1062,3 +1062,44 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-40
+  text: 'The caller checks goodness of fit on a large N with the test at a stated effective
+    sample size, plus total variation distance and Wasserstein distance. The test is Pearson''s
+    chi-square test (Pearson 1900, Philosophical Magazine 50(302):157-175, DOI
+    10.1080/14786440009463897) on counts, with the statistic n_effective * sum((p_hat - pi)^2 /
+    pi), so it equals Pearson''s statistic at n_effective = n, and n and n_effective are both in
+    the result. The p-value uses the chi-square distribution, from the regularized incomplete
+    gamma function computed here in Rust by the series for x < a + 1 and the Lentz continued
+    fraction otherwise (DLMF sections 8.7 and 8.9; Gautschi 1979, ACM TOMS 5(4):466-481, DOI
+    10.1145/355853.355863). For continuous data the bins have equal probability under the fit
+    and their number is Mann & Wald (1942), Annals of Mathematical Statistics 13(3):306-317, DOI
+    10.1214/aoms/1177731569: ceil(4 (2 (n - 1)^2 / z^2)^(1/5)), capped at n / 5 so that each bin
+    expects 5 rows (the formula is confirmed from a secondary source, not the paper text). Total
+    variation distance is half the sum of absolute differences (Levin, Peres & Wilmer,
+    Markov Chains and Mixing Times, proposition 4.2). Wasserstein-1 distance to a fit is the
+    integral of |F_n^-1(u) - F^-1(u)| over (0, 1), equal to the area between the distribution
+    functions (Vallender 1973, Theory of Probability and its Applications 18(4):784-786, DOI
+    10.1137/1118101), computed exactly on each step of the empirical distribution from the
+    integral of the quantile function, which has a closed form for the normal, lognormal and
+    shifted exponential fits. n_to_reject is the effective sample size at which the same shares
+    give p = alpha.'
+  needs:
+  - DI-2
+  alternatives:
+  - 'Kolmogorov-Smirnov test against a fitted distribution: not offered, the need asks for a
+    test with an effective sample size and the chi-square statistic scales with it directly;
+    KS is in DI-3.'
+  - 'Wasserstein by the midpoint rule on quantiles: rejected, the exact integral is cheap.'
+  consequences: 'The die example (13.4 on 5 df) gives p = 0.0199052203347744 to 1e-10, and the
+    incomplete gamma function matches mpmath to 1e-12 at nine (a, x) pairs including an upper
+    tail of 1.6e-23. A normal sample of 1,000,000 values with the mean shifted by 3% of a
+    standard deviation, tested against the unshifted normal in 946 bins: p = 6e-66, binned total
+    variation 0.017 (about 0.012 of it is sampling noise, 0.4 sqrt(n_bins / n)), Wasserstein
+    0.0310, n_to_reject 537,000. The same data at n_effective = 1000 (60 bins): p = 1.0. For
+    300 lognormal samples of 1000 values drawn from the fit, 6.3% had p < 0.05. The Wasserstein
+    distance matches the numeric area between the distribution functions to 2e-5. At 1,000,000
+    rows the check takes about 3 s, mostly the normal quantile in Python.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
