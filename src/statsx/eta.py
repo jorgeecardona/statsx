@@ -1,4 +1,4 @@
-"""Task duration from input parameters, with a credible interval (ET-1, ET-2, ET-4).
+"""Task duration from input parameters, with a credible interval (ET-1, ET-2, ET-4, ET-5).
 
 The model is ``log(duration) = b0 + sum_k b_k * log(1 + x_k) + e``, with normal noise ``e``.
 A coefficient of 1 on ``log(1 + files)`` means duration grows in proportion to the file count.
@@ -52,6 +52,9 @@ class DurationModel:
     noise_shape: float
     noise_rate: float
     n: int
+    prior: DurationPrior = field(repr=False)
+    design: npt.NDArray[np.float64] = field(repr=False)
+    log_durations: npt.NDArray[np.float64] = field(repr=False)
 
     @property
     def coefficients(self) -> dict[str, float]:
@@ -89,6 +92,9 @@ class DurationModel:
             self.noise_shape + 0.5,
             self.noise_rate + 0.5 * residual**2 / scale,
             self.n + 1,
+            self.prior,
+            np.vstack([self.design, row]),
+            np.append(self.log_durations, math.log(duration)),
         )
 
     def _row(self, params: Mapping[str, float]) -> npt.NDArray[np.float64]:
@@ -96,43 +102,69 @@ class DurationModel:
             return np.ones((1, 1), dtype=np.float64)
         return _design([[params[k]] for k in self.parameters])
 
+    def _without(self, unknown: Sequence[str]) -> DurationModel:
+        """Return the model refitted on the past runs without the ``unknown`` parameters."""
+        keep = [i for i, name in enumerate(self.parameters) if name not in unknown]
+        columns = [0, *(1 + i for i in keep)]
+        design = np.ascontiguousarray(self.design[:, columns])
+        mean, cov, shape, rate = _accel.nig_fit(
+            design,
+            self.log_durations,
+            self.prior.coef_sd**2,
+            self.prior.noise_shape,
+            self.prior.noise_scale,
+        )
+        kept = tuple(self.parameters[i] for i in keep)
+        return DurationModel(
+            kept, mean, cov, shape, rate, self.n, self.prior, design, self.log_durations
+        )
+
     def predict(
         self, params: Mapping[str, float], *, level: float = 0.9, seed: int = 0
     ) -> Estimate:
         """Return the predicted duration (posterior predictive median) and its interval.
 
+        A parameter left out of ``params`` is unknown before the run (ET-5). The model is then
+        refitted on the past runs without it, so what it explained goes into the noise and the
+        interval is wider. The assumption of the result names the unknown parameters.
+
         Args:
-            params: A value for every parameter the model was fitted with.
+            params: A value for each parameter known before the run.
             level: Credible level of the interval.
             seed: Seed of the predictive draws; the same seed gives the same interval.
 
         Raises:
-            ValueError: If a parameter is missing or negative.
+            ValueError: If a name is not a parameter of the model, or a value is negative.
         """
-        missing = set(self.parameters) - set(params)
-        if missing:
-            raise ValueError(f"missing parameters: {sorted(missing)}")
-        row = self._row(params)
+        stray = set(params) - set(self.parameters)
+        if stray:
+            raise ValueError(f"unknown parameters: {sorted(stray)}")
+        unknown = [k for k in self.parameters if k not in params]
+        model = self._without(unknown) if unknown else self
+        row = model._row(params)  # noqa: SLF001 (same class, the refitted model)
         draws = _accel.nig_predict(
-            self.coef_mean,
-            self.coef_cov,
-            self.noise_shape,
-            self.noise_rate,
+            model.coef_mean,
+            model.coef_cov,
+            model.noise_shape,
+            model.noise_rate,
             row,
             20_000,
             seed,
         )[0]
         tail = (1.0 - level) / 2.0
         lower, median, upper = np.quantile(draws, [tail, 0.5, 1.0 - tail])
+        assumption = (
+            "log duration linear in log(1 + x) of "
+            + (", ".join(model.parameters) or "no parameters")
+            + "; normal noise; Normal-Inverse-Gamma prior"
+        )
+        if unknown:
+            assumption += f"; unknown before the run: {', '.join(unknown)} (refitted without them)"
         return Estimate(
             estimate=math.exp(median),
             interval=Interval(math.exp(lower), math.exp(upper), level),
             n=self.n,
-            assumption=(
-                "log duration linear in log(1 + x) of "
-                + ", ".join(self.parameters)
-                + "; normal noise; Normal-Inverse-Gamma prior"
-            ),
+            assumption=assumption,
         )
 
 
@@ -179,4 +211,6 @@ def fit_duration(
         prior.noise_shape,
         prior.noise_scale,
     )
-    return DurationModel(names, mean, cov, shape, rate, int(y.size))
+    return DurationModel(
+        names, mean, cov, shape, rate, int(y.size), prior, np.ascontiguousarray(x), np.log(y)
+    )

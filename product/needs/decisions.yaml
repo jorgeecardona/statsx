@@ -425,3 +425,29 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-18
+  text: 'When a parameter is unknown before a run, the duration model is refitted on the
+    past runs with only the known parameters, and that model predicts. What the unknown
+    parameter explained goes into the noise term, so the predictive interval is wider.
+    The model keeps the past runs for this. Each model with a subset of the columns is
+    the Normal-Inverse-Gamma regression of decision D-7, Gelman, Carlin, Stern, Dunson,
+    Vehtari & Rubin (2013), ''Bayesian Data Analysis'', 3rd ed., chapter 14, CRC Press,
+    DOI 10.1201/b16018.'
+  needs:
+  - ET-5
+  alternatives:
+  - 'Integrate over the unknown parameter using its past values: not chosen, it ignores
+    that the unknown parameter is correlated with the known ones (files and size), and
+    the subset regression uses that correlation.'
+  - 'Fill the unknown value with its past mean: not chosen, it gives a narrow interval
+    that does not say the value was unknown.'
+  consequences: 'On synthetic runs (duration = 0.2 files + 5 GB, log-normal noise sd 0.2,
+    300 past runs) the ratio upper/lower of the 90% interval was 2.5 with both parameters,
+    2.7 with files only and 8.1 with none; coverage of 300 new runs was 92%, 90% and 91%.
+    The refit costs one closed-form fit per prediction. A model keeps its past runs in
+    memory, and a parameter that is unknown now but was always known before is assumed to
+    relate to the others as in the past.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

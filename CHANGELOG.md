@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `DurationModel.predict` takes only the parameters known before the run. The model is refitted
+  without the unknown ones, so the interval is wider, and the result names them.
 - `DurationModel.update`: add a finished run to the duration model without refitting from all
   past runs; the result equals a refit up to rounding.
 - `statsx.backtest`: rolling-origin backtest of a forecast with CRPS and interval coverage by

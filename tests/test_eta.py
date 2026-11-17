@@ -57,8 +57,8 @@ def test_refuses_bad_input() -> None:
     with pytest.raises(ValueError, match="values for"):
         fit_duration([1.0, 2.0], {"files": [1]})
     model = fit_duration([1.0, 2.0, 3.0], {"files": [1, 2, 3]})
-    with pytest.raises(ValueError, match="missing"):
-        model.predict({})
+    with pytest.raises(ValueError, match="unknown parameters"):
+        model.predict({"fies": 3.0})
 
 
 def test_updating_with_each_new_run_equals_refitting_from_all_runs() -> None:
@@ -100,3 +100,45 @@ def test_update_works_with_no_parameters() -> None:
     batch = fit_duration([10.0, 12.0, 9.0, 11.0], {})
     updated = model.update(11.0, {})
     np.testing.assert_allclose(updated.coef_mean, batch.coef_mean, rtol=1e-12)
+
+
+def test_unknown_parameters_give_a_wider_interval_from_the_known_ones() -> None:
+    duration, files, gb = _runs(seed=21, n=200)
+    model = fit_duration(duration, {"files": files, "gb": gb})
+    both = model.predict({"files": 2000.0, "gb": 25.0}, seed=1)
+    files_only = model.predict({"files": 2000.0}, seed=1)
+    nothing = model.predict({}, seed=1)
+    width = {
+        k: v.interval.upper / v.interval.lower
+        for k, v in (("both", both), ("files", files_only), ("none", nothing))
+    }
+    # Each parameter left out widens the interval.
+    assert width["both"] < width["files"] < width["none"]
+    # The interval from the known parameter still covers the true mean duration here.
+    truth = 0.2 * 2000.0 + 5.0 * 25.0
+    assert files_only.interval.contains(truth)
+    assert "unknown before the run: gb" in files_only.assumption
+    assert "unknown" not in both.assumption
+
+
+def test_interval_with_unknown_parameters_covers_new_runs() -> None:
+    train, files, gb = _runs(seed=22, n=300)
+    model = fit_duration(train, {"files": files, "gb": gb})
+    new, new_files, _ = _runs(seed=23, n=300)
+    hits = 0
+    for i in range(100):
+        pred = model.predict({"files": float(new_files[i])}, level=0.9, seed=i)
+        hits += pred.interval.contains(float(new[i]))
+    # The nominal rate is 90%.
+    assert 0.8 <= hits / 100 <= 0.98
+
+
+def test_update_keeps_what_unknown_parameter_predictions_need() -> None:
+    duration, files, gb = _runs(seed=24, n=60)
+    model = fit_duration(duration[:30], {"files": files[:30], "gb": gb[:30]})
+    for i in range(30, 60):
+        model = model.update(duration[i], {"files": files[i], "gb": gb[i]})
+    batch = fit_duration(duration, {"files": files, "gb": gb})
+    a, b = model.predict({"files": 900.0}, seed=2), batch.predict({"files": 900.0}, seed=2)
+    assert a.estimate == pytest.approx(b.estimate, rel=1e-8)
+    assert a.interval.upper == pytest.approx(b.interval.upper, rel=1e-8)
