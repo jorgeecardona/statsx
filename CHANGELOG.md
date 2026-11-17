@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.impact.causal_impact`: the effect of an intervention on a count series from control
+  series, as the effect for each month, the cumulative and average effect (with interval, sample
+  size and assumption), and P(effect > 0).
 - `fit_trend` takes `regressors` (terms in the log mean, needed again for the forecast months)
   and `likelihood="poisson"`. The negative binomial stays the default: a Poisson fit of
   overdispersed counts puts the extra variance into the trend.

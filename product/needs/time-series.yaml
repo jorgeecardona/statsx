@@ -75,6 +75,10 @@ needs:
       effect (observed minus counterfactual), with a credible band and P(effect > 0).
     sources:
       - {kind: primary, date: 2026-11-11, who: maintainer, quote: "build a tool not just for this type of Bayesian analysis for forecasting but also for causal inference"}
+    proofs:
+      - "test:tests/test_impact.py::test_a_large_effect_is_found_with_its_size"
+      - "test:tests/test_impact.py::test_no_effect_is_rarely_called_an_effect"
+      - "test:tests/test_impact.py::test_the_result_states_its_assumption_and_sample_size"
 
   - id: TS-8
     text: >

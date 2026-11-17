@@ -346,3 +346,33 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-15
+  text: 'The effect of an intervention is the observed count minus the counterfactual,
+    where the counterfactual is the posterior predictive count of the structural series
+    fitted on the months before the intervention with the control series as regressors
+    (decision D-14), forecast over the months after it with the controls'' values,
+    Brodersen, Gallusser, Koehler, Remy & Scott (2015), ''Inferring causal impact using
+    Bayesian structural time-series models'', Annals of Applied Statistics 9(1):247-274,
+    DOI 10.1214/14-AOAS788. Controls enter as log(1 + count). The result gives the
+    effect for each month, the cumulative and the average effect as an Estimate with
+    its interval and its assumption, and P(cumulative effect > 0).'
+  needs:
+  - TS-7
+  alternatives:
+  - 'Spike-and-slab selection of controls, as in the paper: not chosen, the latent
+    prior must be Gaussian under decision D-1; every control gets a N(0, 1) prior on its
+    standardized coefficient, so many weak controls dilute the fit.'
+  - 'Difference-in-differences or synthetic control: not chosen, the maintainer asked
+    for the Bayesian structural route with a posterior of the effect.'
+  consequences: 'The data cannot check that the controls are unaffected by the
+    intervention; the result states that assumption. On synthetic series (60 months,
+    intervention at 48, 3 controls, 40 series per row, drift prior scale 0.05) the 95%
+    cumulative interval excluded 0 in 10% of series with no effect, in 3% with a 10% effect
+    and in 33% with a 30% effect (P(effect > 0) above 0.95 in 45%): the power is low for
+    12 post months and noisy counts. The mean cumulative estimate was 154 against a true 168
+    at a 30% effect, and -5 against 0 with no effect. With the default drift prior scale
+    0.2 the power at 30% was 10%.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'
