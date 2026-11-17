@@ -561,3 +561,31 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-23
+  text: 'A proportion has four intervals. Wilson: the score interval, Wilson (1927), JASA
+    22(158):209-212, DOI 10.1080/01621459.1927.10502953. Agresti-Coull: Wilson''s center
+    with (x + z^2/2) / (n + z^2), Agresti & Coull (1998), The American Statistician
+    52(2):119-126, DOI 10.1080/00031305.1998.10480550. Clopper-Pearson: Beta quantiles,
+    Clopper & Pearson (1934), Biometrika 26(4):404-413, DOI 10.1093/biomet/26.4.404.
+    Jeffreys: the Beta(x + 1/2, n - x + 1/2) quantiles with the ends set to 0 and 1 for
+    x = 0 and x = n, Brown, Cai & DasGupta (2001), Statistical Science 16(2):101-133, DOI
+    10.1214/ss/1009213286. The default is Wilson. The regularized incomplete beta function
+    (continued fraction, Didonato & Morris 1992; Press et al., Numerical Recipes, section
+    6.4) and its inverse (Newton steps in a bracket) are in Rust.'
+  needs:
+  - ES-1
+  alternatives:
+  - 'Wald interval: not offered, its coverage is far below nominal at small n and near 0
+    and 1 (Brown, Cai & DasGupta 2001).'
+  - 'Mid-p or Blyth-Still intervals: not offered, the four above are the ones the need names.'
+  consequences: 'Exact coverage of the 95% interval at 10 trials, over true proportions
+    0.0005 to 0.9995: Wilson mean 95.4%, minimum 83.6% (near 0), above 91% from 0.1 to 0.9;
+    Jeffreys 95.3% and 86.8%; Clopper-Pearson 98.4% and 96.1%; Agresti-Coull 96.5% and
+    92.4%. Mean width 0.44 (Wilson), 0.43 (Jeffreys), 0.51 (Clopper-Pearson), 0.46
+    (Agresti-Coull). At 30 trials the minimum coverage is 84.1%, 88.8%, 95.1% and 93.4%. The
+    Beta CDF and quantile match mpmath to 1e-11 to 1e-13 relative on 17 cases; for very
+    large a and b the continued fraction needs many iterations (a cap of 100000).'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

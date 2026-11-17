@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.proportion.proportion_interval`: Wilson, Jeffreys, Clopper-Pearson and Agresti-Coull
+  intervals for a proportion. The module notes state the small-N coverage of each, and a test
+  checks it.
 - `statsx.effect.effect_size`: Hedges' g, Cohen's d or the mean difference of two groups, with
   an analytic or bootstrap interval, the sample size and the assumption.
 - `bootstrap(..., method="basic" | "bca")`: basic and BCa intervals next to the percentile

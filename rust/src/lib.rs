@@ -6,6 +6,7 @@
 use pyo3::prelude::*;
 
 mod arrow;
+mod beta;
 mod bootstrap;
 mod conjugate;
 mod diagnostics;
@@ -36,5 +37,7 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(eta::nig_fit, m)?)?;
     m.add_function(wrap_pyfunction!(eta::nig_predict, m)?)?;
     m.add_function(wrap_pyfunction!(structural::fit_structural, m)?)?;
+    m.add_function(wrap_pyfunction!(beta::beta_cdf, m)?)?;
+    m.add_function(wrap_pyfunction!(beta::beta_ppf, m)?)?;
     Ok(())
 }

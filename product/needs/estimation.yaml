@@ -8,6 +8,10 @@ needs:
       Clopper-Pearson, or Agresti-Coull, and the docs state the small-N behaviour of each.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_proportion.py::test_each_interval_matches_the_reference_values"
+      - "test:tests/test_proportion.py::test_the_small_n_behaviour_stated_in_the_docs_is_true_at_ten_trials"
+      - "test:tests/test_proportion.py::test_the_ends_are_set_at_zero_and_all_successes"
 
   - id: ES-2
     text: >
