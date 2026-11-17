@@ -931,3 +931,38 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-17'
+- id: D-36
+  text: 'For a continuous look at the data, the caller gets a confidence sequence for a mean and
+    an e-process for the claim "the mean is mu0". Method: the normal mixture of Robbins (1970),
+    Annals of Mathematical Statistics 41(5):1397-1409, DOI 10.1214/aoms/1177696786, in the form
+    of Howard, Ramdas, McAuliffe & Sekhon (2021), Annals of Statistics 49(2):1055-1080, DOI
+    10.1214/20-AOS1991, for observations that are sub-Gaussian with a given scale sigma. The
+    interval after n observations with sum S is S / n plus or minus sqrt((rho + n sigma^2)
+    log((rho + n sigma^2) / (rho alpha^2))) / n. The e-value is sqrt(rho / (rho + n sigma^2))
+    exp((S - n mu0)^2 / (2 (rho + n sigma^2))), a mixture of likelihood ratios with expected
+    value 1 under the claim. By Ville (1939), the claim is rejected at level alpha when the
+    e-value reaches 1 / alpha, with probability at most alpha over all sample sizes (see also
+    Ramdas, Grunwald, Vovk & Shafer 2023, Statistical Science 38(4):576-601, DOI
+    10.1214/23-STS894). The mixture precision rho is tuned for the sample size n_target
+    (default 100); the result stays valid at every size. sigma is an input, not estimated.'
+  needs:
+  - SQ-1
+  alternatives:
+  - 'Betting and empirical-Bernstein confidence sequences (Waudby-Smith & Ramdas 2024), which
+    do not need sigma for bounded data: not offered now, one method first; they are the next
+    step if the sigma assumption is a problem.'
+  - 'A fixed-sample interval checked at every look: rejected, it gives a false stop in 48% of
+    runs.'
+  consequences: 'In 4000 simulated normal paths of 400 observations with no effect, a usual
+    95% test checked after every observation stopped in 47.7% of paths. The confidence
+    sequence excluded the true mean in 2.8% (at most 5%). The interval is 1.55 times wider
+    than the fixed-sample interval at n = 100 and 1.60 times at n = 400: this is the price of
+    validity. With a true mean shift of 0.5 standard deviations, the e-process rejected a
+    false claim in all of 1000 paths, at a median of 36 observations. The e-value mean under
+    the claim is 1 to 1e-6 by numerical integration. The e-value and the interval always
+    agree on whether mu0 is rejected. For data in [0, 1], sigma = 0.5 is valid and
+    conservative.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-17'

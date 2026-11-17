@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.alwaysvalid.confidence_sequence` and `e_process`: always-valid confidence sequence for a
+  mean and e-value for "the mean is mu0", valid when you look after every observation and stop early.
 - `statsx.groupsequential.group_sequential_bounds`: O'Brien-Fleming and Pocock critical values for
   a planned number of looks, with the nominal p-value and the error spent at each look.
 - `statsx.design`: power, sample size and minimum detectable effect for paired differences, two

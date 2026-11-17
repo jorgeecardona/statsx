@@ -8,6 +8,11 @@ needs:
       (e-values, confidence sequences), so stopping early does not inflate the error rate.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_alwaysvalid.py::test_the_confidence_sequence_holds_the_true_mean_at_every_step_with_probability_one_minus_alpha"
+      - "test:tests/test_alwaysvalid.py::test_looking_after_every_observation_with_a_usual_interval_is_far_above_five_percent"
+      - "test:tests/test_alwaysvalid.py::test_the_e_value_rejects_a_true_claim_at_most_alpha_of_the_time_whenever_you_stop"
+      - "test:tests/test_alwaysvalid.py::test_a_false_claim_is_rejected_early_and_the_interval_excludes_it_at_the_same_step"
 
   - id: SQ-2
     text: >
