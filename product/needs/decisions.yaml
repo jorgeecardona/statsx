@@ -1365,4 +1365,33 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-49
+  text: 'The caller gets the Monte Carlo standard error of a posterior summary from the ESS of the
+    quantity summarized, as in the posterior R package and Vehtari et al. (2021, Bayesian
+    Analysis 16(2):667-718, DOI 10.1214/20-BA1221). Mean: sd / sqrt(ESS) with the ESS of the draws
+    as they are, on chains split in half, by Geyer''s initial monotone sequence (Geyer 1992,
+    Statistical Science 7(4):473-483, DOI 10.1214/ss/1177011137). Standard deviation: the
+    variance of the sample variance is (mean(d^2) - mean(d)^2) / ESS(d) for d = (x - mean)^2,
+    and the delta method divides it by 4 s^2 (Kenney & Keeping 1951, p. 141). Quantile at p: the
+    ESS n of the indicator x <= q_p gives a Beta(n p + 1, n (1 - p) + 1) for the level of the true
+    quantile, and the error is half the distance between the sorted draws at its 16th and 84th
+    percentiles. The ESS of the raw draws is one new Rust function that reuses the ESS code of
+    the convergence check.'
+  needs:
+  - BA-9
+  alternatives:
+  - 'Batch means (Flegal & Jones 2010): not used, the ESS-based rule is what the convergence
+    check already computes and matches the posterior and ArviZ packages.'
+  - 'Spectral variance estimators: not used for the same reason.'
+  consequences: 'Against the spread of the summary over 300 repeated runs of 4 chains with 500
+    AR(1) draws, the reported error of the mean was 0.0224, 0.0385 and 0.0671 for autocorrelation
+    0, 0.5 and 0.8, against 0.0224, 0.0386 and 0.0666 observed. The standard deviation was
+    0.0201 against 0.0212, and the 5%, 50% and 95% quantiles 0.0635, 0.0416 and 0.0633 against
+    0.0604, 0.0438 and 0.0573: within 10%. The raw-draw ESS formula for the mean is the one the
+    posterior package uses; whether it splits chains for the raw ESS is not shown in the source
+    page read, so splitting is statsx''s choice.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'
 

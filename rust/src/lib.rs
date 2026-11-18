@@ -37,6 +37,7 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(conjugate::dirichlet_multinomial, m)?)?;
     m.add_function(wrap_pyfunction!(bootstrap::bootstrap_indices, m)?)?;
     m.add_function(wrap_pyfunction!(diagnostics::convergence, m)?)?;
+    m.add_function(wrap_pyfunction!(diagnostics::effective_sample_size, m)?)?;
     m.add_function(wrap_pyfunction!(eta::nig_fit, m)?)?;
     m.add_function(wrap_pyfunction!(eta::nig_predict, m)?)?;
     m.add_function(wrap_pyfunction!(structural::fit_structural, m)?)?;

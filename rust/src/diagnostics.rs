@@ -185,6 +185,14 @@ pub fn convergence(py: Python<'_>, draws: PyReadonlyArray2<'_, f64>) -> PyResult
     Ok(py.allow_threads(|| (rhat(&chains), ess_bulk(&chains), ess_tail(&chains))))
 }
 
+/// ESS of the mean of the draws as they are: split chains, no rank transform (Vehtari et al. 2021,
+/// section 3.2 and 4; the quantity behind the Monte Carlo standard error).
+#[pyfunction]
+pub fn effective_sample_size(py: Python<'_>, draws: PyReadonlyArray2<'_, f64>) -> PyResult<f64> {
+    let chains = to_chains(&draws)?;
+    Ok(py.allow_threads(|| ess_basic(&split(&chains))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +229,14 @@ mod tests {
         let mut rng = Rng::new(5);
         let chains: Chains = (0..4).map(|_| ar1(&mut rng, 0.5, 5000, 0.0)).collect();
         let ratio = ess_bulk(&chains) / 20000.0;
+        assert!((ratio - 1.0 / 3.0).abs() < 0.05, "ratio {ratio}");
+    }
+
+    #[test]
+    fn raw_ess_of_ar1_matches_theory() {
+        let mut rng = Rng::new(9);
+        let chains: Chains = (0..4).map(|_| ar1(&mut rng, 0.5, 5000, 0.0)).collect();
+        let ratio = ess_basic(&split(&chains)) / 20000.0;
         assert!((ratio - 1.0 / 3.0).abs() < 0.05, "ratio {ratio}");
     }
 

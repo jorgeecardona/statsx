@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.diagnostics`: `mcse_mean`, `mcse_sd`, `mcse_quantile` (Monte Carlo standard error of a
+  posterior mean, standard deviation and quantile) and `ess_mean`. Docs page "Check MCMC draws and
+  their Monte Carlo error", which also explains R-hat and ESS.
 - `statsx.evals`: an `infra` column (GPU, driver, host, run batch) in `Responses.from_long`, `fit_tokens`
   and `fit_rasch` fits one effect per infra, so a model ratio or ability is read with the infra
   effect removed (`TokenFit.infra_effect`, `RaschFit.infra_shift_difference`). Data where no model
