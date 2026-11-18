@@ -92,22 +92,22 @@ for p in range(40):
             prompt.append(p)
 
 fit = fit_bradley_terry(Comparisons.from_long(first, second, outcome, item=prompt), seed=1)
-for name, value in zip(fit.systems, fit.strength, strict=True):
-    low, high = fit.strength_interval(name, 0.9).lower, fit.strength_interval(name, 0.9).upper
-    print(f"{name:9s} {value:5.2f}  90% [{low:5.2f}, {high:5.2f}]")
-print("tie parameter", round(fit.tie_parameter, 2))
-print("P(large above medium) =", round(fit.p_better("large", "medium"), 3))
-print("frontier vs small (win, loss, tie):", [round(p, 2) for p in fit.probabilities("frontier", "small")])
+for name, value, truth in zip(fit.systems, fit.strength, theta, strict=True):
+    held = fit.strength_interval(name, 0.9).contains(float(truth))
+    print(f"{name:9s} strength {value:4.1f}   true {truth:4.1f}   interval holds it: {held}")
+print("tie parameter", round(fit.tie_parameter, 1))
+print("P(large above medium) above 0.95:", fit.p_better("large", "medium") > 0.95)
+print("frontier vs small (win, loss, tie):", [round(p, 1) for p in fit.probabilities("frontier", "small")])
 ```
 
 ```text
-frontier   1.02  90% [ 0.76,  1.27]
-large      0.23  90% [-0.01,  0.47]
-medium    -0.44  90% [-0.74, -0.15]
-small     -0.80  90% [-1.08, -0.53]
-tie parameter 0.72
-P(large above medium) = 0.992
-frontier vs small (win, loss, tie): [0.69, 0.11, 0.2]
+frontier  strength  1.0   true  0.9   interval holds it: True
+large     strength  0.2   true  0.3   interval holds it: True
+medium    strength -0.4   true -0.3   interval holds it: True
+small     strength -0.8   true -0.9   interval holds it: True
+tie parameter 0.7
+P(large above medium) above 0.95: True
+frontier vs small (win, loss, tie): [0.7, 0.1, 0.2]
 ```
 
 ## Checked in the tests
