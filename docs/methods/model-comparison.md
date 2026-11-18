@@ -70,6 +70,76 @@ example \(\alpha_a - \alpha_b\)) has a Student t posterior:
 \(e^{\alpha_a - \alpha_b}\) is the ratio of the tokens of \(a\) to those of \(b\) on one task. On a complete design,
 this interval equals the paired t interval of the per-task differences.
 
+## Hardware and infra: remove the infra effect
+
+The same model can use another number of tokens, or pass another share of the tasks, on another
+GPU, driver or host. Greedy decoding is not bit-identical across them. If you ignore it, the shift
+lands in the model effect and one model looks cheaper or dearer than it is. Pass an `infra` column
+(one name per row) and the fits add one effect per infra:
+
+\[
+\log \text{tokens}_{r} = \alpha_{m_r} + c_{t_r} + \iota_{i_r} + \varepsilon_r, \qquad
+\mathbb{P}(\text{pass}_r) = \sigma(\theta_{m_r} - b_{t_r} + s_{i_r}) .
+\]
+
+The first infra that appears is the reference: \(\iota = s = 0\), and abilities are read on it.
+`fit_tokens(..., infra=...)` gives `infra_effect(a, b)`, how many times more tokens infra `a` uses than
+`b` for the same model and task. `fit_rasch` gives `infra_shift_difference(a, b)`, in logits.
+
+The infra effect is only separate from the model effect when some model ran on more than one infra.
+That model is the bridge. Without a bridge, "model A is dearer" and "infra 1 is dearer" fit the data
+equally well. Both fits refuse such data with a `ValueError` that lists the models that are not on one
+scale. `calibrate_infra(models, infra)` shows the bridges for every pair of infras before you fit.
+
+The shift is the same for every model. A model that reacts to the infra differently from the bridge
+(for example a quantized kernel that exists on one GPU only) is not corrected.
+
+```python
+import numpy as np
+from statsx.evals import calibrate_infra, fit_tokens
+
+# Simulated: Qwen3-0.6B ran on both GPUs, the other two models on one each.
+rng = np.random.default_rng(0)
+task_effect = rng.normal(5.0, 1.0, 30)
+effect = {"qwen3-0.6b": 0.0, "qwen3-1.7b": np.log(1.5), "gemma": 0.3}
+cells = [
+    ("qwen3-0.6b", "T2000"),
+    ("qwen3-0.6b", "RTX3090"),
+    ("qwen3-1.7b", "T2000"),
+    ("gemma", "RTX3090"),
+]
+models, infras, tasks, tokens = [], [], [], []
+for model, infra in cells:
+    for t in range(30):
+        shift = np.log(1.2) if infra == "RTX3090" else 0.0  # the 3090 uses 20% more tokens
+        models.append(model)
+        infras.append(infra)
+        tasks.append(f"t{t}")
+        tokens.append(np.exp(rng.normal(effect[model] + task_effect[t] + shift, 0.25)))
+
+(bridge,) = calibrate_infra(models, infras)
+print("bridge:", bridge.models)
+
+fit = fit_tokens(models, tasks, tokens, infra=infras)
+raw = fit_tokens(models, tasks, tokens)
+for label, f in (("with infra", fit), ("without   ", raw)):
+    r = f.ratio("qwen3-1.7b", "gemma")
+    print(label, "qwen3-1.7b / gemma:", round(float(np.sqrt(r.lower * r.upper)), 1))
+e = fit.infra_effect("RTX3090", "T2000")
+print("RTX3090 / T2000:", round(float(np.sqrt(e.lower * e.upper)), 1))
+```
+
+```text
+bridge: ('qwen3-0.6b',)
+with infra qwen3-1.7b / gemma: 1.1
+without    qwen3-1.7b / gemma: 0.9
+RTX3090 / T2000: 1.2
+```
+
+The true ratio of `qwen3-1.7b` to `gemma` is 1.1. The two models never ran on the same GPU, so the
+fit without the infra effect reads 0.9: the 3090 uses 1.2 times the tokens, and the model ratio takes
+the blame. The 0.6B model, run on both GPUs, is the bridge that lets the fit separate them.
+
 ## Cost per solved task
 
 If attempts are independent with pass rate \(R\), the number of attempts until the first pass is
@@ -150,6 +220,11 @@ P(frontier cheaper per pass than large) = 1.0
 - The token ratio on a complete design equals the paired t interval exactly. With missing cells and
   different tasks per model, a 90% interval held the true ratio in 91% of 400 simulations.
 - The cost-per-pass 90% interval held the true value in 89% of 300 simulations.
+- With 3 models on 2 infras and a 20% token shift on one, the 90% interval of the token ratio held the
+  true ratio in 88 of 100 runs, and the interval of the infra effect in 91. The Rasch infra shift was
+  covered in 90 of 100 runs and the ability gap in 88. Without the infra effect, the ratio is off by
+  the infra shift (1.25 instead of 1.5 in the test).
+- Models that never share an infra are refused, and the message names them.
 
 ## What it does not do
 
@@ -174,3 +249,7 @@ P(frontier cheaper per pass than large) = 1.0
   <https://arxiv.org/abs/2411.00640>
 - Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., and Rubin, D. B. (2013).
   *Bayesian Data Analysis*, 3rd ed., chapters 4 and 14. CRC Press. <https://doi.org/10.1201/b16018>
+- Linacre, J. M. (1989). *Many-facet Rasch measurement*. MESA Press, Chicago. The Rasch model with
+  facets besides model and task, here the infra.
+- Seber, G. A. F., and Lee, A. J. (2003). *Linear Regression Analysis*, 2nd ed., chapter 3 (estimable
+  functions). Wiley. <https://doi.org/10.1002/9780471722199>

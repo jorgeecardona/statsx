@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.evals`: an `infra` column (GPU, driver, host, run batch) in `Responses.from_long`, `fit_tokens`
+  and `fit_rasch` fits one effect per infra, so a model ratio or ability is read with the infra
+  effect removed (`TokenFit.infra_effect`, `RaschFit.infra_shift_difference`). Data where no model
+  links the infras are refused, naming the models. `calibrate_infra` lists the bridge models.
+  Fixes GitLab issue #3.
 - `statsx.sbc`: simulation-based calibration. `sbc_ranks` and `check_calibration` test that a posterior
   method is correct, and say whether it is too narrow, too wide or biased. Docs page "Check that a
   posterior method is correct".

@@ -1332,3 +1332,37 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-48
+  text: 'The caller removes the effect of the infrastructure (GPU, driver, host, run batch) from
+    model comparisons by adding one effect per infra as a third factor, as one more facet of the
+    Rasch model (Linacre 1989, Many-facet Rasch measurement, MESA Press) and one more factor of the
+    linear model of log tokens. Tokens: log tokens = model + task + infra + noise, fitted by least
+    squares with the reference prior, so a contrast of effects that is estimable has an exact
+    Student t interval (Seber & Lee 2003, Linear Regression Analysis, 2nd ed., chapter 3, DOI
+    10.1002/9780471722199). Rasch: P = sigmoid(theta_m - b_t + s_i) with Normal(0, 1) priors on
+    the shifts, Gaussian posterior at the mode as before. The first infra seen is the reference
+    with effect 0 and abilities are read on it. All model contrasts are estimable exactly when no
+    direction of the model, task and infra indicators that leaves every row unchanged moves one
+    model and not another: the fits compute the null space of the indicator Gram matrix and refuse
+    the data when models differ on it, naming the groups that are not comparable. calibrate_infra
+    lists, for each pair of infras, the models that ran on both.'
+  needs:
+  - CO-6
+  alternatives:
+  - 'An infra effect per model (an interaction): not fitted, it cannot be separated from the model
+    effect on the infras that model ran on, so it needs a bridge for every model. The fixed shift
+    is the model that the issue asks for.'
+  - 'Random effects for the infra: not used, the infras are few and named, and the fixed effect
+    gives an exact interval for the tokens.'
+  consequences: 'With 3 models on 2 infras (one model on each infra alone, one on both) and a 20%
+    token shift on one infra, the 90% interval of the A to B token ratio held the true ratio in 88
+    of 100 runs and the interval of the infra effect in 91. The ratio without the infra effect was
+    off by the infra shift. For the Rasch fit the 90% interval of the infra shift held the truth in
+    90 of 100 runs and of the ability gap in 88. A model that runs on a single infra, with no
+    model on two infras, is refused. The shift is the same for every model: a model that reacts to
+    the infra differently from the bridge is not corrected.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'
+

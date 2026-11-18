@@ -65,3 +65,17 @@ needs:
       - "test:tests/test_evals.py::test_missing_cells_link_models_through_shared_tasks_and_unlinked_data_is_refused"
       - "test:tests/test_evals.py::test_the_token_ratio_equals_the_paired_t_interval_on_a_complete_design"
       - "test:tests/test_evals.py::test_cost_per_pass_interval_covers_the_true_cost_over_pass_rate"
+
+  - id: CO-6
+    text: >
+      When the caller ran the same tasks on different infrastructure (GPU, driver, host, run
+      batch), they can read a model ratio and a model ability after the infra effect is removed,
+      get the infra effect with an interval, and be told which models bridge two infras. Data
+      that leave models on a scale of their own are refused, and the models are named.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue #3 on cardona-oss/statsx, from the ComputeML benchmark runs"}
+    proofs:
+      - "test:tests/test_infra.py::test_the_model_ratio_is_recovered_and_the_90_percent_interval_covers_it"
+      - "test:tests/test_infra.py::test_models_that_never_share_an_infra_are_refused_and_named"
+      - "test:tests/test_infra.py::test_the_rasch_infra_shift_and_the_ability_gap_are_covered_at_close_to_the_stated_rate"
+      - "test:tests/test_infra.py::test_the_bridge_between_two_infras_is_the_model_that_ran_on_both"
