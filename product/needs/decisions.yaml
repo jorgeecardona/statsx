@@ -1394,4 +1394,31 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-50
+  text: 'The caller removes the position bias of each judge from the strengths of a pairwise
+    ranking with one term per judge, as in the within-pair order effect of Davidson & Beaver
+    (1977, Biometrics 33(4), DOI 10.2307/2529467), here one per judge: d = theta_first -
+    theta_second + gamma_j, which enters the Bradley-Terry and Davidson likelihoods through d.
+    The gamma_j have a Normal(0, 1^2) prior (bias_sd) and are not centered. The fit is the same
+    penalized maximum by Newton steps, with the predictor written as column groups so strengths,
+    biases and the tie parameter share one gradient and Hessian. Intervals come from the same
+    bootstrap over items. A bias is identified only when no direction of the strengths and biases
+    leaves every row unchanged and moves it; the fit computes the null space of the indicator
+    Gram matrix and refuses the data when a bias moves, naming the judges.'
+  needs:
+  - CO-7
+  alternatives:
+  - 'A strength per judge and system (judges with different criteria): not in this change; it is
+    the next need, since it asks a different question (do judges rank the systems differently).'
+  - 'A tie parameter per judge: not offered; one nu is shared.'
+  consequences: 'With three systems and two judges (bias 0.8 and 0) and 1500 items, the fitted
+    biases were 0.74 and 0.01, with 95% intervals (0.62, 0.93) and (-0.16, 0.17). The 90%
+    interval of the bias held the truth in 56 of 60 runs of 300 items. With the stronger system
+    shown first 90% of the time, the error of a strength gap of 1.6 was 0.11 with the judge term
+    and 0.30 without it (mean of 6 runs). A judge that always sees one system first is refused.
+    Fits without a judge column give the same numbers as before.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'
 

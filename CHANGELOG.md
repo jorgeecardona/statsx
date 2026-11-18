@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.pairwise`: a `judge` column in `Comparisons.from_long` gives each judge a position bias, so a
+  judge that favours the first answer does not tilt the strengths (`position_bias`,
+  `position_bias_interval`, `p_first_wins`). Data where the order is not mixed are refused, naming
+  the judges.
 - `statsx.diagnostics`: `mcse_mean`, `mcse_sd`, `mcse_quantile` (Monte Carlo standard error of a
   posterior mean, standard deviation and quantile) and `ess_mean`. Docs page "Check MCMC draws and
   their Monte Carlo error", which also explains R-hat and ESS.

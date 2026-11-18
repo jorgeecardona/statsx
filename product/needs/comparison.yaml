@@ -79,3 +79,18 @@ needs:
       - "test:tests/test_infra.py::test_models_that_never_share_an_infra_are_refused_and_named"
       - "test:tests/test_infra.py::test_the_rasch_infra_shift_and_the_ability_gap_are_covered_at_close_to_the_stated_rate"
       - "test:tests/test_infra.py::test_the_bridge_between_two_infras_is_the_model_that_ran_on_both"
+
+  - id: CO-7
+    text: >
+      When the caller ranks systems from pairwise results judged by several judges, they can get a
+      position bias per judge (does the judge favour the first answer) with an interval, and
+      strengths that are not tilted by it. Data where the order of the pairs is not mixed are
+      refused, and the judges are named.
+    sources:
+      - {kind: primary, date: 2026-11-18, who: maintainer, quote: "something like uh a set of judges, um that they all have probably different judging criteria, then they give different results and then this all build like an arena"}
+    proofs:
+      - "test:tests/test_judges.py::test_the_position_bias_of_each_judge_is_recovered"
+      - "test:tests/test_judges.py::test_the_90_percent_interval_of_the_bias_covers_the_truth_at_close_to_the_stated_rate"
+      - "test:tests/test_judges.py::test_the_strengths_stay_right_when_the_stronger_system_is_shown_first_more_often"
+      - "test:tests/test_judges.py::test_a_judge_that_always_sees_the_same_system_first_is_refused_and_named"
+

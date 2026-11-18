@@ -65,6 +65,29 @@ item was drawn). The percentile interval of the resampled strengths is the inter
 `p_better(a, b)` is the share of resamples in which \(\theta_a > \theta_b\). It is a bootstrap frequency,
 not a posterior probability.
 
+## Judges: remove the position bias
+
+A judge, a person or a model, often prefers the answer shown first. Give each judge \(j\) a position
+bias \(\gamma_j\) and add it to the difference (Davidson and Beaver 1977):
+
+\[
+d = \theta_a - \theta_b + \gamma_{j}, \qquad \mathbb{P}(a \succ b) = \sigma(d) ,
+\]
+
+where \(a\) is the system shown first. A judge with \(\gamma_j > 0\) favours the first answer, and
+\(\sigma(\gamma_j)\) is the chance that the first answer wins when the two systems are equal. Pass the
+judge of each row to `Comparisons.from_long(..., judge=...)`. The first column must be the system shown
+first. Each \(\gamma_j\) has a Normal(0, `bias_sd`\(^2\)) prior, with `bias_sd = 1` by default.
+
+The bias is separate from the strengths only when the same pairs are shown in both orders. If a judge
+always sees system A first, then "A is strong" and "this judge favours the first answer" fit the data
+equally well. `fit_bradley_terry` refuses such data with a `ValueError` that names the judges. Randomize
+the order of each pair.
+
+`fit.position_bias` holds one value per judge, `fit.position_bias_interval(judge)` its bootstrap
+interval, and `fit.p_first_wins(judge)` the chance that the first answer wins between equal systems.
+The strengths are then read as if every judge had no position bias.
+
 ## Example
 
 The data are simulated: four systems with true strengths 0.9, 0.3, -0.3 and -0.9, a tie parameter
@@ -110,6 +133,49 @@ P(large above medium) above 0.95: True
 frontier vs small (win, loss, tie): [0.7, 0.1, 0.2]
 ```
 
+A second example, with two judges. The judge `strict` favours the first answer; the judge `fair`
+does not. The stronger systems were shown first 90% of the time, which inflates their strength when
+the bias is ignored.
+
+```python
+import numpy as np
+from statsx.pairwise import Comparisons, fit_bradley_terry
+
+rng = np.random.default_rng(0)
+theta = {"s0": 0.8, "s1": 0.0, "s2": -0.8}
+bias = {"strict": 0.8, "fair": 0.0}
+first, second, outcome, judge, item = [], [], [], [], []
+for i in range(1500):
+    a, b = rng.choice(list(theta), size=2, replace=False)
+    if theta[a] < theta[b] and rng.random() < 0.8:  # the stronger one is shown first 90% of the time
+        a, b = b, a
+    j = str(rng.choice(list(bias)))
+    p = 1 / (1 + np.exp(-(theta[a] - theta[b] + bias[j])))
+    first.append(str(a)); second.append(str(b)); judge.append(j); item.append(i)
+    outcome.append(float(rng.random() < p))
+
+def gap(fit):
+    return fit.strength[fit.systems.index("s0")] - fit.strength[fit.systems.index("s2")]
+
+plain = fit_bradley_terry(Comparisons.from_long(first, second, outcome, item=item), ties="half", seed=1)
+judged = fit_bradley_terry(
+    Comparisons.from_long(first, second, outcome, item=item, judge=judge), ties="half", seed=1
+)
+print("true strength gap s0 - s2: 1.6")
+print("without judges:", round(float(gap(plain)), 1))
+print("with judges:   ", round(float(gap(judged)), 1))
+for name in judged.judges:
+    print(name, "favours the first answer:", judged.position_bias_interval(name).lower > 0)
+```
+
+```text
+true strength gap s0 - s2: 1.6
+without judges: 1.9
+with judges:    1.6
+strict favours the first answer: True
+fair favours the first answer: False
+```
+
 ## Checked in the tests
 
 - The fitted point is the maximum of the penalized log likelihood: the gradient is 0, and any move
@@ -123,11 +189,19 @@ frontier vs small (win, loss, tie): [0.7, 0.1, 0.2]
 - The item-level 90% interval held the population value in about 82% of 80 runs with 20 items. The
   percentile bootstrap is a little narrow for few items: use more items before you trust a close call.
 
+- With two judges (one with bias 0.8, one with 0) and 1500 items, the fitted biases were 0.74 and 0.01,
+  with 95% intervals (0.62, 0.93) and (-0.16, 0.17).
+- The 90% interval of the bias held the truth in 56 of 60 runs (300 items each).
+- When the stronger system is shown first 90% of the time and one judge favours the first answer, the
+  error of the strength gap was 0.11 with the judge term and 0.30 without it (mean of 6 runs).
+- A judge that always sees the same system first is refused, and the message names the judge.
+
 ## When it fails
 
 - A comparison graph that is not connected: systems in different groups are not on one scale. The
   prior sets them to 0 relative to their own group.
-- Judges with their own biases (position, length): the model assumes one preference scale.
+- Judges with other biases (length, style): only the position bias is modelled. The model assumes one
+  preference scale for all judges.
 - Strengths do not capture intransitive preferences (A beats B, B beats C, C beats A).
 
 ## References
@@ -143,3 +217,5 @@ frontier vs small (win, loss, tie): [0.7, 0.1, 0.2]
   Society B* 69(3):369-390. <https://doi.org/10.1111/j.1467-9868.2007.00593.x>
 - Chiang, W.-L., et al. (2024). Chatbot Arena: an open platform for evaluating LLMs by human preference.
   *ICML*, PMLR 235. <https://proceedings.mlr.press/v235/chiang24b.html>
+- Davidson, R. R., and Beaver, R. J. (1977). On extending the Bradley-Terry model to incorporate
+  within-pair order effects. *Biometrics* 33(4). <https://doi.org/10.2307/2529467>
