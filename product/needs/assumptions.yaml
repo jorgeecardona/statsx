@@ -1,0 +1,20 @@
+who: caller who acts on a statsx result
+
+needs:
+
+  - id: AS-1
+    text: >
+      When the caller gets a fit or a test result, they can see what it assumes and whether the data
+      contradict it, so that a computation that ran is not read as a model that is right.
+    sources:
+      - {kind: primary, date: 2026-11-18, who: maintainer, quote: "just because we can do the computation and the computation give us something, that means that the underlying assumption can be forgotten"}
+    must: false
+
+  - id: ED-1
+    text: >
+      When the caller has two sets of points in high dimension (embeddings), they can test whether the
+      sets come from one distribution, with a test that is valid on held-out points, and look at
+      low-dimensional projections first.
+    sources:
+      - {kind: primary, date: 2026-11-18, who: maintainer, quote: "check if two sets of points come from the same distributions"}
+    must: false

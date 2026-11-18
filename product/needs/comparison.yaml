@@ -94,3 +94,26 @@ needs:
       - "test:tests/test_judges.py::test_the_strengths_stay_right_when_the_stronger_system_is_shown_first_more_often"
       - "test:tests/test_judges.py::test_a_judge_that_always_sees_the_same_system_first_is_refused_and_named"
 
+  - id: CO-8
+    text: >
+      When the caller ranks systems from pairwise results, they can read the strengths on the Elo
+      scale (400 / ln 10 per log-odds unit) with intervals.
+    sources:
+      - {kind: primary, date: 2026-11-18, who: maintainer, quote: "the scoring use for um chess games. All the statistics around that, do you think we can include it in this tool"}
+    must: false
+
+  - id: CO-9
+    text: >
+      When the caller has a stream of match results, they can update Elo and Glicko-2 ratings online.
+    sources:
+      - {kind: primary, date: 2026-11-18, who: maintainer, quote: "the scoring use for um chess games. All the statistics around that, do you think we can include it in this tool"}
+    must: false
+
+  - id: CO-10
+    text: >
+      When several judges rank the same systems, the caller can get a strength per judge and a test of
+      whether the judges rank the systems differently, since one strength per system assumes they agree.
+    sources:
+      - {kind: primary, date: 2026-11-18, who: maintainer, quote: "they all have probably different judging criteria, then they give different results"}
+    must: false
+

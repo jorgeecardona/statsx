@@ -14,3 +14,11 @@ principles:
     the methods not chosen, and whose consequences name what the choice costs. The same
     reference is in the docstring, under "References".
   revised_at: '2026-11-16'
+- id: P-3
+  text: >-
+    A computation that runs is not evidence that its assumption holds. Each method states what it
+    assumes, in words, in its docs and on its result. Where the data can speak, the method checks
+    the assumption (a residual or predictive check), and a check of the computation (convergence,
+    effective sample size, grid edge) is never described as a check of the model. A result that
+    passed only a check of the computation says so in those words.
+  revised_at: '2026-11-18'
