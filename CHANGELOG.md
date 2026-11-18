@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `fit_trend` takes `intercept_scale`, `slope_scale`, `seasonal_scale` and `regressor_scale`, the prior
+  scales that were fixed, with today's values as defaults. New page `methods/trend.md` states the model, its
+  priors and what it assumes. Fixes GitLab issue #5.
+
 ### Fixed
 
 - `fit_trend`: both ways of "cannot fit" now share a base, `statsx.errors.StatsxError`. `UnfittableInput` (a

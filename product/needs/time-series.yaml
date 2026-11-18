@@ -134,3 +134,14 @@ needs:
       - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#7, filed from a consumer project"}
     proofs:
       - "test:tests/test_trend.py::test_one_except_catches_both_kinds_of_cannot_fit"
+
+  - id: TS-13
+    text: >
+      When the caller ports a count model onto fit_trend, they can set the prior scales of the
+      intercept, the slope, the Fourier coefficients and the regressors, so the priors match.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#5, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_the_default_prior_scales_change_nothing"
+      - "test:tests/test_trend.py::test_each_prior_scale_shrinks_its_own_coefficients"
+      - "test:tests/test_trend.py::test_a_prior_scale_must_be_positive_and_finite"

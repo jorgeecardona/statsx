@@ -88,6 +88,7 @@ nav:
       - Rank systems from pairwise results: methods/pairwise.md
       - Check MCMC draws and their Monte Carlo error: methods/convergence.md
       - Check that a posterior method is correct: methods/sbc.md
+      - Trend, season and forecast of a count series: methods/trend.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
       - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md

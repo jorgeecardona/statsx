@@ -359,3 +359,44 @@ def test_one_except_catches_both_kinds_of_cannot_fit(monkeypatch: pytest.MonkeyP
     assert isinstance(check.value, FitCheckError)
     assert isinstance(check.value, RuntimeError)
     assert not isinstance(check.value, UnfittableInput)
+
+
+def test_the_default_prior_scales_change_nothing() -> None:
+    counts, _, _ = _series(seed=3, level=40.0, slope=0.2, alpha=15.0)
+    plain = fit_trend(counts, harmonics=2, seed=5)
+    explicit = fit_trend(
+        counts,
+        harmonics=2,
+        seed=5,
+        intercept_scale=2.0,
+        slope_scale=1.0,
+        seasonal_scale=1.0,
+        regressor_scale=1.0,
+        drift_scale=0.2,
+        dispersion_scale=1.0,
+    )
+    np.testing.assert_array_equal(plain.latent, explicit.latent)
+
+
+def test_each_prior_scale_shrinks_its_own_coefficients() -> None:
+    counts, _, _ = _series(seed=3, level=40.0, slope=0.6, alpha=15.0, season=0.8)
+    wide = fit_trend(counts, harmonics=2, seed=5)
+    slope = fit_trend(counts, harmonics=2, seed=5, slope_scale=0.02)
+    season = fit_trend(counts, harmonics=2, seed=5, seasonal_scale=0.02)
+    # Columns of latent: intercept, slope, cos and sine per harmonic.
+    assert np.abs(slope.latent[:, 1]).mean() < 0.2 * np.abs(wide.latent[:, 1]).mean()
+    assert np.abs(season.latent[:, 2:6]).max() < 0.2 * np.abs(wide.latent[:, 2:6]).mean() * 6
+    assert np.abs(season.latent[:, 2:6]).mean() < 0.2 * np.abs(wide.latent[:, 2:6]).mean()
+    # The scale of the intercept prior does not leak into the other columns.
+    pinned = fit_trend(counts, harmonics=2, seed=5, intercept_scale=0.01)
+    assert np.std(pinned.latent[:, 0]) < 0.5 * np.std(wide.latent[:, 0])
+
+
+@pytest.mark.parametrize(
+    "name", ["intercept_scale", "slope_scale", "seasonal_scale", "regressor_scale"]
+)
+def test_a_prior_scale_must_be_positive_and_finite(name: str) -> None:
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
+    for bad in (0.0, -1.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match=name):
+            fit_trend(counts, **{name: bad})  # type: ignore[arg-type]

@@ -1440,3 +1440,21 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-52
+  text: 'The prior scales of fit_trend are keyword arguments with the previous constants as
+    defaults: intercept_scale 2, slope_scale 1 (per period months), seasonal_scale 1,
+    regressor_scale 1. Each is the sd of a normal prior; the precision vector passed to the Rust
+    fit is the inverse of its square. A single priors object was not chosen: drift_scale and
+    dispersion_scale are already keywords, and two ways to set one prior would disagree.'
+  needs:
+  - TS-13
+  alternatives:
+  - 'A frozen Priors dataclass: cleaner if more terms arrive, but it splits the settings in two.'
+  - 'A settable family for the dispersion prior (Gamma): not offered; the family stays half-normal
+    and the docs say so.'
+  consequences: 'Fits with the default scales give identical draws to the previous version (tested
+    with equal arrays). A scale of 0.02 on the slope or on the Fourier coefficients pins those
+    coefficients near zero.'
+  principles:
+  - P-2
+  decided_at: '2026-11-18'

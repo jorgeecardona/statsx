@@ -502,14 +502,19 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     seed: int = 0,
     drift_scale: float = 0.2,
     dispersion_scale: float = 1.0,
+    intercept_scale: float = 2.0,
+    slope_scale: float = 1.0,
+    seasonal_scale: float = 1.0,
+    regressor_scale: float = 1.0,
     index: npt.ArrayLike | None = None,
 ) -> TrendFit:
     """Fit a structural series of counts and return the checked posterior.
 
     The log mean is a level, a slope, a Fourier season, regressor terms and a random-walk drift.
-    The counts are negative binomial or Poisson. The intercept
-    prior is centred on the log of the mean count; its sd is 2, and the sd of the slope, of each
-    Fourier coefficient and of each regressor coefficient (regressors are standardized) is 1.
+    The counts are negative binomial or Poisson. The intercept prior is centred on the log of the
+    mean count with sd ``intercept_scale`` (default 2); the slope (per ``period`` months), each
+    Fourier coefficient and each regressor coefficient (regressors are standardized) have normal
+    priors with sd ``slope_scale``, ``seasonal_scale`` and ``regressor_scale`` (default 1).
     The drift sd and, for the negative binomial, the dispersion ``phi`` (size = 1 / (phi^2 +
     0.001)) have half-normal priors.
 
@@ -534,7 +539,14 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         n_draws: Number of posterior draws, at least 400.
         seed: Seed of the random number generator; the same seed gives the same draws.
         drift_scale: Scale of the half-normal prior on the drift sd.
-        dispersion_scale: Scale of the half-normal prior on ``phi``.
+        dispersion_scale: Scale of the half-normal prior on ``phi``. The family is fixed: a model
+            whose dispersion prior is a Gamma will not match even at the same scale.
+        intercept_scale: Sd of the normal prior on the intercept, centred on the log of the mean
+            count.
+        slope_scale: Sd of the normal prior on the slope per ``period`` months (a slope of
+            ``s`` per month is ``s * period`` here; 0.05 per month at period 12 is 0.6).
+        seasonal_scale: Sd of the normal prior on each Fourier coefficient.
+        regressor_scale: Sd of the normal prior on each coefficient of a standardized regressor.
         index: The month of each count, as whole numbers in increasing order, for counts that
             come from a grouped query with holes. The series is laid out from the first to the
             last index, with NaN at the months that are absent.
@@ -554,6 +566,17 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         y = _lay_out(y, index)
     _check_counts(y)
     _check_shape(int(np.count_nonzero(~np.isnan(y))), period, harmonics)
+    scales = {
+        "drift_scale": drift_scale,
+        "dispersion_scale": dispersion_scale,
+        "intercept_scale": intercept_scale,
+        "slope_scale": slope_scale,
+        "seasonal_scale": seasonal_scale,
+        "regressor_scale": regressor_scale,
+    }
+    for name, value in scales.items():
+        if not (math.isfinite(value) and value > 0.0):
+            raise ValueError(f"{name} must be a positive number, got {value}")
     if n_draws < MIN_DRAWS:
         raise ValueError(f"n_draws must be at least {MIN_DRAWS}, got {n_draws}")
     if likelihood not in ("negative_binomial", "poisson"):
@@ -572,8 +595,10 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     columns = design.shape[1]
     prior_mean = np.zeros(columns)
     prior_mean[0] = math.log(float(np.nanmean(y)) + 0.1)
-    prior_prec = np.ones(columns)
-    prior_prec[0] = 0.25
+    prior_sd = np.full(columns, regressor_scale)
+    prior_sd[0], prior_sd[1] = intercept_scale, slope_scale
+    prior_sd[2 : 2 + 2 * harmonics] = seasonal_scale
+    prior_prec = 1.0 / prior_sd**2
     latent, hyper, diagnostics = _accel.fit_structural(
         y, design, prior_mean, prior_prec, drift_scale, dispersion_scale, likelihood, n_draws, seed
     )
