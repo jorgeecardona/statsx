@@ -1505,3 +1505,19 @@ decisions:
   principles:
   - P-2
   decided_at: '2026-11-18'
+- id: D-55
+  text: 'BradleyTerryFit.elo(system, base=1500) and elo_interval(system, level, base=1500) report
+    a strength on the Elo scale: base + (400 / ln 10) * strength. The ratings average base. The
+    interval is the bootstrap interval of the items mapped through the same line. The scale is
+    fixed and only the zero point is a choice.'
+  needs:
+  - CO-8
+  alternatives:
+  - 'Settable scale: not offered; a different scale is not Elo and the reader would have to ask.'
+  - 'Interval from Elo updates game by game: not offered; it ignores that rows of one item are
+    dependent, the reason the fit resamples items.'
+  consequences: 'A difference of 400 points is odds of 10 to 1 (tested against the fitted
+    probabilities).'
+  principles:
+  - P-2
+  decided_at: '2026-11-18'

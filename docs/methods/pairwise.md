@@ -65,6 +65,21 @@ item was drawn). The percentile interval of the resampled strengths is the inter
 `p_better(a, b)` is the share of resamples in which \(\theta_a > \theta_b\). It is a bootstrap frequency,
 not a posterior probability.
 
+## The Elo scale
+
+Chess ratings use Elo's scale: 400 points are a factor of 10 in the odds that one side wins
+(Elo 1978). One log-odds unit of strength is 400 / ln 10, about 173.7 points.
+
+```text
+fit.elo("a")                  # 1500 + 173.7 * strength, so the ratings average 1500
+fit.elo_interval("a", 0.95)   # the bootstrap interval, on the same scale
+fit.elo("a", base=1000.0)     # another zero point (Chatbot Arena style)
+```
+
+Only the zero point is a choice. The scale is fixed, so the numbers match what a reader of chess
+or arena tables expects. The interval comes from the item resamples above, not from a game-by-game
+Elo update.
+
 ## Judges: remove the position bias
 
 A judge, a person or a model, often prefers the answer shown first. Give each judge \(j\) a position
@@ -215,6 +230,7 @@ fair favours the first answer: False
   <https://doi.org/10.1214/aos/1176344552>
 - Field, C. A., and Welsh, A. H. (2007). Bootstrapping clustered data. *Journal of the Royal Statistical
   Society B* 69(3):369-390. <https://doi.org/10.1111/j.1467-9868.2007.00593.x>
+- Elo, A. E. (1978). *The Rating of Chessplayers, Past and Present*. Arco, New York.
 - Chiang, W.-L., et al. (2024). Chatbot Arena: an open platform for evaluating LLMs by human preference.
   *ICML*, PMLR 235. <https://proceedings.mlr.press/v235/chiang24b.html>
 - Davidson, R. R., and Beaver, R. J. (1977). On extending the Bradley-Terry model to incorporate

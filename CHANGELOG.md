@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BradleyTerryFit.elo` and `elo_interval` give a strength on the Elo scale (400 points are odds of 10 to 1), with
+  the bootstrap interval. Need CO-8.
 - New page `ideas.md`: a running log of ideas and open questions. New principle P-3: a computation that runs is not
   evidence that its assumption holds. Needs AS-1, ED-1, CO-8 to CO-10 record what is planned.
 - `fit_trend(require=False)` returns the fit with its failed check instead of raising, so a caller can show a

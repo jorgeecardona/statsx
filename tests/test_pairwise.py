@@ -194,3 +194,27 @@ def test_bad_input_is_refused(call: object) -> None:
         match=r"same length|compared with itself|outcome must|prior_sd|ties must|unknown",
     ):
         call()  # type: ignore[operator]
+
+
+def test_elo_is_the_strength_on_the_400_per_factor_10_scale() -> None:
+    theta = np.array([0.9, 0.2, -0.4, -0.7])
+    fit = fit_bradley_terry(_simulate(theta, 200, 5), ties="half", n_bootstrap=50)
+    ratings = np.array([fit.elo(s) for s in fit.systems])
+    assert ratings.mean() == pytest.approx(1500.0)
+    # An Elo gap of 400 is odds of 10 to 1: the gap implied by the odds matches the strengths.
+    gap = fit.elo("s0") - fit.elo("s3")
+    p_first, p_second, _ = fit.probabilities("s0", "s3")
+    assert gap == pytest.approx(400.0 * math.log10(p_first / p_second))
+    assert 1.0 / (1.0 + 10.0 ** (-gap / 400.0)) == pytest.approx(p_first)
+
+
+def test_elo_interval_holds_the_rating_and_moves_with_the_base() -> None:
+    theta = np.array([0.6, 0.0, -0.6])
+    fit = fit_bradley_terry(_simulate(theta, 100, 6), ties="half", n_bootstrap=100)
+    box = fit.elo_interval("s0", 0.9)
+    assert box.lower < fit.elo("s0") < box.upper and box.level == 0.9
+    shifted = fit.elo_interval("s0", 0.9, base=1000.0)
+    assert shifted.lower == pytest.approx(box.lower - 500.0)
+    assert fit.elo("s0", base=1000.0) == pytest.approx(fit.elo("s0") - 500.0)
+    with pytest.raises(ValueError, match="unknown system"):
+        fit.elo("nope")

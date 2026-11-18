@@ -100,6 +100,9 @@ needs:
       scale (400 / ln 10 per log-odds unit) with intervals.
     sources:
       - {kind: primary, date: 2026-11-18, who: maintainer, quote: "the scoring use for um chess games. All the statistics around that, do you think we can include it in this tool"}
+    proofs:
+      - "test:tests/test_pairwise.py::test_elo_is_the_strength_on_the_400_per_factor_10_scale"
+      - "test:tests/test_pairwise.py::test_elo_interval_holds_the_rating_and_moves_with_the_base"
     must: false
 
   - id: CO-9

@@ -65,6 +65,7 @@ _DECREMENT = 1e-10
 _TIE = 0.5
 _MIN_STEP = 1e-8
 _TAU_SD = 3.0  # the prior sd of log(nu), the tie parameter
+_ELO_PER_LOGIT = 400.0 / math.log(10.0)  # Elo: 400 points are a factor 10 in the odds
 _OUTCOMES = {"a": 1.0, "win": 1.0, "b": 0.0, "loss": 0.0, "tie": 0.5}
 
 
@@ -364,6 +365,19 @@ class BradleyTerryFit:
     def strength_interval(self, system: str, level: float = 0.95) -> Interval:
         """Return the bootstrap percentile interval of the strength of ``system``."""
         return _percentile(self.draws[:, self._index(system)], level)
+
+    def elo(self, system: str, *, base: float = 1500.0) -> float:
+        """Return the strength of ``system`` on the Elo scale, ``base`` plus 400 / ln 10 per log-odds.
+
+        The ratings average ``base``. A difference of 400 points is odds of 10 to 1 that the
+        stronger system wins rather than loses, which is ``exp(strength difference)`` here.
+        """
+        return base + _ELO_PER_LOGIT * float(self.strength[self._index(system)])
+
+    def elo_interval(self, system: str, level: float = 0.95, *, base: float = 1500.0) -> Interval:
+        """Return the bootstrap percentile interval of the Elo rating of ``system``."""
+        raw = self.strength_interval(system, level)
+        return Interval(base + _ELO_PER_LOGIT * raw.lower, base + _ELO_PER_LOGIT * raw.upper, level)
 
     def difference_interval(self, a: str, b: str, level: float = 0.95) -> Interval:
         """Return the bootstrap percentile interval of ``strength(a) - strength(b)``."""
