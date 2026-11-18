@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.evals`: `Responses`, `fit_rasch` (abilities and difficulties of models on shared tasks, with
+  intervals and `p_better`), `fit_tokens` (token ratios between models on the same tasks) and
+  `cost_per_pass`. Docs page "Compare models on one scale".
 - `statsx.drift`: `ks_test` (exact for small samples), `mmd_test`, `classifier_test` and `psi` /
   `psi_from_shares` to compare two samples for drift.
 - `statsx.design`: power, sample size, minimum detectable effect and TOST for two independent groups

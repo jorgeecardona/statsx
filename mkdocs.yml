@@ -84,6 +84,7 @@ nav:
       - Spending a budget over arms: methods/arms.md
       - Distributions and goodness of fit: methods/distributions.md
       - Drift between two samples: methods/drift.md
+      - Compare models on one scale: methods/model-comparison.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
   - API reference: api.md

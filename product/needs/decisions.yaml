@@ -1197,3 +1197,40 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-44
+  text: 'The caller puts models of different size and quality on one scale with a Rasch model
+    (Rasch 1960, Probabilistic Models for Some Intelligence and Attainment Tests): P(model m
+    solves task t) = sigmoid(theta_m - b_t), with Normal(0, 2^2) priors on abilities and
+    difficulties, rows with missing cells and repeats, and scores in [0, 1] as fractional
+    Bernoulli results. The posterior is the Gaussian at the mode of the concave log posterior
+    (Newton steps; Gelman et al. 2013, Bayesian Data Analysis, 3rd ed., chapter 4). Item response
+    models for language model evaluation follow Polo et al. 2024 (tinyBenchmarks,
+    arXiv:2402.14992). Models are on one scale only if the graph of models and tasks is
+    connected, so unlinked data are refused. Token use is a two-way log-normal model, log tokens
+    = model effect + task effect + noise, with the reference posterior of the linear model
+    (Gelman et al. 2013, chapter 14): a contrast of effects has a Student t posterior with
+    rows minus rank degrees of freedom. Cost per solved task is C / R, the mean cost of an attempt
+    over its pass rate (Butcher et al. 2025, Cost-of-Pass, arXiv:2504.13359), with R from a Beta
+    posterior and C = exp(mu + sigma^2 / 2) from the reference Normal-Inverse-Gamma posterior of
+    the log costs. Paired differences on the same tasks follow Miller 2024 (arXiv:2411.00640).'
+  needs:
+  - CO-5
+  alternatives:
+  - 'A multidimensional or two-parameter item model (tinyBenchmarks, metabench): not offered now;
+    it needs many models to estimate a discrimination per task.'
+  - 'Bradley-Terry on pairwise wins: kept for CO-2, a different data shape.'
+  - 'A joint model of pass/fail and tokens: no published paper fits one; the two are separate
+    models here.'
+  consequences: 'The fitted mode has a zero gradient and a covariance equal to minus the inverse
+    Hessian, against finite differences. A 90% interval for the difference of two abilities held
+    the truth in 87% of 900 comparisons (6 models, 40 tasks, matching priors): the Gaussian is
+    slightly narrow. With 60% of the cells missing the models are still linked; two unlinked
+    groups are refused. On a complete design the token ratio interval equals the paired t
+    interval to 1e-9; with 35% missing cells and unequal task sets a 90% interval held the true
+    ratio in 91% of 400 simulations. The cost-per-pass 90% interval held the truth in 89% of 300
+    simulations. The cost and the result of a task are drawn independently, which ignores their
+    link.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'

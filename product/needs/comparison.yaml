@@ -45,3 +45,17 @@ needs:
       - "test:tests/test_equivalence.py::test_tost_is_the_same_as_the_interval_lying_inside_the_margin"
       - "test:tests/test_equivalence.py::test_the_error_rate_at_the_edge_of_the_margin_is_at_most_alpha"
       - "test:tests/test_equivalence.py::test_the_same_margin_defines_the_rope_probability_and_the_comparison"
+
+  - id: CO-5
+    text: >
+      When the caller has results of several models of different size and quality on shared tasks
+      (cells may be missing), they can put the models on one ability scale with intervals, compare
+      their token use on the same tasks, and compare their cost per solved task.
+    sources:
+      - {kind: primary, date: 2026-11-18, who: maintainer, quote: "I need in principle to ocmpare models of different quality like qwen 3 of different sizes with gemma of differnet sizes and haius and sonnets but I need to find a way to calibrate them in a way that I can compare then"}
+    proofs:
+      - "test:tests/test_evals.py::test_the_mode_has_a_zero_gradient_and_the_covariance_is_minus_the_inverse_hessian"
+      - "test:tests/test_evals.py::test_the_ability_difference_interval_has_its_stated_coverage"
+      - "test:tests/test_evals.py::test_missing_cells_link_models_through_shared_tasks_and_unlinked_data_is_refused"
+      - "test:tests/test_evals.py::test_the_token_ratio_equals_the_paired_t_interval_on_a_complete_design"
+      - "test:tests/test_evals.py::test_cost_per_pass_interval_covers_the_true_cost_over_pass_rate"
