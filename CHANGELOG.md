@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New module `statsx.rating`: online Elo (`elo_expected`, `elo_update`) and Glicko-2 (`glicko2_update`) from a
+  stream of results. The Glicko-2 update reproduces the worked example of Glickman (2022). Need CO-9.
 - `BradleyTerryFit.elo` and `elo_interval` give a strength on the Elo scale (400 points are odds of 10 to 1), with
   the bootstrap interval. Need CO-8.
 - New page `ideas.md`: a running log of ideas and open questions. New principle P-3: a computation that runs is not

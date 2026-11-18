@@ -1521,3 +1521,21 @@ decisions:
   principles:
   - P-2
   decided_at: '2026-11-18'
+- id: D-56
+  text: 'statsx.rating has elo_expected, elo_update(a, b, score, k=32) and glicko2_update(player,
+    games, tau=0.5). Glicko-2 follows Glickman (2022) step by step, with the Illinois iteration of
+    step 5 (revised 2012) and epsilon 1e-6. The ratings are frozen dataclasses (Glicko2Rating,
+    Game). A score outside 0, 0.5, 1 is refused. K is a choice of the pool and has a default
+    only as a common value; tau has the default 0.5 of the worked example.'
+  needs:
+  - CO-9
+  alternatives:
+  - 'The original Glicko (1999): not offered; Glicko-2 contains it as the case without volatility
+    and is the one with a published worked example to test against.'
+  - 'Glicko-2 on the Elo scale of BradleyTerryFit: not mixed; the two are different models and the
+    page says which to use when.'
+  consequences: 'The update reproduces the worked example of the paper to the printed digits.
+    Online ratings have no interval except Glicko-2 rating -/+ 2 RD.'
+  principles:
+  - P-2
+  decided_at: '2026-11-18'

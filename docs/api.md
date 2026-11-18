@@ -158,6 +158,12 @@ Every public function and class, with its docstring.
     options:
       heading_level: 3
 
+## statsx.rating
+
+::: statsx.rating
+    options:
+      heading_level: 3
+
 ## statsx.sbc
 
 ::: statsx.sbc
