@@ -27,6 +27,30 @@ These are assumptions of the model, and the data may not hold them:
 - Given the mean, the counts are independent and negative binomial. No extra spread across months.
 - The priors below are the defaults. A narrow prior on a coefficient is a statement you make about it.
 
+## The period
+
+`period` is a number of months, weeks or any step, and it need not be whole. A year of weekly data
+is 365.2425 / 7 = 52.1775 weeks. Rounding it to 52 moves the season out of phase by about three
+quarters of a week in four years, and the error is systematic. With 600 weeks of counts near 700 a
+week, the season was recovered with an rms error of 0.0024 at 52.1775 and 0.0253 at 52.
+
+`causal_impact` and `backtest` still take a whole `period`.
+
+## How many harmonics
+
+Pass `harmonics="auto"` when one call must serve series of different lengths. It takes as many
+harmonics as the observed length supports (`supported_harmonics`), and never more than
+`max_harmonics` (default 3). A long series supports 6, which is more season than most monthly
+count series need. The number used is in `TrendFit.harmonics`.
+
+| Observed months | Harmonics supported at period 12 |
+|---|---|
+| fewer than 12 | 0 |
+| 12 to 23 | `months // 4 - 1`, at most 6 |
+| 24 or more | 6 |
+
+An integer is not changed: it raises when the series is too short, and the error names the bound.
+
 ## Priors
 
 Every prior is settable. The defaults are in the table. Change one when you port a model and need

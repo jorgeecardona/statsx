@@ -63,7 +63,7 @@ def test_the_error_names_the_condition_that_failed_and_what_would_work() -> None
         fit_trend(counts, period=12, harmonics=5)
     with pytest.raises(ValueError, match=r"harmonics must be from 0 to period // 2 = 6, got 7"):
         fit_trend(_counts(60)[0], period=12, harmonics=7)
-    with pytest.raises(ValueError, match=r"period must be at least 2"):
+    with pytest.raises(ValueError, match=r"period must be a finite number of at least 2"):
         fit_trend(_counts(60)[0], period=1, harmonics=0)
     with pytest.raises(ValueError, match=r"10 observed months support at most 0.*harmonics=0"):
         fit_trend(_counts(10)[0], period=12, harmonics=2)

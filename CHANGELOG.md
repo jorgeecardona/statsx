@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fit_trend(period=...)` takes a float, so a weekly series can use 365.2425 / 7 = 52.1775. A drift that
+  is off (a random walk with no change of level) is a valid answer and no longer refused as a grid
+  edge. Fixes GitLab issue #8.
+- `fit_trend(harmonics="auto", max_harmonics=3)` takes as many harmonics as the series length supports,
+  up to the ceiling, so one call serves series of any length. Fixes GitLab issue #6.
 - `fit_trend` takes `intercept_scale`, `slope_scale`, `seasonal_scale` and `regressor_scale`, the prior
   scales that were fixed, with today's values as defaults. New page `methods/trend.md` states the model, its
   priors and what it assumes. Fixes GitLab issue #5.

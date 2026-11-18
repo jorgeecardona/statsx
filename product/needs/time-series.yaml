@@ -145,3 +145,23 @@ needs:
       - "test:tests/test_trend.py::test_the_default_prior_scales_change_nothing"
       - "test:tests/test_trend.py::test_each_prior_scale_shrinks_its_own_coefficients"
       - "test:tests/test_trend.py::test_a_prior_scale_must_be_positive_and_finite"
+
+  - id: TS-14
+    text: >
+      When the caller fits many series of different lengths with one call, they can ask for as
+      many harmonics as each series supports, up to a ceiling, without writing the bound themselves.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#6, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_auto_harmonics_take_what_the_length_supports_up_to_the_ceiling"
+      - "test:tests/test_trend.py::test_the_ceiling_of_auto_harmonics_is_settable_and_never_exceeds_the_support"
+
+  - id: TS-15
+    text: >
+      When the caller has a weekly series, they can give the period as a number that is not whole
+      (52.1775 weeks in a year), so the season stays in phase with the calendar.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#8, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_a_weekly_period_that_is_not_a_whole_number_keeps_the_season_in_phase"
+      - "test:tests/test_trend.py::test_the_two_season_rule_and_the_period_check_accept_a_float_period"

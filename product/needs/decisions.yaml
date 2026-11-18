@@ -1428,14 +1428,17 @@ decisions:
     concentration is within 1% of its cap 1000 once phi is below about 0.003, so the likelihood
     no longer changes with log phi and only the prior tail remains. The coarse grid of log phi
     now runs from -7 to 1.5 (22 points). When the lowest column of the refined grid is at that cap,
-    it is left out of the edge mass; the other three edges still count. Each fit-check reason
-    names its cause and a change the caller can make.'
+    it is left out of the edge mass; the other three edges still count. The same holds for the
+    drift sd: the grid of log sigma reaches the point where the drift moves the log mean by less
+    than 0.1% over the whole series (sigma * sqrt(T) below 0.001), and mass on that row is not an
+    edge failure. Each fit-check reason names its cause and a change the caller can make.'
   needs:
   - TS-1
   alternatives:
   - 'Refuse and ask for likelihood=poisson: the series is ordinary data and the fit is valid.'
   consequences: 'The 36-month Poisson series of GitLab issue 4 fit in 20 of 20 seeds, where 9 of
-    20 fitted before.'
+    20 fitted before. A weekly series with a season of the exact period and no drift was refused
+    with edge mass 0.25 to 0.49 before the drift end was added and fits now.'
   principles:
   - P-1
   - P-2
@@ -1455,6 +1458,26 @@ decisions:
   consequences: 'Fits with the default scales give identical draws to the previous version (tested
     with equal arrays). A scale of 0.02 on the slope or on the Fourier coefficients pins those
     coefficients near zero.'
+  principles:
+  - P-2
+  decided_at: '2026-11-18'
+- id: D-53
+  text: 'The period of fit_trend is a float, and harmonics can be "auto". A season of period P
+    uses the columns cos(2 pi k t / P) and sin(2 pi k t / P), which do not need P to be whole.
+    The harmonics supported by the length are floor(P / 2) from two seasons (2P months) on, and
+    n // 4 - 1 (at most floor(P / 2)) between one and two seasons, as before. "auto" takes the
+    supported number, capped by max_harmonics (default 3).'
+  needs:
+  - TS-14
+  - TS-15
+  alternatives:
+  - 'Clamp an integer harmonics silently: hides a mistake; "auto" is the caller saying it out
+    loud.'
+  - 'Several periods at once (daily data with a week and a year): not offered; a sequence of
+    periods would settle the float question the same way later.'
+  consequences: 'On 600 weeks with a true period of 52.1775 weeks, the season was recovered with an
+    rms error of 0.0024 at the exact period and 0.0253 at period 52 (counts of about 700 a week).
+    causal_impact and backtest still take an integer period.'
   principles:
   - P-2
   decided_at: '2026-11-18'

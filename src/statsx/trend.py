@@ -203,7 +203,9 @@ class TrendFit:
             random-walk drift for each month.
         hyper: Draws of (log drift sd, log dispersion), shape (draws, 2).
         check: The fit check, which passed.
-        period: Season length in months.
+        period: Season length in months. It need not be a whole number: a year of weekly data is
+            365.2425 / 7 = 52.1775 weeks, and rounding it to 52 slides the season out of phase by
+            about three quarters of a week in four years.
         harmonics: Number of Fourier harmonics.
         counts: The counts the model was fitted to; NaN for a month that was not observed.
         likelihood: ``"negative_binomial"`` or ``"poisson"``.
@@ -215,7 +217,7 @@ class TrendFit:
     latent: npt.NDArray[np.float64]
     hyper: npt.NDArray[np.float64]
     check: FitCheck
-    period: int
+    period: float
     harmonics: int
     counts: npt.NDArray[np.float64]
     likelihood: Likelihood
@@ -363,7 +365,7 @@ class TrendFit:
 
 
 def _design_rows(
-    t: npt.NDArray[np.float64], months: int, period: int, harmonics: int
+    t: npt.NDArray[np.float64], months: int, period: float, harmonics: int
 ) -> npt.NDArray[np.float64]:
     """Return the fixed-effects design at month indices ``t``; the slope is centred on the fit."""
     columns = [np.ones(t.size), (t - (months - 1) / 2) / period]
@@ -398,7 +400,7 @@ def _as_columns(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
     return x
 
 
-def _design(months: int, period: int, harmonics: int) -> npt.NDArray[np.float64]:
+def _design(months: int, period: float, harmonics: int) -> npt.NDArray[np.float64]:
     return _design_rows(np.arange(months, dtype=np.float64), months, period, harmonics)
 
 
@@ -447,7 +449,7 @@ def _check(
     )  # fmt: skip
 
 
-def supported_harmonics(n_observed: int, period: int) -> int:
+def supported_harmonics(n_observed: int, period: float) -> int:
     """Return the most Fourier harmonics that ``n_observed`` observed months can carry.
 
     With 2 seasons (``2 * period`` months) or more, every harmonic up to ``period // 2`` is
@@ -459,8 +461,8 @@ def supported_harmonics(n_observed: int, period: int) -> int:
     if n_observed < period:
         return 0
     if n_observed >= 2 * period:
-        return period // 2
-    return max(0, min(period // 2, n_observed // 4 - 1))
+        return int(period // 2)
+    return max(0, min(int(period // 2), n_observed // 4 - 1))
 
 
 def _check_counts(y: npt.NDArray[np.float64]) -> None:
@@ -472,12 +474,12 @@ def _check_counts(y: npt.NDArray[np.float64]) -> None:
         raise UnfittableInput("counts must not be negative")
 
 
-def _check_shape(n_observed: int, period: int, harmonics: int) -> None:
-    if period < 2:  # noqa: PLR2004
-        raise ValueError(f"period must be at least 2, got {period}")
-    if not 0 <= harmonics <= period // 2:
+def _check_shape(n_observed: int, period: float, harmonics: int) -> None:
+    if not (math.isfinite(period) and period >= 2):  # noqa: PLR2004
+        raise ValueError(f"period must be a finite number of at least 2, got {period}")
+    if not 0 <= harmonics <= int(period // 2):
         raise ValueError(
-            f"harmonics must be from 0 to period // 2 = {period // 2}, got {harmonics}"
+            f"harmonics must be from 0 to period // 2 = {int(period // 2)}, got {harmonics}"
         )
     if n_observed < MIN_OBSERVED:
         raise UnfittableInput(f"need at least {MIN_OBSERVED} observed months, got {n_observed}")
@@ -485,17 +487,44 @@ def _check_shape(n_observed: int, period: int, harmonics: int) -> None:
     if harmonics > allowed:
         raise UnfittableInput(
             f"{n_observed} observed months support at most {allowed} harmonics at period "
-            f"{period}, not {harmonics}. Use harmonics={allowed}"
+            f"{period:g}, not {harmonics}. Use harmonics={allowed}"
             + (" or harmonics=0 for a fit without a season" if allowed > 0 else "")
-            + f"; {2 * period} observed months support every harmonic up to {period // 2}."
+            + f"; {2 * period:g} observed months support every harmonic up to {int(period // 2)}."
         )
+
+
+def _check_scales(*scales: float) -> None:
+    names = (
+        "drift_scale",
+        "dispersion_scale",
+        "intercept_scale",
+        "slope_scale",
+        "seasonal_scale",
+        "regressor_scale",
+    )
+    for name, value in zip(names, scales, strict=True):
+        if not (math.isfinite(value) and value > 0.0):
+            raise ValueError(f"{name} must be a positive number, got {value}")
+
+
+def _resolve_harmonics(
+    harmonics: int | str, max_harmonics: int, n_observed: int, period: float
+) -> int:
+    if not isinstance(harmonics, str):
+        return harmonics
+    if harmonics != "auto":
+        raise ValueError(f"harmonics must be a whole number or 'auto', got {harmonics!r}")
+    if max_harmonics < 0:
+        raise ValueError(f"max_harmonics must not be negative, got {max_harmonics}")
+    return min(max_harmonics, supported_harmonics(n_observed, period))
 
 
 def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     counts: npt.ArrayLike,
     *,
-    period: int = 12,
-    harmonics: int = 2,
+    period: float = 12,
+    harmonics: int | Literal["auto"] = 2,
+    max_harmonics: int = 3,
     regressors: npt.ArrayLike | None = None,
     likelihood: Likelihood = "negative_binomial",
     n_draws: int = 2000,
@@ -528,9 +557,15 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
             With at least ``2 * period`` observed months every harmonic up to ``period // 2`` can
             be fitted. With ``period`` to ``2 * period - 1`` months, ``supported_harmonics`` says how
             many. With fewer than ``period`` observed months, pass ``harmonics=0``.
-        period: Season length in months.
+        period: Season length in months. It need not be a whole number: a year of weekly data is
+            365.2425 / 7 = 52.1775 weeks, and rounding it to 52 slides the season out of phase by
+            about three quarters of a week in four years.
         harmonics: Number of Fourier harmonics, from 0 to ``period // 2``. 0 fits a level, a slope
-            and the drift, with no season.
+            and the drift, with no season. ``"auto"`` takes as many as the observed length
+            supports (``supported_harmonics``), never more than ``max_harmonics``; the number used
+            is in ``TrendFit.harmonics``. Use it when one call must serve series of different
+            lengths.
+        max_harmonics: The ceiling for ``harmonics="auto"``. Ignored for an integer. Default 3.
         regressors: Optional regressor terms, one row per month of the dense series (also the
             months that were not observed), shape (months,) or (months, regressors). None of
             them may be constant. Their effect is in ``TrendFit.regressor_coefficients``, not in
@@ -565,18 +600,12 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     if index is not None:
         y = _lay_out(y, index)
     _check_counts(y)
-    _check_shape(int(np.count_nonzero(~np.isnan(y))), period, harmonics)
-    scales = {
-        "drift_scale": drift_scale,
-        "dispersion_scale": dispersion_scale,
-        "intercept_scale": intercept_scale,
-        "slope_scale": slope_scale,
-        "seasonal_scale": seasonal_scale,
-        "regressor_scale": regressor_scale,
-    }
-    for name, value in scales.items():
-        if not (math.isfinite(value) and value > 0.0):
-            raise ValueError(f"{name} must be a positive number, got {value}")
+    n_observed = int(np.count_nonzero(~np.isnan(y)))
+    harmonics = _resolve_harmonics(harmonics, max_harmonics, n_observed, period)
+    _check_shape(n_observed, period, harmonics)
+    _check_scales(
+        drift_scale, dispersion_scale, intercept_scale, slope_scale, seasonal_scale, regressor_scale
+    )
     if n_draws < MIN_DRAWS:
         raise ValueError(f"n_draws must be at least {MIN_DRAWS}, got {n_draws}")
     if likelihood not in ("negative_binomial", "poisson"):

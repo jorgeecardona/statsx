@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from statsx import _accel
-from statsx.trend import ESS_MIN, FitCheckError, fit_trend, khat_limit
+from statsx.trend import ESS_MIN, FitCheckError, fit_trend, khat_limit, supported_harmonics
 
 MONTHS = 60
 
@@ -400,3 +400,57 @@ def test_a_prior_scale_must_be_positive_and_finite(name: str) -> None:
     for bad in (0.0, -1.0, float("nan"), float("inf")):
         with pytest.raises(ValueError, match=name):
             fit_trend(counts, **{name: bad})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(("months", "expected"), [(8, 0), (12, 2), (25, 3), (60, 3)])
+def test_auto_harmonics_take_what_the_length_supports_up_to_the_ceiling(
+    months: int, expected: int
+) -> None:
+    rng = np.random.default_rng(months)
+    t = np.arange(months)
+    counts = rng.poisson(np.exp(3.5 + 0.4 * np.sin(2 * np.pi * t / 12)) * 3)
+    fit = fit_trend(counts, harmonics="auto", seed=1)
+    assert fit.harmonics == expected
+    assert supported_harmonics(months, 12) >= expected
+
+
+def test_the_ceiling_of_auto_harmonics_is_settable_and_never_exceeds_the_support() -> None:
+    counts, _, _ = _series(seed=2, level=30.0, slope=0.2, alpha=20.0)
+    assert fit_trend(counts, harmonics="auto", max_harmonics=5).harmonics == 5
+    assert fit_trend(counts, harmonics="auto", max_harmonics=0).harmonics == 0
+    assert fit_trend(counts[:12], harmonics="auto", max_harmonics=6).harmonics == 2
+    with pytest.raises(ValueError, match="max_harmonics"):
+        fit_trend(counts, harmonics="auto", max_harmonics=-1)
+    with pytest.raises(ValueError, match="'auto'"):
+        fit_trend(counts, harmonics="most")  # type: ignore[arg-type]
+
+
+def test_a_weekly_period_that_is_not_a_whole_number_keeps_the_season_in_phase() -> None:
+    period, weeks = 365.2425 / 7.0, 600
+    t = np.arange(weeks, dtype=float)
+    truth = 0.5 * np.sin(2 * np.pi * t / period + 0.7)
+    counts = np.random.default_rng(0).poisson(np.exp(6.5 + truth))
+
+    def seasonal_error(p: float) -> float:
+        fit = fit_trend(counts, period=p, harmonics=1, seed=3)
+        # Columns of latent: intercept, slope, then cosine and sine of the first harmonic.
+        angle = 2 * np.pi * t / p
+        season = fit.latent[:, [2]] * np.cos(angle) + fit.latent[:, [3]] * np.sin(angle)
+        return float(np.sqrt(np.mean((np.median(season, axis=0) - truth) ** 2)))
+
+    exact, rounded = seasonal_error(period), seasonal_error(52)
+    assert exact < 0.02
+    assert rounded > 3 * exact
+
+
+def test_the_two_season_rule_and_the_period_check_accept_a_float_period() -> None:
+    assert supported_harmonics(104, 52.1775) == 25  # 104 < 2 * 52.1775: not yet two seasons
+    assert supported_harmonics(105, 52.1775) == 26
+    assert supported_harmonics(100, 52.1775) < 25
+    counts = np.random.default_rng(1).poisson(np.full(110, 30.0))
+    with pytest.raises(ValueError, match=r"period must be a finite number of at least 2"):
+        fit_trend(counts, period=float("nan"))
+    with pytest.raises(ValueError, match=r"period must be a finite number of at least 2"):
+        fit_trend(counts, period=1.5)
+    with pytest.raises(ValueError, match=r"at most .* harmonics at period 52.1775"):
+        fit_trend(counts[:60], period=52.1775, harmonics=26)

@@ -95,7 +95,7 @@ impl Default for GridConfig {
         GridConfig {
             u_range: (-6.0, 0.0),
             v_range: (-7.0, 1.5),
-            coarse: (18, 22),
+            coarse: (24, 22),
             fine: (21, 21),
             span: 4.0,
             min_sd: 0.15,
@@ -106,6 +106,9 @@ impl Default for GridConfig {
 fn linspace(lo: f64, hi: f64, n: usize) -> Vec<f64> {
     (0..n).map(|i| lo + (hi - lo) * i as f64 / (n - 1) as f64).collect()
 }
+
+/// The drift counts as off when its sd after the whole series is below this (0.1% of the mean).
+const DRIFT_OFF: f64 = 1e-3;
 
 fn alpha_of(v: f64) -> f64 {
     1.0 / (v.exp().powi(2) + PHI_FLOOR)
@@ -315,8 +318,11 @@ impl Spec {
     /// Coarse grid, then a grid centred on the coarse posterior, then `n_draws` importance draws.
     pub fn fit(&self, n_draws: usize, seed: u64, cfg: &GridConfig) -> Fit {
         let start = self.start();
+        // The range of log sigma reaches the point where the drift is switched off: below it the
+        // walk moves the log mean by less than `DRIFT_OFF` over the whole series.
+        let u_lo = cfg.u_range.0.min((DRIFT_OFF / (self.t() as f64).sqrt()).ln());
         let coarse = self.grid_pass(
-            &linspace(cfg.u_range.0, cfg.u_range.1, cfg.coarse.0),
+            &linspace(u_lo, cfg.u_range.1, cfg.coarse.0),
             &if self.poisson { vec![0.0] } else { linspace(cfg.v_range.0, cfg.v_range.1, cfg.coarse.1) },
             &start,
         );
@@ -342,7 +348,9 @@ impl Spec {
         // Mass piled on the Poisson end of the dispersion grid is a valid answer (no extra noise),
         // not a grid that is too narrow, so that column does not count as an edge.
         let poisson_end = nv > 1 && is_poisson_end(grid.vs[0]);
-        let edge_mass = edge_mass(&pg, nu, nv, poisson_end);
+        // The same holds for a drift that is off: no change of level is a valid answer.
+        let drift_off = grid.us[0].exp() * (self.t() as f64).sqrt() <= DRIFT_OFF;
+        let edge_mass = edge_mass(&pg, nu, nv, poisson_end, drift_off);
         let cdf: Vec<f64> = pg
             .iter()
             .scan(0.0, |acc, &q| {
@@ -433,10 +441,10 @@ fn normalized(log_marg: &[f64]) -> Vec<f64> {
     pg
 }
 
-fn edge_mass(pg: &[f64], nu: usize, nv: usize, skip_low_v: bool) -> f64 {
+fn edge_mass(pg: &[f64], nu: usize, nv: usize, skip_low_v: bool, skip_low_u: bool) -> f64 {
     let row = |i: usize| (0..nv).map(|j| pg[i * nv + j]).sum::<f64>();
     let col = |j: usize| (0..nu).map(|i| pg[i * nv + j]).sum::<f64>();
-    let rows = row(0).max(row(nu - 1));
+    let rows = (if skip_low_u { 0.0 } else { row(0) }).max(row(nu - 1));
     if nv > 1 {
         let low = if skip_low_v { 0.0 } else { col(0) };
         rows.max(low).max(col(nv - 1))
