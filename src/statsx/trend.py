@@ -35,6 +35,7 @@ import numpy as np
 import numpy.typing as npt
 
 from statsx import _accel
+from statsx.errors import StatsxError, UnfittableInput
 
 KHAT_CAP = 0.7
 """Largest k-hat accepted; with few draws the limit is lower (see ``khat_limit``)."""
@@ -85,8 +86,11 @@ class FitCheck:
             raise FitCheckError(self)
 
 
-class FitCheckError(RuntimeError):
-    """Raised when a fit fails its check; ``check`` holds the numbers and the reasons."""
+class FitCheckError(StatsxError, RuntimeError):
+    """Raised when a fit fails its check; ``check`` holds the numbers and the reasons.
+
+    The fit ran, so a retry with other settings can work (see the reasons).
+    """
 
     def __init__(self, check: FitCheck) -> None:
         super().__init__("fit check failed: " + "; ".join(check.reasons))
@@ -463,9 +467,9 @@ def _check_counts(y: npt.NDArray[np.float64]) -> None:
     if y.ndim != 1:
         raise ValueError("counts must be a 1-D array")
     if np.any(np.isinf(y)):
-        raise ValueError("counts must be finite, or NaN for a month that was not observed")
+        raise UnfittableInput("counts must be finite, or NaN for a month that was not observed")
     if np.any(y < 0.0):
-        raise ValueError("counts must not be negative")
+        raise UnfittableInput("counts must not be negative")
 
 
 def _check_shape(n_observed: int, period: int, harmonics: int) -> None:
@@ -476,10 +480,10 @@ def _check_shape(n_observed: int, period: int, harmonics: int) -> None:
             f"harmonics must be from 0 to period // 2 = {period // 2}, got {harmonics}"
         )
     if n_observed < MIN_OBSERVED:
-        raise ValueError(f"need at least {MIN_OBSERVED} observed months, got {n_observed}")
+        raise UnfittableInput(f"need at least {MIN_OBSERVED} observed months, got {n_observed}")
     allowed = supported_harmonics(n_observed, period)
     if harmonics > allowed:
-        raise ValueError(
+        raise UnfittableInput(
             f"{n_observed} observed months support at most {allowed} harmonics at period "
             f"{period}, not {harmonics}. Use harmonics={allowed}"
             + (" or harmonics=0 for a fit without a season" if allowed > 0 else "")
@@ -540,6 +544,9 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
 
     Raises:
         FitCheckError: If the fit check fails. It carries the numbers and the reasons.
+        UnfittableInput: If the series cannot be fitted whatever the settings: fewer than 4
+            observed months, a negative count, too few months for ``harmonics``, a constant
+            regressor. Both errors derive from ``StatsxError``.
         ValueError: If an argument is out of range.
     """
     y = np.ascontiguousarray(counts, dtype=np.float64)
@@ -559,7 +566,7 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
             raise ValueError(f"regressors have {x.shape[0]} rows for {y.size} months")
     center, scale = x.mean(axis=0), x.std(axis=0)
     if np.any(scale == 0.0):
-        raise ValueError("a regressor is constant")
+        raise UnfittableInput("a regressor is constant")
     standardized = (x - center) / scale
     design = np.ascontiguousarray(np.hstack([_design(y.size, period, harmonics), standardized]))
     columns = design.shape[1]

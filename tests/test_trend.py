@@ -334,3 +334,28 @@ def test_fit_check_reason_names_a_remedy(monkeypatch: pytest.MonkeyPatch) -> Non
     counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
     with pytest.raises(FitCheckError, match=r"dispersion_scale"):
         fit_trend(counts, seed=0)
+
+
+def test_one_except_catches_both_kinds_of_cannot_fit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from statsx.errors import StatsxError, UnfittableInput
+
+    short = np.arange(12) + 5  # 12 months support 2 harmonics, not 3
+    with pytest.raises(StatsxError) as shape:
+        fit_trend(short, period=12, harmonics=3)
+    assert isinstance(shape.value, UnfittableInput)
+    assert isinstance(shape.value, ValueError)  # old handlers keep working
+    assert not isinstance(shape.value, FitCheckError)
+
+    real = _accel.fit_structural
+
+    def failing(*args: object) -> tuple[object, object, tuple[float, ...]]:
+        latent, hyper, diag = real(*args)  # type: ignore[arg-type]
+        return latent, hyper, (np.inf, *diag[1:])
+
+    monkeypatch.setattr(_accel, "fit_structural", failing)
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
+    with pytest.raises(StatsxError) as check:
+        fit_trend(counts, seed=0)
+    assert isinstance(check.value, FitCheckError)
+    assert isinstance(check.value, RuntimeError)
+    assert not isinstance(check.value, UnfittableInput)

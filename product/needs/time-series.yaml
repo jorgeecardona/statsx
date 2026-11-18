@@ -115,3 +115,22 @@ needs:
       - "test:tests/test_trend_gaps.py::test_imputing_a_missing_month_narrows_the_band_by_pretending_to_know_it"
       - "test:tests/test_trend_gaps.py::test_an_index_is_the_same_as_nan_in_the_dense_series"
       - "test:tests/test_trend_gaps.py::test_a_nan_month_is_not_observed_and_infinities_and_negatives_are_refused_separately"
+
+  - id: TS-11
+    text: >
+      When the caller has a count series with little or no overdispersion (a well-controlled
+      process), they can fit a trend, and a failed fit check says its cause and what to change.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#4, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_exactly_poisson_counts_are_fitted_not_refused"
+      - "test:tests/test_trend.py::test_fit_check_reason_names_a_remedy"
+
+  - id: TS-12
+    text: >
+      When the caller wants a forecast only if one is available, they can catch one base error that
+      covers both a series that cannot be fitted and a fit that did not pass its check.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#7, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_one_except_catches_both_kinds_of_cannot_fit"

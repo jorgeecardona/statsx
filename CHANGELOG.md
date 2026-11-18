@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `fit_trend`: both ways of "cannot fit" now share a base, `statsx.errors.StatsxError`. `UnfittableInput` (a
+  `ValueError`) is a series that cannot be fitted at all; `FitCheckError` (a `RuntimeError`) is a fit that did
+  not pass its check. Old handlers keep working. Fixes GitLab issue #7.
 - `fit_trend` no longer refuses a series whose counts are close to Poisson: mass on the Poisson end of the
   dispersion grid is a valid answer, not an edge failure (the grid now reaches it). Each fit-check
   reason now says what it means and what to change. Fixes GitLab issue #4.
