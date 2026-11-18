@@ -152,6 +152,12 @@ Every public function and class, with its docstring.
     options:
       heading_level: 3
 
+## statsx.pairwise
+
+::: statsx.pairwise
+    options:
+      heading_level: 3
+
 ## statsx.drift
 
 ::: statsx.drift

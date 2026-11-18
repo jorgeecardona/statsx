@@ -85,6 +85,7 @@ nav:
       - Distributions and goodness of fit: methods/distributions.md
       - Drift between two samples: methods/drift.md
       - Compare models on one scale: methods/model-comparison.md
+      - Rank systems from pairwise results: methods/pairwise.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
       - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md

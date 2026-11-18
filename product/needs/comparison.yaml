@@ -22,6 +22,12 @@ needs:
       modelled), with intervals from item-level resampling.
     sources:
       - {kind: secondary, date: 2026-11-12, locator: "design draft from a consumer project (private, not linked)"}
+    proofs:
+      - "test:tests/test_pairwise.py::test_the_fit_is_the_maximum_of_the_penalized_log_likelihood"
+      - "test:tests/test_pairwise.py::test_two_systems_have_the_closed_form_bradley_terry_and_davidson_fits"
+      - "test:tests/test_pairwise.py::test_strengths_and_the_tie_parameter_are_recovered_from_a_large_sample"
+      - "test:tests/test_pairwise.py::test_item_level_intervals_are_wider_than_row_level_ones_when_rows_of_an_item_depend"
+      - "test:tests/test_pairwise.py::test_the_item_level_interval_covers_the_population_value_of_the_estimand"
 
   - id: CO-3
     text: >

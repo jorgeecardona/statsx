@@ -1272,3 +1272,36 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-46
+  text: 'The caller ranks systems from pairwise results with the Bradley-Terry model (Bradley &
+    Terry 1952, Biometrika 39(3/4):324-345, DOI 10.2307/2334029), P(a beats b) = sigmoid(theta_a
+    - theta_b), with ties either as half a win or by Davidson (1970, JASA 65(329):317-328, DOI
+    10.1080/01621459.1970.10481082): with Z = e^(d/2) + e^(-d/2) + nu, P(a) = e^(d/2) / Z,
+    P(b) = e^(-d/2) / Z and P(tie) = nu / Z, which is Bradley-Terry at nu = 0. The fit is the
+    maximum of the log likelihood with a Normal(0, 3^2) prior on each strength and on log nu,
+    by Newton steps with the exact gradient and Hessian and a step-halving line search. Intervals
+    come from the bootstrap over items: whole items are drawn with replacement (Efron 1979, Annals
+    of Statistics 7(1):1-26, DOI 10.1214/aos/1176344552; clusters, Field & Welsh 2007, JRSS B
+    69(3):369-390, DOI 10.1111/j.1467-9868.2007.00593.x), implemented as one weight per row, and
+    the percentile interval is reported, as in Chiang et al. 2024 (Chatbot Arena, ICML, PMLR
+    235) for language models. p_better is a bootstrap frequency, not a posterior probability.'
+  needs:
+  - CO-2
+  alternatives:
+  - 'Sandwich (robust) standard errors, which Chatbot Arena also tested: not offered now; the need
+    names resampling of items.'
+  - 'Rao-Kupper ties (a later critique of Chatbot Arena proposes it): not offered; the need names
+    Davidson.'
+  - 'MM updates (Hunter 2004): not used, Newton is faster to converge and gives the Hessian.'
+  consequences: 'For two systems with 60 wins, 30 losses and 10 ties the fit has the closed form
+    (strength gap log 65/35 with ties as half; Davidson gap log 60/30 and tie probability 0.1).
+    With 800 items and 4 systems the strengths are within 0.08 of the truth and the tie parameter
+    within 0.1. The gradient is zero at the fit to 1e-4 for both models. With rows of an item
+    dependent (item noise sd 1.5, 20 items) the item-level 90% interval is on average 1.12 times
+    wider than the row-level one; with one row per item they are identical. Against the
+    population value of the estimand, the item-level 90% interval held it in 82% of 80 runs with
+    20 items: the percentile bootstrap is a little narrow for few items.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'
