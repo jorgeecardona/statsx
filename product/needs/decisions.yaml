@@ -1481,3 +1481,27 @@ decisions:
   principles:
   - P-2
   decided_at: '2026-11-18'
+- id: D-54
+  text: 'fit_trend(require=False) returns the fit with its failed check, and the default stays
+    to raise. The seasonal term is exposed as TrendFit.seasonal and seasonal_at(positions), the
+    sum over harmonics of c_k cos(2 pi k t / P) + s_k sin(2 pi k t / P) on the latent
+    coefficients. Forecast.aggregate(every) sums the draws of counts or of the mean over each run
+    of every forecast months inside each draw, drops a last partial bucket, labels a bucket by its
+    first month, and refuses the log trend. The sum inside a draw is the sum of jointly drawn
+    variables; a sum of band ends is not a band of the sum.'
+  needs:
+  - TS-16
+  - TS-17
+  - TS-18
+  alternatives:
+  - 'Settable thresholds (check=Limits): not offered; the library keeps one recommendation and
+    the caller reads how far the numbers were.'
+  - 'Partial pooling of the season across series: not offered; seasonal reuse is complete pooling
+    with a free amplitude and the docs say so.'
+  - 'Keep a partial last bucket: dropped, since a partial total reads like a full one.'
+  consequences: 'Bucket intervals are narrower than the sum of month intervals because months
+    move together (tested). The slice that follows the aggregate has an interval for the amplitude
+    that holds 1.'
+  principles:
+  - P-2
+  decided_at: '2026-11-18'

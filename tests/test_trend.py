@@ -454,3 +454,88 @@ def test_the_two_season_rule_and_the_period_check_accept_a_float_period() -> Non
         fit_trend(counts, period=1.5)
     with pytest.raises(ValueError, match=r"at most .* harmonics at period 52.1775"):
         fit_trend(counts[:60], period=52.1775, harmonics=26)
+
+
+def _refusing(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = _accel.fit_structural
+
+    def patched(*args: object) -> tuple[object, object, tuple[float, ...]]:
+        latent, hyper, diag = real(*args)  # type: ignore[arg-type]
+        return latent, hyper, (diag[0], diag[1], 0.05, *diag[3:])
+
+    monkeypatch.setattr(_accel, "fit_structural", patched)
+
+
+def test_require_false_returns_the_fit_with_its_failed_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
+    _refusing(monkeypatch)
+    with pytest.raises(FitCheckError):
+        fit_trend(counts, seed=0)  # the default still refuses
+    fit = fit_trend(counts, seed=0, require=False)
+    assert not fit.check.passed
+    assert fit.check.edge_mass == pytest.approx(0.05)
+    assert fit.check.edge_mass_max == 0.02
+    assert fit.forecast(3, seed=1).horizon == 3
+
+
+def test_the_seasonal_term_is_the_gap_between_the_mean_and_the_trend() -> None:
+    counts, _, _ = _series(seed=4, level=40.0, slope=0.2, alpha=30.0, season=0.7)
+    fit = fit_trend(counts, harmonics=2, seed=2)
+    future = fit.forecast(12, seed=1)
+    months = fit.n_months
+    assert fit.seasonal.shape == (fit.latent.shape[0], months)
+    # Forecast mean is exp(trend + season) with the same season, so the season is the gap.
+    gap = np.log(future.mean[:, :months]) - future.trend[:, :months]
+    np.testing.assert_allclose(fit.seasonal, gap, atol=1e-9)
+    # Positions beyond the fit continue the same curve, and the curve repeats every period.
+    np.testing.assert_allclose(fit.seasonal_at([3, 15, 27]), fit.seasonal_at([3, 3, 3]), atol=1e-9)
+    assert np.all(fit_trend(counts, harmonics=0, seed=2).seasonal == 0.0)
+
+
+def test_a_season_fitted_on_the_aggregate_is_reused_as_one_amplitude_on_a_slice() -> None:
+    rng = np.random.default_rng(7)
+    t = np.arange(72)
+    shape = 0.6 * np.sin(2 * np.pi * t / 12) + 0.2 * np.cos(4 * np.pi * t / 12)
+    aggregate = rng.poisson(np.exp(8.0 + shape))
+    fleet = fit_trend(aggregate, harmonics=2, seed=0)
+    slice_counts = rng.negative_binomial(30, 30 / (30 + 12.0 * np.exp(shape[:24])))
+    pooled = fleet.seasonal.mean(axis=0)[:24]
+    fit = fit_trend(slice_counts, harmonics=0, regressors=pooled, seed=0)
+    # The effect per unit of the (log-scale) shape is near 1 when the slice follows the aggregate.
+    low, high = np.quantile(fit.regressor_coefficients[:, 0], [0.05, 0.95])
+    assert low < 1.0 < high
+
+
+def test_buckets_sum_inside_each_draw_and_not_across_the_bands() -> None:
+    counts, _, _ = _series(seed=5, level=30.0, slope=0.1, alpha=20.0)
+    future = fit_trend(counts, seed=0).forecast(8, seed=3)
+    quarter = future.aggregate(3)
+    assert quarter.draws.shape == (future.counts.shape[0], 2)  # 8 months: 2 full quarters
+    assert list(quarter.starts) == [future.n_fitted, future.n_fitted + 3]
+    np.testing.assert_array_equal(
+        quarter.draws[:, 0], future.counts[:, future.n_fitted : future.n_fitted + 3].sum(axis=1)
+    )
+    bands = future.bands((0.8,), every=3)[0]
+    expected = np.quantile(quarter.draws, [0.1, 0.9], axis=0)
+    np.testing.assert_allclose([bands.lower, bands.upper], expected)
+    # Months are joint draws, so the bucket interval is narrower than the sum of month intervals.
+    months = future.bands((0.8,))[0]
+    summed = (months.upper - months.lower)[future.n_fitted : future.n_fitted + 3].sum()
+    assert bands.upper[0] - bands.lower[0] < summed
+    mean = future.aggregate(3, of="mean")
+    np.testing.assert_allclose(
+        mean.draws[:, 1], future.mean[:, future.n_fitted + 3 : future.n_fitted + 6].sum(axis=1)
+    )
+
+
+def test_aggregation_refuses_what_it_cannot_do() -> None:
+    counts, _, _ = _series(seed=5, level=30.0, slope=0.1, alpha=20.0)
+    future = fit_trend(counts, seed=0).forecast(4, seed=3)
+    with pytest.raises(ValueError, match="every must be at least 1"):
+        future.aggregate(0)
+    with pytest.raises(ValueError, match="shorter than 6"):
+        future.aggregate(6)
+    with pytest.raises(ValueError, match="only counts and the mean add"):
+        future.aggregate(2, of="trend")

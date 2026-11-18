@@ -116,6 +116,22 @@ Likelihood = Literal["negative_binomial", "poisson"]
 
 
 @dataclass(frozen=True, slots=True)
+class Buckets:
+    """Forecast draws summed into buckets of ``every`` consecutive months (GitLab issue #11).
+
+    Args:
+        every: Months per bucket.
+        starts: Month position of the first month of each bucket, counted from the first fitted
+            month (0), so a bucket is labelled by its first month.
+        draws: Draws of the bucket totals, shape (draws, buckets).
+    """
+
+    every: int
+    starts: npt.NDArray[np.int64]
+    draws: npt.NDArray[np.float64]
+
+
+@dataclass(frozen=True, slots=True)
 class Forecast:
     """Posterior draws for every fitted month and every forecast month (TS-2).
 
@@ -138,8 +154,37 @@ class Forecast:
         """Return the number of forecast months."""
         return self.counts.shape[1] - self.n_fitted
 
+    def aggregate(self, every: int, *, of: BandOf = "counts") -> Buckets:
+        """Return the forecast months summed into buckets of ``every`` months, draw by draw.
+
+        The months of one draw move together, so the total is summed inside each draw and the
+        quantiles are taken afterwards. Summing the bands of the months is wrong: it adds
+        quantiles, not variables. Only the forecast months are bucketed, from the first one. A last
+        bucket that would be partial is dropped, since a partial total reads like a full one.
+        The trend is on the log scale, where months do not add, so it cannot be aggregated.
+
+        Raises:
+            ValueError: If ``every`` is below 1, ``of`` is not ``"counts"`` or ``"mean"``, or the
+                horizon is shorter than one bucket.
+        """
+        if every < 1:
+            raise ValueError(f"every must be at least 1, got {every}")
+        if of not in ("counts", "mean"):
+            raise ValueError(f"only counts and the mean add over months, not {of!r}")
+        n = self.horizon // every
+        if n == 0:
+            raise ValueError(f"the horizon of {self.horizon} months is shorter than {every}")
+        future = (self.counts if of == "counts" else self.mean)[:, self.n_fitted :]
+        total = future[:, : n * every].reshape(future.shape[0], n, every).sum(axis=2)
+        starts = self.n_fitted + every * np.arange(n, dtype=np.int64)
+        return Buckets(every, starts, total)
+
     def bands(
-        self, levels: tuple[float, ...] = (0.5, 0.8, 0.95), *, of: BandOf = "counts"
+        self,
+        levels: tuple[float, ...] = (0.5, 0.8, 0.95),
+        *,
+        of: BandOf = "counts",
+        every: int | None = None,
     ) -> tuple[Band, ...]:
         """Return nested central credible bands, one per level, for every month.
 
@@ -147,6 +192,8 @@ class Forecast:
             levels: Increasing levels in (0, 1). Each band contains the one before it.
             of: ``"counts"`` for a new count (the default), ``"mean"`` for the expected count,
                 ``"trend"`` for the log trend.
+            every: Months per bucket. The bands are then of the bucket totals over the forecast
+                months (see ``aggregate``), one value per bucket.
 
         Raises:
             ValueError: If ``levels`` is empty, not increasing, or outside (0, 1).
@@ -157,7 +204,10 @@ class Forecast:
             or list(levels) != sorted(set(levels))
         ):
             raise ValueError(f"levels must increase within (0, 1), got {levels}")
-        draws = {"counts": self.counts, "mean": self.mean, "trend": self.trend}[of]
+        if every is None:
+            draws = {"counts": self.counts, "mean": self.mean, "trend": self.trend}[of]
+        else:
+            draws = self.aggregate(every, of=of).draws
         out: list[Band] = []
         for level in levels:
             tail = (1.0 - level) / 2.0
@@ -195,14 +245,17 @@ class Anomalies:
 
 @dataclass(frozen=True, slots=True)
 class TrendFit:
-    """A checked fit. Only ``fit_trend`` builds it, and only after the check passed.
+    """A fit with its check.
+
+    Only ``fit_trend`` builds it. The check passed unless the caller asked for ``require=False``.
 
     Args:
         latent: Draws of the latent field, shape (draws, columns + months): the fixed effects
             (intercept, slope per ``period`` months, then cosine and sine per harmonic), then the
             random-walk drift for each month.
         hyper: Draws of (log drift sd, log dispersion), shape (draws, 2).
-        check: The fit check, which passed.
+        check: The fit check. ``check.passed`` is False only when ``fit_trend`` ran with
+            ``require=False``.
         period: Season length in months. It need not be a whole number: a year of weekly data is
             365.2425 / 7 = 52.1775 weeks, and rounding it to 52 slides the season out of phase by
             about three quarters of a week in four years.
@@ -248,6 +301,34 @@ class TrendFit:
         """
         start = 2 + 2 * self.harmonics
         return self.latent[:, start : start + self.n_regressors] / self.regressor_scale
+
+    def seasonal_at(self, positions: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Return draws of the seasonal term of the log mean at month ``positions``.
+
+        Positions count months from the first fitted month (0), so the fitted months are
+        ``0 .. months - 1`` and later positions are forecast months. They need not be whole.
+        Shape (draws, positions). With no harmonics the term is 0.
+
+        The shape can be reused on another series that shares the season, as a column of
+        ``regressors`` with ``harmonics=0``. That is complete pooling of the shape with a free
+        amplitude, not partial pooling: the other series cannot differ in phase or in shape, and
+        its coefficient has a prior centred on zero, not on the amplitude of this fit.
+        """
+        t = np.asarray(positions, dtype=np.float64).ravel()
+        out = np.zeros((self.latent.shape[0], t.size))
+        for k in range(1, self.harmonics + 1):
+            angle = 2.0 * np.pi * k * t / self.period
+            c, s = self.latent[:, [2 * k]], self.latent[:, [2 * k + 1]]
+            out += c * np.cos(angle) + s * np.sin(angle)
+        return out
+
+    @property
+    def seasonal(self) -> npt.NDArray[np.float64]:
+        """Return draws of the seasonal term of the log mean for each fitted month.
+
+        Shape (draws, months); see ``seasonal_at`` for other positions and for reuse.
+        """
+        return self.seasonal_at(np.arange(self.n_months))
 
     @property
     def slope(self) -> npt.NDArray[np.float64]:
@@ -536,6 +617,7 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     seasonal_scale: float = 1.0,
     regressor_scale: float = 1.0,
     index: npt.ArrayLike | None = None,
+    require: bool = True,
 ) -> TrendFit:
     """Fit a structural series of counts and return the checked posterior.
 
@@ -586,11 +668,17 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
             come from a grouped query with holes. The series is laid out from the first to the
             last index, with NaN at the months that are absent.
 
+        require: True (the default) raises ``FitCheckError`` when the fit check fails. False
+            returns the fit anyway, with ``check.passed`` False and the reasons and numbers in
+            ``check``, so the caller decides (for example to show a forecast with a caveat). The
+            thresholds stay the library's; read how far off the fit was from ``check``.
+
     Returns:
-        The fit, whose ``check`` passed.
+        The fit. Its ``check`` passed unless ``require`` is False.
 
     Raises:
-        FitCheckError: If the fit check fails. It carries the numbers and the reasons.
+        FitCheckError: If the fit check fails and ``require`` is True. It carries the numbers and
+            the reasons.
         UnfittableInput: If the series cannot be fitted whatever the settings: fewer than 4
             observed months, a negative count, too few months for ``harmonics``, a constant
             regressor. Both errors derive from ``StatsxError``.
@@ -632,7 +720,8 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         y, design, prior_mean, prior_prec, drift_scale, dispersion_scale, likelihood, n_draws, seed
     )
     check = _check(diagnostics, n_draws)
-    check.require()
+    if require:
+        check.require()
     return TrendFit(
         latent, hyper, check, period, harmonics, y, likelihood, standardized, center, scale
     )

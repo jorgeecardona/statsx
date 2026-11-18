@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fit_trend(require=False)` returns the fit with its failed check instead of raising, so a caller can show a
+  forecast with a caveat. Fixes GitLab issue #9.
+- `TrendFit.seasonal` and `seasonal_at(positions)` give draws of the seasonal term, to reuse a season fitted on a
+  long series as a regressor on a short one. The docs say it is complete pooling. Fixes GitLab issue #10.
+- `Forecast.aggregate(every)` and `bands(every=...)` sum forecast months into buckets inside each draw, so a
+  monthly fit serves quarters and years. Fixes GitLab issue #11.
 - `fit_trend(period=...)` takes a float, so a weekly series can use 365.2425 / 7 = 52.1775. A drift that
   is off (a random walk with no change of level) is a valid answer and no longer refused as a grid
   edge. Fixes GitLab issue #8.

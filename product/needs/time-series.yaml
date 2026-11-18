@@ -165,3 +165,32 @@ needs:
     proofs:
       - "test:tests/test_trend.py::test_a_weekly_period_that_is_not_a_whole_number_keeps_the_season_in_phase"
       - "test:tests/test_trend.py::test_the_two_season_rule_and_the_period_check_accept_a_float_period"
+
+  - id: TS-16
+    text: >
+      When a fit does not pass its check, the caller can get the fit and the check anyway, and decide
+      whether to show a forecast with a caveat.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#9, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_require_false_returns_the_fit_with_its_failed_check"
+
+  - id: TS-17
+    text: >
+      When the caller has a short slice and a long aggregate that share a season, they can take the
+      fitted seasonal term from the aggregate and give it to the slice as a regressor.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#10, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_the_seasonal_term_is_the_gap_between_the_mean_and_the_trend"
+      - "test:tests/test_trend.py::test_a_season_fitted_on_the_aggregate_is_reused_as_one_amplitude_on_a_slice"
+
+  - id: TS-18
+    text: >
+      When the caller wants a forecast by quarter or year from a monthly fit, they can get the bands
+      of the bucket totals, summed inside each draw.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#11, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend.py::test_buckets_sum_inside_each_draw_and_not_across_the_bands"
+      - "test:tests/test_trend.py::test_aggregation_refuses_what_it_cannot_do"
