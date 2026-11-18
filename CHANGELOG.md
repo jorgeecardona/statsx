@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `fit_trend` no longer refuses a series whose counts are close to Poisson: mass on the Poisson end of the
+  dispersion grid is a valid answer, not an edge failure (the grid now reaches it). Each fit-check
+  reason now says what it means and what to change. Fixes GitLab issue #4.
+
 ### Added
 
 - `statsx.pairwise`: a `judge` column in `Comparisons.from_long` gives each judge a position bias, so a

@@ -405,17 +405,38 @@ def _check(
     limit = khat_limit(n_draws)
     reasons: list[str] = []
     if unconverged > 0:
-        reasons.append(f"Newton did not converge at {int(unconverged)} grid points")
+        reasons.append(
+            f"Newton did not converge at {int(unconverged)} grid points: the data and the priors "
+            "disagree strongly; check the counts for a unit or outlier error, or lower "
+            "drift_scale"
+        )
     if not_pd > 0:
-        reasons.append(f"Hessian not positive definite at {int(not_pd)} grid points")
+        reasons.append(
+            f"Hessian not positive definite at {int(not_pd)} grid points: the model is too "
+            "flexible for this series; use fewer harmonics or drop a regressor"
+        )
     if draw_failures > 0:
-        reasons.append(f"{int(draw_failures)} draws had no converged Gaussian approximation")
+        reasons.append(
+            f"{int(draw_failures)} draws had no converged Gaussian approximation: the posterior "
+            "is hard to sample; use fewer harmonics or a smaller drift_scale"
+        )
     if edge > EDGE_MASS_MAX:
-        reasons.append(f"grid-edge mass {edge:.3f} above {EDGE_MASS_MAX}")
+        reasons.append(
+            f"grid-edge mass {edge:.3f} above {EDGE_MASS_MAX}: the posterior of the drift sd or "
+            "of the dispersion reaches the edge of its grid (the Poisson end of the dispersion "
+            "does not count). Try drift_scale or dispersion_scale, or fewer harmonics"
+        )
     if not khat <= limit:  # also true for NaN
-        reasons.append(f"k-hat {khat:.2f} above {limit:.2f}")
+        reasons.append(
+            f"k-hat {khat:.2f} above {limit:.2f}: the importance weights are too heavy-tailed "
+            "for the Laplace approximation; use more n_draws, fewer harmonics or a smaller "
+            "drift_scale"
+        )
     if not ess >= ESS_MIN:
-        reasons.append(f"importance sampling ESS {ess:.0f} below {ESS_MIN:.0f}")
+        reasons.append(
+            f"importance sampling ESS {ess:.0f} below {ESS_MIN:.0f}: too few useful draws; "
+            "raise n_draws"
+        )
     return FitCheck(
         khat, limit, ess, ESS_MIN, edge, EDGE_MASS_MAX,
         int(unconverged), int(not_pd), int(draw_failures), n_draws, tuple(reasons),

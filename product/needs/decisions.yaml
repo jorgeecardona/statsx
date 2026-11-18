@@ -1422,3 +1422,21 @@ decisions:
   - P-2
   decided_at: '2026-11-18'
 
+- id: D-51
+  text: 'The negative binomial dispersion grid for fit_trend reaches the Poisson limit, and mass
+    on that end is not counted as a grid-edge failure. With size = 1 / (phi^2 + 0.001) the
+    concentration is within 1% of its cap 1000 once phi is below about 0.003, so the likelihood
+    no longer changes with log phi and only the prior tail remains. The coarse grid of log phi
+    now runs from -7 to 1.5 (22 points). When the lowest column of the refined grid is at that cap,
+    it is left out of the edge mass; the other three edges still count. Each fit-check reason
+    names its cause and a change the caller can make.'
+  needs:
+  - TS-1
+  alternatives:
+  - 'Refuse and ask for likelihood=poisson: the series is ordinary data and the fit is valid.'
+  consequences: 'The 36-month Poisson series of GitLab issue 4 fit in 20 of 20 seeds, where 9 of
+    20 fitted before.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'

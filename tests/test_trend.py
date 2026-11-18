@@ -312,3 +312,25 @@ def test_bad_model_choices_are_refused(kwargs: dict[str, object], message: str) 
     counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
     with pytest.raises(ValueError, match=message):
         fit_trend(counts, **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_exactly_poisson_counts_are_fitted_not_refused(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    t = np.arange(36, dtype=float)
+    counts = rng.poisson(np.exp(4.0 + 0.012 * t + 0.25 * np.sin(2 * np.pi * t / 12.0)))
+    fit = fit_trend(counts, period=12, harmonics=3, n_draws=2000, seed=42)
+    assert fit.check.passed
+
+
+def test_fit_check_reason_names_a_remedy(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = _accel.fit_structural
+
+    def patched(*args: object) -> tuple[object, object, tuple[float, ...]]:
+        latent, hyper, diag = real(*args)  # type: ignore[arg-type]
+        return latent, hyper, (diag[0], diag[1], 0.5, *diag[3:])
+
+    monkeypatch.setattr(_accel, "fit_structural", patched)
+    counts, _, _ = _series(seed=1, level=30.0, slope=0.3, alpha=20.0)
+    with pytest.raises(FitCheckError, match=r"dispersion_scale"):
+        fit_trend(counts, seed=0)

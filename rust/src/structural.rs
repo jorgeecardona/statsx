@@ -94,8 +94,8 @@ impl Default for GridConfig {
     fn default() -> Self {
         GridConfig {
             u_range: (-6.0, 0.0),
-            v_range: (-4.0, 1.5),
-            coarse: (18, 16),
+            v_range: (-7.0, 1.5),
+            coarse: (18, 22),
             fine: (21, 21),
             span: 4.0,
             min_sd: 0.15,
@@ -109,6 +109,12 @@ fn linspace(lo: f64, hi: f64, n: usize) -> Vec<f64> {
 
 fn alpha_of(v: f64) -> f64 {
     1.0 / (v.exp().powi(2) + PHI_FLOOR)
+}
+
+/// True when the concentration at `v` is within 1% of its cap 1 / PHI_FLOOR: the negative
+/// binomial is Poisson there, so the likelihood no longer changes with `v`.
+fn is_poisson_end(v: f64) -> bool {
+    alpha_of(v) >= 0.99 / PHI_FLOOR
 }
 
 /// log of a half-normal(scale) density at x > 0.
@@ -333,7 +339,10 @@ impl Spec {
         // A single column (Poisson) has no dispersion to draw: v is a placeholder.
         let dv = if nv > 1 { grid.vs[1] - grid.vs[0] } else { 1.0 };
         let pg = normalized(&grid.log_marg);
-        let edge_mass = edge_mass(&pg, nu, nv);
+        // Mass piled on the Poisson end of the dispersion grid is a valid answer (no extra noise),
+        // not a grid that is too narrow, so that column does not count as an edge.
+        let poisson_end = nv > 1 && is_poisson_end(grid.vs[0]);
+        let edge_mass = edge_mass(&pg, nu, nv, poisson_end);
         let cdf: Vec<f64> = pg
             .iter()
             .scan(0.0, |acc, &q| {
@@ -424,12 +433,13 @@ fn normalized(log_marg: &[f64]) -> Vec<f64> {
     pg
 }
 
-fn edge_mass(pg: &[f64], nu: usize, nv: usize) -> f64 {
+fn edge_mass(pg: &[f64], nu: usize, nv: usize, skip_low_v: bool) -> f64 {
     let row = |i: usize| (0..nv).map(|j| pg[i * nv + j]).sum::<f64>();
     let col = |j: usize| (0..nu).map(|i| pg[i * nv + j]).sum::<f64>();
     let rows = row(0).max(row(nu - 1));
     if nv > 1 {
-        rows.max(col(0)).max(col(nv - 1))
+        let low = if skip_low_v { 0.0 } else { col(0) };
+        rows.max(low).max(col(nv - 1))
     } else {
         rows
     }
