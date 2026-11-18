@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.sbc`: simulation-based calibration. `sbc_ranks` and `check_calibration` test that a posterior
+  method is correct, and say whether it is too narrow, too wide or biased. Docs page "Check that a
+  posterior method is correct".
 - `statsx.pairwise`: `Comparisons` and `fit_bradley_terry` (Bradley-Terry and Davidson with ties) with
   bootstrap intervals that resample whole items. Docs page "Rank systems from pairwise results".
 - `fit_trend` fits series shorter than two seasons (`supported_harmonics` says how many harmonics a length

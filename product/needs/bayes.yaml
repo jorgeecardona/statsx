@@ -69,3 +69,16 @@ needs:
       - "test:tests/test_nig.py::test_the_reference_posterior_covers_at_the_stated_rate_at_n_5_for_any_noise"
       - "test:tests/test_nig.py::test_under_the_reference_prior_the_difference_matches_the_welch_interval"
       - "test:tests/test_nig.py::test_compare_takes_the_posteriors_directly_and_finds_version_b_faster"
+
+  - id: BA-8
+    text: >
+      When the caller has a posterior method (their own sampler, an approximation, a conjugate
+      update), they can check that it is correct with simulation-based calibration, and get the
+      ranks tested and told whether the posterior is too narrow, too wide or biased.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "ecosystem survey of PyMC, NumPyro, Stan and BlackJAX requests (agent report, private); an SBC library exists only inside the PyMC stack"}
+    proofs:
+      - "test:tests/test_sbc.py::test_an_exact_posterior_passes_at_about_the_stated_error_rate"
+      - "test:tests/test_sbc.py::test_a_posterior_that_is_too_narrow_is_named_too_narrow"
+      - "test:tests/test_sbc.py::test_a_posterior_that_is_too_wide_is_named_too_wide"
+      - "test:tests/test_sbc.py::test_a_shifted_posterior_is_named_biased_in_the_right_direction"
