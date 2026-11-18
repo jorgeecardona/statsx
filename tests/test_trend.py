@@ -126,10 +126,10 @@ def test_khat_limit_follows_the_draw_count() -> None:
     "kwargs",
     [
         {"counts": [1.0, -1.0] * 30},
-        {"counts": [1.0, float("nan")] * 30},
+        {"counts": [1.0, float("inf")] * 30},
         {"counts": [1.0] * 10},
         {"counts": [1.0] * 60, "n_draws": 100},
-        {"counts": [1.0] * 60, "harmonics": 0},
+        {"counts": [1.0] * 60, "harmonics": 7},
         {"counts": [[1.0] * 60] * 2},
     ],
 )

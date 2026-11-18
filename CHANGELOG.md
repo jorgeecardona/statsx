@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fit_trend` fits series shorter than two seasons (`supported_harmonics` says how many harmonics a length
+  carries; `harmonics=0` fits no season) and months that were not observed (NaN in `counts`, or an `index`).
+  Its errors now name the failed condition. `causal_impact` and `backtest` refuse a NaN that would
+  make their scores NaN. Fixes GitLab issues #1 and #2.
 - `statsx.evals`: `Responses`, `fit_rasch` (abilities and difficulties of models on shared tasks, with
   intervals and `p_better`), `fit_tokens` (token ratios between models on the same tasks) and
   `cost_per_pass`. Docs page "Compare models on one scale".

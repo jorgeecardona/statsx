@@ -91,3 +91,27 @@ needs:
       - "test:tests/test_backtest.py::test_backtest_shows_a_better_forecast_has_a_lower_crps"
       - "test:tests/test_backtest.py::test_every_series_is_reported_and_refused_origins_are_counted"
       - "test:tests/test_backtest.py::test_crps_matches_the_closed_form_for_a_normal_forecast"
+
+  - id: TS-9
+    text: >
+      When the caller has a series shorter than two seasons, they can fit a trend with the Fourier
+      harmonics the length supports, or with no season, and an error says which condition failed.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#1, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend_gaps.py::test_a_series_of_one_to_two_seasons_is_fitted_with_the_harmonics_it_supports"
+      - "test:tests/test_trend_gaps.py::test_the_error_names_the_condition_that_failed_and_what_would_work"
+      - "test:tests/test_trend_gaps.py::test_a_fit_without_a_season_works_on_a_short_series_and_forecasts"
+
+  - id: TS-10
+    text: >
+      When the caller has counts with months that were not observed (a grouped query with holes),
+      they can mark them as NaN or give the month index, and the fit skips them in the likelihood
+      while the drift and the season still advance across them.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#2, filed from a consumer project"}
+    proofs:
+      - "test:tests/test_trend_gaps.py::test_a_missing_month_keeps_the_season_in_phase_where_dropping_it_does_not"
+      - "test:tests/test_trend_gaps.py::test_imputing_a_missing_month_narrows_the_band_by_pretending_to_know_it"
+      - "test:tests/test_trend_gaps.py::test_an_index_is_the_same_as_nan_in_the_dense_series"
+      - "test:tests/test_trend_gaps.py::test_a_nan_month_is_not_observed_and_infinities_and_negatives_are_refused_separately"

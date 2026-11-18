@@ -1234,3 +1234,41 @@ decisions:
   - P-1
   - P-2
   decided_at: '2026-11-18'
+- id: D-45
+  text: 'fit_trend accepts series shorter than two seasons and series with months that were not
+    observed. A month that was not observed is NaN in the counts, or is absent from an explicit
+    month index. The likelihood is a sum over the observed months only, y_t | mu_t for t in O,
+    while the random-walk drift d_t = d_(t-1) + eta_t and the Fourier season still run over all
+    months, so the season keeps its phase and the elapsed time stays right (the missing month is
+    handled in the model, as in a state space model with a missing observation: Durbin & Koopman
+    2012, Time Series Analysis by State Space Methods, 2nd ed., chapter 4 (missing observations), DOI
+    10.1093/acprof:oso/9780199641178.001.0001). In the Rust fit, a NaN count has a zero score and a
+    zero curvature in the Newton step and adds nothing to the log likelihood. The number of
+    harmonics a short series supports is limited to one parameter per two observations: the level,
+    the slope and two terms per harmonic use at most n_observed / 2, so floor(n_observed / 4) - 1
+    harmonics from one to two seasons, every harmonic from two seasons, and none below one
+    season (harmonics = 0 fits a level, a slope and the drift). This limit is a rule of thumb
+    chosen here, not taken from a paper; the fit check of D-1 still decides whether a fit is
+    accepted. The errors name the failed condition: period, the range of harmonics, the number of
+    observed months, and what the length supports. Infinite and negative counts are refused
+    separately. causal_impact refuses a NaN after the intervention, and backtest refuses any NaN,
+    because their scores would be NaN.'
+  needs:
+  - TS-9
+  - TS-10
+  alternatives:
+  - 'Impute the missing month before the fit: rejected, the posterior then treats it as observed
+    and narrows its band.'
+  - 'A parametrised minimum length per harmonic from a source: none found; the rule is stated as
+    a convention.'
+  consequences: 'The example of the issue (18 monthly counts, period 12, 3 harmonics) now fits
+    and passes the fit check; so do 12, 18 and 23 months with 1 to 3 harmonics where the rule
+    allows them. On 48 months with a strong season and one month removed, the fitted mean has an
+    error of 0.025 with the month marked NaN and 0.052 when the month is dropped and later months
+    shift one place early. At a month filled in with its own fitted value, the 90% trend band is 11
+    percent narrower than with the month left NaN, over three series. The mode in Rust has a zero
+    gradient with a NaN month.'
+  principles:
+  - P-1
+  - P-2
+  decided_at: '2026-11-18'

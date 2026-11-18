@@ -87,5 +87,6 @@ nav:
       - Compare models on one scale: methods/model-comparison.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
+      - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md
   - API reference: api.md
   - Changelog: changelog.md

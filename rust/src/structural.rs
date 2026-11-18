@@ -151,10 +151,12 @@ impl Spec {
     }
 
     fn loglik(&self, eta: &[f64], alpha: f64) -> f64 {
+        // A NaN count is a month that was not observed: it adds nothing to the likelihood.
+        let seen = self.y.iter().zip(eta).filter(|(y, _)| !y.is_nan());
         if self.poisson {
-            return self.y.iter().zip(eta).map(|(&y, &e)| poisson_logpmf(y, e)).sum();
+            return seen.map(|(&y, &e)| poisson_logpmf(y, e)).sum();
         }
-        self.y.iter().zip(eta).map(|(&y, &e)| logpmf(y, e, alpha)).sum()
+        seen.map(|(&y, &e)| logpmf(y, e, alpha)).sum()
     }
 
     /// r^T Q r for r = x - prior mean (the drift prior mean is 0).
@@ -186,7 +188,9 @@ impl Spec {
         let mut g = vec![0.0; nf + t_len];
         let mut w = vec![0.0; t_len];
         for t in 0..t_len {
-            let (score, h) = if self.poisson {
+            let (score, h) = if self.y[t].is_nan() {
+                (0.0, 0.0)
+            } else if self.poisson {
                 poisson_d_eta(self.y[t], eta[t])
             } else {
                 d_eta(self.y[t], eta[t], alpha)
@@ -295,7 +299,8 @@ impl Spec {
     fn start(&self) -> Vec<f64> {
         let mut x = vec![0.0; self.p()];
         x[..self.nf].copy_from_slice(&self.prior_mean);
-        let mean = self.y.iter().sum::<f64>() / self.t() as f64;
+        let seen: Vec<f64> = self.y.iter().copied().filter(|v| !v.is_nan()).collect();
+        let mean = seen.iter().sum::<f64>() / seen.len().max(1) as f64;
         // Shift the first fixed effect (the intercept column) so exp(eta) starts near the mean.
         x[0] = (mean + 0.1).ln() - (1..self.nf).map(|k| self.f[k] * self.prior_mean[k]).sum::<f64>();
         x
@@ -476,8 +481,11 @@ pub fn fit_structural<'py>(
             yv.len()
         )));
     }
-    if yv.iter().any(|v| !v.is_finite() || *v < 0.0) {
-        return Err(PyValueError::new_err("y must be finite and non-negative"));
+    if yv.iter().any(|v| v.is_infinite() || *v < 0.0) {
+        return Err(PyValueError::new_err("y must be finite (or NaN for not observed) and non-negative"));
+    }
+    if yv.iter().filter(|v| !v.is_nan()).count() < 2 {
+        return Err(PyValueError::new_err("y needs at least 2 observed values"));
     }
     let (pm, pp) = (prior_mean.as_slice()?.to_vec(), prior_prec.as_slice()?.to_vec());
     if pm.len() != nf || pp.len() != nf || pp.iter().any(|v| v.is_nan() || *v <= 0.0) {
@@ -606,6 +614,26 @@ mod tests {
         let l = crate::linalg::cholesky(&hess, p).unwrap();
         let dense: f64 = 2.0 * (0..p).map(|i| l[i * p + i].ln()).sum::<f64>();
         assert!((m.arrow.logdet() - dense).abs() < 1e-5 * dense.abs().max(1.0), "{} {dense}", m.arrow.logdet());
+    }
+
+    #[test]
+    fn a_month_that_was_not_observed_adds_nothing_to_the_likelihood_and_the_mode_is_still_exact() {
+        let (mut y, _) = simulate(14, 5.0, 8.0, 3);
+        let full = spec(y.clone());
+        y[6] = f64::NAN;
+        let s = spec(y.clone());
+        let (sigma, alpha) = (0.15, 6.0);
+        let eta = s.eta(&s.start());
+        let expected: f64 = (0..y.len())
+            .filter(|&t| t != 6)
+            .map(|t| logpmf(y[t], eta[t], alpha))
+            .sum();
+        assert!((s.loglik(&eta, alpha) - expected).abs() < 1e-9);
+        assert!(s.loglik(&eta, alpha).is_finite() && full.loglik(&eta, alpha).is_finite());
+        let m = s.find_mode(sigma, alpha, &s.start()).unwrap();
+        assert!(m.converged);
+        let (g, _) = s.gradient_and_factor(sigma, alpha, &m.x);
+        assert!(g.iter().all(|v| v.abs() < 1e-3), "{g:?}");
     }
 
     #[test]

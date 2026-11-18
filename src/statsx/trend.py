@@ -45,6 +45,7 @@ ESS_MIN = 400.0
 EDGE_MASS_MAX = 0.02
 """Largest posterior mass on an outer row or column of the hyperparameter grid."""
 
+MIN_OBSERVED = 4
 MIN_DRAWS = 400
 """Fewer draws cannot reach ``ESS_MIN``."""
 
@@ -200,7 +201,7 @@ class TrendFit:
         check: The fit check, which passed.
         period: Season length in months.
         harmonics: Number of Fourier harmonics.
-        counts: The observed counts the model was fitted to.
+        counts: The counts the model was fitted to; NaN for a month that was not observed.
         likelihood: ``"negative_binomial"`` or ``"poisson"``.
         regressors: The regressors as fitted, standardized, shape (months, regressors).
         regressor_center: Mean of each regressor before standardizing.
@@ -222,6 +223,11 @@ class TrendFit:
     def n_months(self) -> int:
         """Return the number of months fitted."""
         return self.counts.size
+
+    @property
+    def n_observed(self) -> int:
+        """Return the number of months with an observed count (the others are NaN)."""
+        return int(np.count_nonzero(~np.isnan(self.counts)))
 
     @property
     def n_regressors(self) -> int:
@@ -363,6 +369,22 @@ def _design_rows(
     return np.column_stack(columns)
 
 
+def _lay_out(counts: npt.NDArray[np.float64], index: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    """Return the counts on a dense axis from the first to the last index, NaN where absent."""
+    positions = np.asarray(index)
+    if positions.ndim != 1 or positions.size != counts.size or counts.ndim != 1:
+        raise ValueError("index must be a 1-D array with one whole number per count")
+    if not np.issubdtype(positions.dtype, np.integer):
+        if not np.all(np.isfinite(positions)) or np.any(positions != np.round(positions)):
+            raise ValueError("index must hold whole numbers")
+        positions = positions.astype(np.int64)
+    if np.any(np.diff(positions) <= 0):
+        raise ValueError("index must be strictly increasing")
+    dense = np.full(int(positions[-1] - positions[0]) + 1, np.nan)
+    dense[positions - positions[0]] = counts
+    return dense
+
+
 def _as_columns(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
     x = np.asarray(values, dtype=np.float64)
     if x.ndim == 1:
@@ -400,6 +422,50 @@ def _check(
     )  # fmt: skip
 
 
+def supported_harmonics(n_observed: int, period: int) -> int:
+    """Return the most Fourier harmonics that ``n_observed`` observed months can carry.
+
+    With 2 seasons (``2 * period`` months) or more, every harmonic up to ``period // 2`` is
+    allowed. With one to two seasons the season is seen once or less than twice, so the model gets
+    at most one parameter per two observations: the level, the slope and two terms per harmonic
+    use at most ``n_observed / 2``, which gives ``n_observed // 4 - 1`` harmonics. With less than
+    one season there is no seasonal shape to learn and the answer is 0.
+    """
+    if n_observed < period:
+        return 0
+    if n_observed >= 2 * period:
+        return period // 2
+    return max(0, min(period // 2, n_observed // 4 - 1))
+
+
+def _check_counts(y: npt.NDArray[np.float64]) -> None:
+    if y.ndim != 1:
+        raise ValueError("counts must be a 1-D array")
+    if np.any(np.isinf(y)):
+        raise ValueError("counts must be finite, or NaN for a month that was not observed")
+    if np.any(y < 0.0):
+        raise ValueError("counts must not be negative")
+
+
+def _check_shape(n_observed: int, period: int, harmonics: int) -> None:
+    if period < 2:  # noqa: PLR2004
+        raise ValueError(f"period must be at least 2, got {period}")
+    if not 0 <= harmonics <= period // 2:
+        raise ValueError(
+            f"harmonics must be from 0 to period // 2 = {period // 2}, got {harmonics}"
+        )
+    if n_observed < MIN_OBSERVED:
+        raise ValueError(f"need at least {MIN_OBSERVED} observed months, got {n_observed}")
+    allowed = supported_harmonics(n_observed, period)
+    if harmonics > allowed:
+        raise ValueError(
+            f"{n_observed} observed months support at most {allowed} harmonics at period "
+            f"{period}, not {harmonics}. Use harmonics={allowed}"
+            + (" or harmonics=0 for a fit without a season" if allowed > 0 else "")
+            + f"; {2 * period} observed months support every harmonic up to {period // 2}."
+        )
+
+
 def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     counts: npt.ArrayLike,
     *,
@@ -411,6 +477,7 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     seed: int = 0,
     drift_scale: float = 0.2,
     dispersion_scale: float = 1.0,
+    index: npt.ArrayLike | None = None,
 ) -> TrendFit:
     """Fit a structural series of counts and return the checked posterior.
 
@@ -421,11 +488,21 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     The drift sd and, for the negative binomial, the dispersion ``phi`` (size = 1 / (phi^2 +
     0.001)) have half-normal priors.
 
+    A month that was not observed is ``NaN`` in ``counts`` (or a position missing from ``index``).
+    It adds nothing to the likelihood, while the drift and the season still advance across it, so
+    the phase of the season and the elapsed time stay right. A month with no events that you did
+    observe is a 0, not a NaN.
+
     Args:
-        counts: Non-negative counts, one per month, at least two seasons long.
+        counts: Counts, one per month, non-negative, or NaN for a month that was not observed.
+            With at least ``2 * period`` observed months every harmonic up to ``period // 2`` can
+            be fitted. With ``period`` to ``2 * period - 1`` months, ``supported_harmonics`` says how
+            many. With fewer than ``period`` observed months, pass ``harmonics=0``.
         period: Season length in months.
-        harmonics: Number of Fourier harmonics, at most ``period // 2``.
-        regressors: Optional regressor terms, shape (months,) or (months, regressors). None of
+        harmonics: Number of Fourier harmonics, from 0 to ``period // 2``. 0 fits a level, a slope
+            and the drift, with no season.
+        regressors: Optional regressor terms, one row per month of the dense series (also the
+            months that were not observed), shape (months,) or (months, regressors). None of
             them may be constant. Their effect is in ``TrendFit.regressor_coefficients``, not in
             the trend.
         likelihood: ``"negative_binomial"`` or ``"poisson"``.
@@ -433,6 +510,9 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         seed: Seed of the random number generator; the same seed gives the same draws.
         drift_scale: Scale of the half-normal prior on the drift sd.
         dispersion_scale: Scale of the half-normal prior on ``phi``.
+        index: The month of each count, as whole numbers in increasing order, for counts that
+            come from a grouped query with holes. The series is laid out from the first to the
+            last index, with NaN at the months that are absent.
 
     Returns:
         The fit, whose ``check`` passed.
@@ -442,10 +522,10 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         ValueError: If an argument is out of range.
     """
     y = np.ascontiguousarray(counts, dtype=np.float64)
-    if y.ndim != 1 or not np.all(np.isfinite(y)) or np.any(y < 0.0):
-        raise ValueError("counts must be a 1-D array of finite, non-negative numbers")
-    if period < 2 or not 1 <= harmonics <= period // 2 or y.size < 2 * period:  # noqa: PLR2004
-        raise ValueError("need period >= 2, 1 <= harmonics <= period // 2, and 2 seasons of data")
+    if index is not None:
+        y = _lay_out(y, index)
+    _check_counts(y)
+    _check_shape(int(np.count_nonzero(~np.isnan(y))), period, harmonics)
     if n_draws < MIN_DRAWS:
         raise ValueError(f"n_draws must be at least {MIN_DRAWS}, got {n_draws}")
     if likelihood not in ("negative_binomial", "poisson"):
@@ -463,7 +543,7 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     design = np.ascontiguousarray(np.hstack([_design(y.size, period, harmonics), standardized]))
     columns = design.shape[1]
     prior_mean = np.zeros(columns)
-    prior_mean[0] = math.log(float(y.mean()) + 0.1)
+    prior_mean[0] = math.log(float(np.nanmean(y)) + 0.1)
     prior_prec = np.ones(columns)
     prior_prec[0] = 0.25
     latent, hyper, diagnostics = _accel.fit_structural(

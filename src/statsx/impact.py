@@ -112,7 +112,8 @@ def causal_impact(  # noqa: PLR0913 (model choices, all keyword-only)
     """Return the posterior of the effect of an intervention on ``counts``.
 
     Args:
-        counts: Non-negative counts of the treated series, one per month.
+        counts: Non-negative counts of the treated series, one per month. A month before the
+            intervention may be NaN (not observed, see ``fit_trend``); the months after it may not.
         controls: Control series, shape (months,) or (months, controls), the same length as
             ``counts``. They must not be affected by the intervention.
         intervention: Index of the first affected month. At least ``2 * period`` months must
@@ -142,6 +143,10 @@ def causal_impact(  # noqa: PLR0913 (model choices, all keyword-only)
         raise ValueError(
             f"intervention must leave {2 * period} months before it and 1 after, got "
             f"{intervention} for {y.size} months"
+        )
+    if np.any(np.isnan(y[intervention:])):
+        raise ValueError(
+            "counts after the intervention must all be observed: a NaN there has no effect to measure"
         )
     if log_controls:
         if np.any(x < 0.0):

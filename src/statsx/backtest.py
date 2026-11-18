@@ -193,6 +193,11 @@ def backtest(  # noqa: PLR0913 (model choices, all keyword-only)
     y = np.ascontiguousarray(counts, dtype=np.float64)
     if y.ndim != 1 or horizon < 1 or step < 1 or initial < 2 * period:
         raise ValueError("need 1-D counts, horizon >= 1, step >= 1 and initial >= 2 * period")
+    if np.any(np.isnan(y)):
+        raise ValueError(
+            "backtest needs every month observed: a NaN would make the scores NaN. "
+            "Use fit_trend for a series with months that were not observed"
+        )
     origins = list(range(initial, y.size - horizon + 1, step))
     if not origins:
         raise ValueError(f"no origin fits: {y.size} months, initial {initial}, horizon {horizon}")
