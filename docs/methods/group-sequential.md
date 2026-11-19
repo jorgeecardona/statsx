@@ -100,13 +100,22 @@ the first look of five spends 0.0158 (Pocock) and 0.00001 (O'Brien-Fleming).
 - A simulation of 60000 four-look trials with no effect stopped in 5.0% of them, for both designs.
   Using 1.96 at every look stopped in more than 10%.
 
-## When it fails
+## What it assumes
 
-- The statistic is not asymptotically normal, or the looks are not at the planned information
-  times. A different spending function (Lan and DeMets 1983) is needed for unplanned looks, and the
-  package does not offer it.
-- The design bounds the error under no effect. It says nothing about the estimate at a stop: an
-  effect estimated at an early stop is biased upwards.
+- The test statistic is asymptotically normal, with the usual joint distribution across looks.
+- The looks happen at the planned information times.
+
+## What the library checks and does not check
+
+Checked: `n_looks` is a whole number from 1 to 20, `alpha` is in (0, 0.5), `kind` is
+`obrien_fleming` or `pocock`, and `times` are increasing, positive and end at 1.
+
+Not checked:
+
+- That the looks really happen at the planned times. A different spending function (Lan and DeMets
+  1983) is needed for unplanned looks, and the package does not offer it.
+- The estimate at a stop. The design bounds the error under no effect. An effect estimated at an
+  early stop is biased upwards.
 
 ## References
 

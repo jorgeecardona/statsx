@@ -141,11 +141,20 @@ in which each arm was removed. Worse arms are removed earlier and get fewer pull
 - `best_arm` with \(\delta = 0.2\) returned the best arm in all 300 runs (the bound allows up to
   20%). The intervals are conservative, so the observed error is far below \(\delta\).
 
-## When it fails
+## What it assumes
 
-- The arm outcomes change over time: all methods here assume each arm has one fixed \(\mu_i\).
-- Outcomes are not 0 or 1. `best_arm` uses \(\sigma = 1/2\), which is valid for any outcome in
-  \([0, 1]\), and conservative.
+- Each arm gives a 1 or a 0 with one fixed probability \(\mu_i\), and pulls are independent given
+  \(\mu_i\).
+- The prior is a Beta distribution that you choose. A narrow prior is a statement about the arm.
+- `best_arm` uses \(\sigma = 1/2\), which is valid for any outcome in \([0, 1]\) and conservative.
+
+## What the library checks and does not check
+
+Checked: at least one arm (at least 2 for halving and `best_arm`), `n_pulls` of at least 1, a budget
+large enough for the rounds, `delta` in (0, 1), a `max_pulls` that allows one round, and that a pull
+returns a number of successes between 0 and the pulls made.
+
+Not checked: that the arm outcomes stay the same over time. All methods here assume it.
 
 ## References
 

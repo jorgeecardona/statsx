@@ -18,7 +18,7 @@ true. If you stop at the first crossing, the false stop rate is far above 5%. In
 normal paths of 400 observations, a usual test checked after every observation stopped in 47.7%
 of the paths.
 
-## The assumption
+## What it assumes
 
 Each \(X_i\) is conditionally \(\sigma\)-sub-Gaussian given the past:
 
@@ -117,11 +117,16 @@ The interval for \(\mu\) excludes 0 for the first time at \(n = 89\). The e-valu
   \(S_n\).
 - The e-value and the interval agree at every \(n\), for five values of \(\mu_0\).
 
-## When it fails
+## What the library checks and does not check
 
-- \(\sigma\) too small: the guarantee no longer holds.
+Checked: the observations are a non-empty array of finite numbers, `sigma` is finite and above 0,
+`alpha` is in (0, 1), and `n` is at least 1.
+
+Not checked:
+
+- That \(\sigma\) is large enough. If it is too small, the guarantee no longer holds.
 - Observations that depend on each other beyond the martingale condition above.
-- A mean that changes over time: the interval then covers the mean of a mixture, not a fixed
+- A mean that changes over time. The interval then covers the mean of a mixture, not a fixed
   \(\mu\).
 
 ## References

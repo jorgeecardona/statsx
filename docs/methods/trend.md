@@ -17,7 +17,7 @@ and \(d_t\) a random walk (the drift). The posterior comes from the nested Lapla
 (Rue, Martino and Chopin 2009), corrected by importance sampling with a Pareto smoothed tail
 (Vehtari et al. 2024).
 
-## What the result assumes
+## What it assumes
 
 A fit that returns has passed a check of the computation. It has not been checked against the model.
 These are assumptions of the model, and the data may not hold them:
@@ -26,6 +26,20 @@ These are assumptions of the model, and the data may not hold them:
 - The level changes smoothly, as a random walk with a small step.
 - Given the mean, the counts are independent and negative binomial. No extra spread across months.
 - The priors below are the defaults. A narrow prior on a coefficient is a statement you make about it.
+
+## What the library checks and does not check
+
+Checked, always: the shape of the data and the period (finite, at least 2), the scales (above 0), and
+the harmonic bound. After the fit, a check of the computation: the Pareto k-hat, the importance
+sampling ESS, the mass at the grid edge, Newton convergence and a positive definite Hessian. The fit
+raises `FitCheckError` when it fails.
+
+Not checked:
+
+- That the season has a fixed shape, that the level is a random walk, or that the counts are negative
+  binomial. A passing fit says the computation worked, not that these hold. A posterior predictive
+  check is planned (need AS-1) and does not exist yet.
+- That a regressor causes the change you attribute to it.
 
 ## The period
 
@@ -58,7 +72,7 @@ size, grid edge). The error names the cause and what to change. The default stay
 
 Pass `require=False` to get the fit anyway, and read `fit.check`: `passed`, the numbers, and the
 thresholds the library applies. Show such a forecast with a caveat. A check on the computation is
-not a check on the model (see "What the result assumes").
+not a check on the model (see "What it assumes").
 
 The series below is simulated: 96 months with a trend, a season of period 12 and extra spread.
 

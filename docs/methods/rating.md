@@ -64,6 +64,14 @@ the volatility, and the RD grows.
 - The package checks the Glicko-2 update against the worked example of Glickman (2022). It does not
   check whether the model fits your data.
 
+## What the library checks and does not check
+
+Checked: a score is 0, 0.5 or 1, the rating deviation and the volatility are above 0, `k` and `tau`
+are above 0, and the volatility iteration converges.
+
+Not checked: that one strength per player describes your games. The opponent ratings are the ones
+you pass, so use the ratings from the start of the period.
+
 ## References
 
 - Elo, A. E. (1978). *The Rating of Chessplayers, Past and Present*. Arco, New York.

@@ -179,11 +179,22 @@ distance is the same in both, close to the true shift of 0.03 (the difference is
 - \(W_1\) matches the numeric area between the two distribution functions to \(2 \times 10^{-5}\).
 - For 300 lognormal samples of 1000 rows drawn from the fit, 6.3% had \(p < 0.05\).
 
-## When it fails
+## What it assumes
 
-- Rows that are not independent: set `n_effective`.
-- A fit estimated from the same rows: set `n_params`. The p-value is then approximate.
-- Fewer than 25 rows, or fewer than 5 expected per bin.
+- The data come from the family you fit (normal, lognormal or shifted exponential). The goodness of
+  fit measures a distance to that family. It does not choose a family.
+- The rows are independent. If they are not, set `n_effective`.
+- A fit estimated from the same rows uses up degrees of freedom. Set `n_params`. The p-value is then
+  approximate.
+
+## What the library checks and does not check
+
+Checked: sufficient statistics are finite with \(n \ge 1\) and \(m_2 \ge 0\), a lognormal gets positive
+values, `n_effective` is in \((0, n]\), the degrees of freedom are above 0, and, when the package bins
+the values itself, there are at least 25 values and at most \(n / 5\) bins.
+
+Not checked: independence of the rows, and that `n_effective` or `n_params` is the number you should
+use. They are inputs.
 
 ## References
 

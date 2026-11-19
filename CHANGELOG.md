@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Every methods page has the same two headings: "What it assumes" and "What the library checks and does not
+  check". A test keeps them.
 - New page "Which method do I use?": your situation in one column, the function and its page in the next. A test
   checks that every module is on it.
 - New module `statsx.rating`: online Elo (`elo_expected`, `elo_update`) and Glicko-2 (`glicko2_update`) from a

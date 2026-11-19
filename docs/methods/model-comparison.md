@@ -226,7 +226,7 @@ P(frontier cheaper per pass than large) = 1.0
   the infra shift (1.25 instead of 1.5 in the test).
 - Models that never share an infra are refused, and the message names them.
 
-## What it does not do
+## What it assumes
 
 - One ability per model: a model that is better at code and worse at maths is described by an average.
   The task set decides what the average means.
@@ -236,6 +236,14 @@ P(frontier cheaper per pass than large) = 1.0
   which the model accounts for, but not any other link (the same prompt in two forms).
 - The abilities are only comparable for the tasks you ran. A different task set gives a different scale.
 - With few cells per model, the Gaussian posterior is rough. Read probabilities near 0 or 1 with care.
+
+## What the library checks and does not check
+
+Checked: the columns are non-empty and of one length, `passed` is between 0 and 1, names are known,
+the sds are positive, Newton's method converged, and the data are one linked group. Models or tasks in
+groups that no row links, and models that no infra links, are refused.
+
+Not checked: that the Rasch model fits the tasks. The list above is what the fit takes for granted.
 
 ## References
 

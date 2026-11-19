@@ -76,15 +76,25 @@ too narrow passed: False ['mu: rank histogram is not uniform', 'mu: the posterio
   continuous parameter and do not treat ties. statsx breaks them at random, which keeps the rank
   uniform on \(0, \dots, L\).
 
-## When it fails
+## What it assumes
 
-- The posterior draws inside one replication must be independent. Thin MCMC draws until their
+- The posterior draws inside one replication are independent. Thin MCMC draws until their
   autocorrelation is small, or the test rejects a correct sampler.
-- It checks the method and the model together, on data the model itself simulates. It says nothing
-  about whether the model fits real data.
-- The test sees the marginal of each parameter. A method that is wrong only in the dependence
-  between parameters can pass. Test a function of the parameters too (their sum, a prediction).
-- Few replications give little power. With fewer than about 100, only large errors show.
+- The truth of each replication is drawn from the prior the method uses.
+
+## What the library checks and does not check
+
+Checked: the shapes (replications,) and (replications, draws), that values are finite, at least 20
+replications, ranks that are integers from 0 to the number of draws, and `alpha` in (0, 1).
+
+Not checked:
+
+- That the draws are independent.
+- Whether the model fits real data. The test checks the method and the model together, on data the
+  model itself simulates.
+- The dependence between parameters. The test sees the marginal of each one, so a method that is wrong
+  only in the dependence can pass. Test a function of the parameters too (their sum, a prediction).
+- Power. With fewer than about 100 replications, only large errors show.
 
 ## References
 

@@ -129,11 +129,22 @@ With no drift, a 5% test rejected in 4.5% of 1500 runs (KS, exact branch), 4.9% 
 - A change of spread (standard deviation 2 against 1) has \(p = 0.13\) for the linear classifier and
   \(p < 10^{-80}\) with `quadratic=True`.
 
-## When it fails
+## What it assumes
 
-- Rows that are not independent (the same user twice, a time series): every p-value is too small.
-- Many comparisons (one test per column): adjust with `statsx.multiple.adjust`.
-- With a very large \(n\), every test finds a tiny drift. Read the statistic, not only the p-value.
+- The rows within each sample are independent draws from one distribution.
+- The reference sample is what "no drift" means. A reference that already drifted hides a change.
+
+## What the library checks and does not check
+
+Checked: each sample has at least 2 finite values, the two samples have the same number of columns,
+`classifier_test` leaves at least 10 rows of each sample for training and testing, and shares add up to 1.
+
+Not checked:
+
+- Independence of the rows (the same user twice, a time series). Every p-value is then too small.
+- Many comparisons (one test per column). Adjust with `statsx.multiple.adjust`.
+- Practical size. With a very large \(n\), every test finds a tiny drift. Read the statistic, not only the
+  p-value.
 
 ## References
 

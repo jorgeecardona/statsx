@@ -111,13 +111,24 @@ of 4 chains with 500 draws (AR(1) draws, so the true value is known):
 The error of the mean also matches the theory \(\sqrt{(1 + \phi)/(1 - \phi)/N}\). The ESS of the mean
 is a third of the draws for \(\phi = 0.5\). Constant draws give NaN, and a wrong shape is refused.
 
-## When it fails
+## What it assumes
 
-- A sampler that has not mixed can look fine to every number here. Run 4 chains from different
-  starting points, and read \(\widehat{R}\) first.
-- The ESS estimate is noisy when it is small. Below 100 draws per chain, do not trust a small MCSE.
-- The quantile rule uses an indicator ESS, which is rough in the far tails with few draws.
-- MCSE measures the draws, not the model. It says nothing about how well the model fits.
+- The draws are a matrix of shape (chains, draws), from chains started at different points.
+- Each chain is stationary after the draws you pass. Discard the warm-up first.
+- The Monte Carlo standard error (MCSE) is for the draws. It is not an error of the model.
+
+## What the library checks and does not check
+
+Checked: the shape (chains, draws), that every draw is finite, and that `prob` is in (0, 1).
+
+Not checked:
+
+- Whether the sampler mixed. A sampler that has not mixed can look fine to every number here. Run 4
+  chains from different starting points, and read \(\widehat{R}\) first.
+- Whether the ESS estimate is stable. It is noisy when it is small. Below 100 draws per chain, do not
+  trust a small MCSE.
+- The far tails. The quantile rule uses an indicator ESS, which is rough with few draws.
+- How well the model fits. MCSE says nothing about it.
 
 ## References
 

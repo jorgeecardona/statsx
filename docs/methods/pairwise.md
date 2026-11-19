@@ -221,13 +221,27 @@ or arena tables expects.
   error of the strength gap was 0.11 with the judge term and 0.30 without it (mean of 6 runs).
 - A judge that always sees the same system first is refused, and the message names the judge.
 
-## When it fails
+## What it assumes
 
-- A comparison graph that is not connected: systems in different groups are not on one scale. The
-  prior sets them to 0 relative to their own group.
-- Judges with other biases (length, style): only the position bias is modelled. The model assumes one
-  preference scale for all judges.
-- Strengths do not capture intransitive preferences (A beats B, B beats C, C beats A).
+- Each system has one strength, and \(\mathbb{P}(a \succ b)\) depends only on the difference.
+  Preferences are transitive.
+- All judges share one preference scale. Only the position bias of each judge is modelled.
+- Items are independent of each other. Rows of one item are resampled together.
+- Ties follow the model you choose: half a win each, or Davidson's tie parameter.
+
+## What the library checks and does not check
+
+Checked: the columns are non-empty and of one length, an outcome is a, b, tie, win, loss, 1, 0 or 0.5,
+a system is not compared with itself, `ties` is `davidson` or `half`, the sds are positive, Newton's
+method converged, and judges whose position bias cannot be told from the strengths are refused and
+named.
+
+Not checked:
+
+- A comparison graph that is not connected. Systems in different groups are not on one scale. The
+  prior sets each group to mean 0, so the fit runs. `statsx.evals` refuses the same condition.
+- Judges with other biases (length, style).
+- Intransitive preferences (A beats B, B beats C, C beats A).
 
 ## References
 

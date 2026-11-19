@@ -48,3 +48,18 @@ def test_every_link_in_the_choose_page_points_to_a_file_or_an_api_entry() -> Non
         assert (docs / path).exists(), target
         if anchor:
             assert f"## {anchor.replace('statsx', 'statsx.', 1)}" in api, target
+
+
+_ASSUMPTION_HEADINGS = (
+    "## What it assumes\n",
+    "## What the library checks and does not check\n",
+)
+
+
+@pytest.mark.parametrize(
+    "page", sorted((Path(__file__).resolve().parent.parent / "docs" / "methods").glob("*.md"))
+)
+def test_every_methods_page_has_the_two_assumption_headings(page: Path) -> None:
+    text = page.read_text()
+    assert [h for h in _ASSUMPTION_HEADINGS if h not in text] == []
+    assert text.index(_ASSUMPTION_HEADINGS[0]) < text.index(_ASSUMPTION_HEADINGS[1])
