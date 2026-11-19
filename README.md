@@ -29,9 +29,13 @@ print(proportion_interval(7, 40, method="wilson"))
 Estimate(estimate=0.175, interval=Interval(lower=0.0874541374603592, upper=0.3194999033178771, level=0.95), n=40, assumption='independent trials with one success probability; Wilson score interval')
 ```
 
-Every result carries its estimate, its interval, the sample size and the assumption it rests on.
+Interval results such as this one carry the estimate, the interval, the sample size and an
+`assumption` field. Fitted models (`fit_trend`, `fit_bradley_terry`) do not have that field: their
+methods pages state what they assume.
 
 ## What it does
+
+Not sure where to start? Read [Which method do I use?](https://cardona-oss.gitlab.io/statsx/choose/).
 
 Each method is written in Rust from a published paper, and its docstring lists the references.
 The [methods pages](https://cardona-oss.gitlab.io/statsx/methods/always-valid/) state the model,

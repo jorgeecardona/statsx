@@ -78,6 +78,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Which method do I use?: choose.md
   - Methods:
       - Always-valid inference: methods/always-valid.md
       - Group sequential bounds: methods/group-sequential.md
