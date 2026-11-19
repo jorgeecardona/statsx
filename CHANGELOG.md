@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New page "Intervals for a proportion, an effect size and any statistic" for `statsx.proportion`, `statsx.effect`
+  and `statsx.bootstrap`. Its example shows an interval that is too narrow when rows of one group are resampled
+  one by one.
 - New page "Calibration of predicted probabilities" for `statsx.calibration`, with the ECE bias at 100, 1000 and 10000
   items shown in a runnable example.
 - New page "Tests for paired results, equivalence and many tests" for `statsx.paired`, `statsx.equivalence` and

@@ -18,9 +18,9 @@ you trust a number.
 
 | You have | You want | Use | Read |
 |---|---|---|---|
-| A count of successes out of trials | An interval for the proportion | `statsx.proportion` | [API](api.md#statsxproportion) |
-| Two groups of values | An effect size with an interval | `statsx.effect` | [API](api.md#statsxeffect) |
-| Any statistic and a sample | A bootstrap interval, with a named resample unit | `statsx.bootstrap` | [API](api.md#statsxbootstrap) |
+| A count of successes out of trials | An interval for the proportion | `statsx.proportion` | [Intervals for a proportion, an effect size and any statistic](methods/intervals.md) |
+| Two groups of values | An effect size with an interval | `statsx.effect` | [Intervals for a proportion, an effect size and any statistic](methods/intervals.md) |
+| Any statistic and a sample | A bootstrap interval, with a named resample unit | `statsx.bootstrap` | [Intervals for a proportion, an effect size and any statistic](methods/intervals.md) |
 | Paired results (same items, two systems) | McNemar, sign, Wilcoxon, or a bootstrap difference | `statsx.paired` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
 | Many p-values | Holm, Benjamini-Hochberg, q-values | `statsx.multiple` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
 | A margin of practical equivalence | TOST or the ROPE probability | `statsx.equivalence` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
