@@ -1,4 +1,4 @@
-"""Put models on one scale from their results on shared tasks (CO-5).
+"""Put models on one scale from their results on shared tasks.
 
 Many models are tried on many tasks, and each (model, task) cell holds a pass (1) or fail (0), or a
 score in [0, 1]. Cells may be missing, and a pair may be tried more than once. The model asks how

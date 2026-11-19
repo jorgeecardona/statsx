@@ -32,8 +32,8 @@ Status values: `built`, `planned` (has a need), `open` (a question, no decision)
 
 ### LLM judges and an arena
 
-- Status: planned. Done: position bias per judge (CO-7). To do: Elo scale (CO-8), online Elo and
-  Glicko-2 (CO-9), do judges rank the systems differently (CO-10).
+- Status: partly built. Done: position bias per judge (CO-7), Elo scale with intervals (CO-8), online Elo
+  and Glicko-2 (CO-9). To do: do judges rank the systems differently (CO-10).
 - Idea: judges with different criteria give different results; an arena scores the systems like chess.
 - Assumption to state: Bradley-Terry assumes one strength per system on one scale. If the judges
   disagree, one strength is the wrong model. CO-10 is the check of that assumption.

@@ -1,4 +1,4 @@
-"""Updated ETA of a running task from its elapsed time and its progress (ET-3).
+"""Updated ETA of a running task from its elapsed time and its progress.
 
 A task reports progress at some times: for example files done out of the files to do, so the
 fraction ``f`` done at elapsed time ``e``. If the task ran at a constant rate, the time left

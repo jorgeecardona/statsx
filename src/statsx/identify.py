@@ -1,4 +1,4 @@
-"""Pick the best arm and stop when it is certain, with an error guarantee (SQ-4).
+"""Pick the best arm and stop when it is certain, with an error guarantee.
 
 ``best_arm`` pulls every arm still in the race, and after each round removes the arms that are
 clearly worse. It stops when one arm is left, or when every other arm is within ``epsilon`` of

@@ -1,4 +1,4 @@
-"""Convergence checks for MCMC output and the Monte Carlo error of its summaries (BA-5, BA-9).
+"""Convergence checks for MCMC output and the Monte Carlo error of its summaries.
 
 ``check_convergence`` gives R-hat, ESS and divergences in one check.
 

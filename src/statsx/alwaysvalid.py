@@ -1,4 +1,4 @@
-"""Always-valid inference: confidence sequences and e-values, so you can stop whenever (SQ-1).
+"""Always-valid inference: confidence sequences and e-values, so you can stop whenever.
 
 A usual 95% interval is valid at one planned sample size. If you look at it after every
 observation and stop when it excludes a value, the chance of a false stop is far above 5%. The

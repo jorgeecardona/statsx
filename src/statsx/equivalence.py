@@ -1,4 +1,4 @@
-"""One definition of practical equivalence, for the TOST test and the ROPE probability (CO-4).
+"""One definition of practical equivalence, for the TOST test and the ROPE probability.
 
 An ``EquivalenceMargin`` is the interval of differences that count as practically zero. Every
 function that asks "are these the same in practice?" takes this one object, so a TOST test on

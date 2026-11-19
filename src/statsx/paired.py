@@ -1,4 +1,4 @@
-"""Tests for paired results: McNemar, sign, Wilcoxon signed-rank, and a bootstrap difference (CO-1).
+"""Tests for paired results: McNemar, sign, Wilcoxon signed-rank, and a bootstrap difference.
 
 Paired means each item was measured twice (two systems on the same items, before and after). The
 tests look at the differences, so they ignore the spread between items.

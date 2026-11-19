@@ -1,4 +1,4 @@
-"""Power, sample size and minimum detectable effect for planning a run (DE-1, DE-2).
+"""Power, sample size and minimum detectable effect for planning a run.
 
 Every test has three functions: ``power_*`` (the chance the test finds the effect, for a given
 sample size), ``sample_size_*`` (the smallest sample size that reaches a power) and

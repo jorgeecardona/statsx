@@ -1,4 +1,4 @@
-"""Trend, forecast and anomalies of a count series (TS-1 to TS-6).
+"""Trend, forecast and anomalies of a count series.
 
 ``fit_trend`` fits a negative binomial structural time series: a level, a slope, a random-walk
 drift, and a Fourier season. The posterior comes from the nested Laplace approximation, corrected

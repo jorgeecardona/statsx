@@ -1,4 +1,4 @@
-"""Spend a budget over arms: Thompson sampling, Bayes-UCB and successive halving (SQ-3).
+"""Spend a budget over arms: Thompson sampling, Bayes-UCB and successive halving.
 
 Each arm has a Beta posterior for its success probability (see ``statsx.conjugate.Beta``). Three
 policies decide where the next pulls go:

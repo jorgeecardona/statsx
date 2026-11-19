@@ -1,4 +1,4 @@
-"""Conjugate priors and their closed-form posterior updates (BA-1).
+"""Conjugate priors and their closed-form posterior updates.
 
 Each prior is a frozen dataclass, and each update returns a new object of the same family.
 The arithmetic runs in the Rust core.

@@ -1,4 +1,4 @@
-"""Summaries of posterior draws (ES-4), and the comparison of two posteriors (BA-2).
+"""Summaries of posterior draws, and the comparison of two posteriors.
 
 Each summary is one function. They work on any sample of draws of one quantity. ``compare``
 gives P(A > B) and the probability of practical equivalence for two independent posteriors.

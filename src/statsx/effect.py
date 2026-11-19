@@ -1,4 +1,4 @@
-"""Effect size of two groups, with an interval (ES-5).
+"""Effect size of two groups, with an interval.
 
 ``effect_size`` compares two independent samples and returns an ``Estimate``: the effect, its
 interval, the number of observations, and the assumption. It never returns a point estimate

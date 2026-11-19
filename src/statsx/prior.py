@@ -1,4 +1,4 @@
-"""Priors from expert judgement: a lognormal from a calibrated interval (BA-3).
+"""Priors from expert judgement: a lognormal from a calibrated interval.
 
 An expert gives a lower and an upper bound and says how sure they are that the true value lies
 between them (the default is 90%). ``lognormal_from_interval`` returns the lognormal distribution

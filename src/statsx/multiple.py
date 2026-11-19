@@ -1,4 +1,4 @@
-"""Corrections for many tests: Holm, Benjamini-Hochberg, Storey q-values (CO-3).
+"""Corrections for many tests: Holm, Benjamini-Hochberg, Storey q-values.
 
 ``adjust`` takes the p-values of m tests and returns adjusted values in the input order and which
 tests are rejected at level ``alpha``.

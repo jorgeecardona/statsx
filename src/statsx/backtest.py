@@ -1,4 +1,4 @@
-"""Rolling-origin backtest of a count forecast: CRPS and interval coverage (TS-8).
+"""Rolling-origin backtest of a count forecast: CRPS and interval coverage.
 
 ``backtest`` refits ``fit_trend`` at each origin, forecasts the next months, and scores the
 forecast draws against the counts that followed. An origin whose fit fails its check is

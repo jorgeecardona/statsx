@@ -69,3 +69,20 @@ def test_every_module_in_the_choose_page_links_to_a_methods_page() -> None:
     docs = Path(__file__).resolve().parent.parent / "docs"
     text = (docs / "choose.md").read_text()
     assert "api.md#" not in text
+
+
+def test_no_module_docstring_starts_with_a_need_id_or_an_issue_number() -> None:
+    first_lines = [p.read_text().split("\n", 1)[0] for p in sorted(_SRC.glob("*.py"))]
+    pattern = re.compile(r"\((?:[A-Z]{2}-\d+|GitLab issue #\d+)")
+    assert [line for line in first_lines if pattern.search(line)] == []
+
+
+def test_the_changelog_has_one_section_per_version_and_one_heading_per_kind() -> None:
+    text = (Path(__file__).resolve().parent.parent / "CHANGELOG.md").read_text()
+    sections = re.split(r"^## ", text, flags=re.MULTILINE)[1:]
+    assert sections[0].startswith("[Unreleased]")
+    for section in sections[1:]:
+        assert re.match(r"\[\d+\.\d+\.\d+\] - \d{4}-\d\d-\d\d\n", section), section[:40]
+    for section in sections:
+        kinds = re.findall(r"^### (.+)$", section, flags=re.MULTILINE)
+        assert len(kinds) == len(set(kinds)), section[:40]

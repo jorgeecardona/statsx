@@ -1,4 +1,4 @@
-"""Causal effect of an intervention on a count series, from control series (TS-7).
+"""Causal effect of an intervention on a count series, from control series.
 
 ``causal_impact`` fits ``fit_trend`` on the months before the intervention, with the control
 series as regressors. It forecasts the months after it, using the controls' values for those

@@ -1,4 +1,4 @@
-"""Online ratings from a stream of match results: Elo and Glicko-2 (CO-9).
+"""Online ratings from a stream of match results: Elo and Glicko-2.
 
 Use this when results arrive one match (Elo) or one rating period (Glicko-2) at a time and you want
 a new rating after each. To rank systems from a fixed table of comparisons, with intervals, use

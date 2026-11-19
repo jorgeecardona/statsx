@@ -1,4 +1,4 @@
-"""Fit normal, lognormal and shifted-exponential distributions from sufficient statistics (DI-1).
+"""Fit normal, lognormal and shifted-exponential distributions from sufficient statistics.
 
 Sufficient statistics are a few numbers that hold all the information a model needs from the
 rows. You can fit from them when the rows are gone, too large, or spread over many machines. Two

@@ -1,4 +1,4 @@
-"""Agreement between raters: Cohen's kappa, Fleiss' kappa, Krippendorff's alpha (CA-3).
+"""Agreement between raters: Cohen's kappa, Fleiss' kappa, Krippendorff's alpha.
 
 All three compare the agreement seen with the agreement expected by chance. 1 is perfect
 agreement, 0 is the level of chance, and a negative value is worse than chance. Each function

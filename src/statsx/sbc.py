@@ -1,4 +1,4 @@
-"""Simulation-based calibration: check that a posterior method is correct (BA-8).
+"""Simulation-based calibration: check that a posterior method is correct.
 
 Draw a parameter from the prior, simulate data from it, run your inference on that data, and
 record the rank of the true parameter among ``n_draws`` posterior draws. Repeat. If the

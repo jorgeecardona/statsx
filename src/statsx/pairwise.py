@@ -1,4 +1,4 @@
-"""Rank systems from pairwise results: Bradley-Terry and Davidson, with item-level resampling (CO-2).
+"""Rank systems from pairwise results: Bradley-Terry and Davidson, with item-level resampling.
 
 Each row says that system ``a`` was compared with system ``b`` on one item (a prompt, a task, a
 match) and won, lost or tied. The model gives each system a strength ``theta`` on the log scale.

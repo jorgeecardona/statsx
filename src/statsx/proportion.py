@@ -1,4 +1,4 @@
-"""Intervals for a proportion: Wilson, Jeffreys, Clopper-Pearson, Agresti-Coull (ES-1).
+"""Intervals for a proportion: Wilson, Jeffreys, Clopper-Pearson, Agresti-Coull.
 
 ``proportion_interval(successes, trials, method=...)`` returns an ``Estimate``: the sample
 proportion, the interval, ``trials`` as the sample size, and the method as the assumption.

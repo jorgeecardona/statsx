@@ -1,4 +1,4 @@
-"""Sample allocation for a stratified evaluation set, for a target precision (DE-3).
+"""Sample allocation for a stratified evaluation set, for a target precision.
 
 A stratified sample draws a separate sample in each stratum (for example each class, language
 or difficulty level) and combines them with the population weights ``W_h = N_h / N``. The

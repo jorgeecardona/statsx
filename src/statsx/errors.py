@@ -1,4 +1,4 @@
-"""Errors that mean statsx could not give an answer (GitLab issue #7).
+"""Errors that mean statsx could not give an answer.
 
 One ``except StatsxError`` catches both kinds, and each kind keeps its builtin base, so a handler
 for ``ValueError`` or ``RuntimeError`` written before this module still works.

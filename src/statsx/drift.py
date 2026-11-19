@@ -1,4 +1,4 @@
-"""Compare two samples for drift: KS, MMD, a classifier two-sample test, and PSI (DI-3).
+"""Compare two samples for drift: KS, MMD, a classifier two-sample test, and PSI.
 
 The question is whether sample ``a`` (a reference) and sample ``b`` (new data) come from the same
 distribution. Each test looks for a different kind of change, so the choice matters.

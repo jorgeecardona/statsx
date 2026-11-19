@@ -1,4 +1,4 @@
-"""Bootstrap with a named resample unit (ES-2) and a percentile, basic or BCa interval (ES-3).
+"""Bootstrap with a named resample unit and a percentile, basic or BCa interval.
 
 The resample unit is part of the result, so a reader can see what was resampled.
 Resample indices come from the Rust core; the statistic runs in Python on NumPy arrays.

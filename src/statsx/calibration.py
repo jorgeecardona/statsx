@@ -1,4 +1,4 @@
-"""Calibration of a classifier's probabilities: measure it (CA-1) and fix it (CA-2).
+"""Calibration of a classifier's probabilities: measure it and fix it.
 
 A classifier is calibrated when, among the items it gives probability ``p``, a share ``p`` are
 positive. ``reliability`` bins the predicted probabilities and compares the mean prediction in

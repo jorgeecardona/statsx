@@ -1,4 +1,4 @@
-"""Goodness of fit at a stated effective sample size, with distances that do not grow with N (DI-2).
+"""Goodness of fit at a stated effective sample size, with distances that do not grow with N.
 
 With a very large N, a chi-square test rejects almost any fit, because even a tiny misfit becomes
 detectable. The p-value then says "the fit is not exact", which you knew. This module reports

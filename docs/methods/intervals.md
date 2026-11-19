@@ -9,7 +9,7 @@ modules are `statsx.proportion`, `statsx.effect` and `statsx.bootstrap`.
 `proportion_interval(successes, trials, method=...)` gives the sample proportion and an interval. The
 methods differ most with few trials. Coverage is the share of samples whose interval holds the true
 proportion. These numbers are exact from the binomial distribution, for true proportions from 0.0005 to
-0.9995, at 95% and 10 trials (decision D-23, and a test checks each line):
+0.9995, at 95% and 10 trials (a test checks each line):
 
 | Method | Mean coverage | Lowest coverage | Mean width |
 |---|---|---|---|

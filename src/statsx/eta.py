@@ -1,4 +1,4 @@
-"""Task duration from input parameters, with a credible interval (ET-1, ET-2, ET-4, ET-5).
+"""Task duration from input parameters, with a credible interval.
 
 The model is ``log(duration) = b0 + sum_k b_k * log(1 + x_k) + e``, with normal noise ``e``.
 A coefficient of 1 on ``log(1 + files)`` means duration grows in proportion to the file count.

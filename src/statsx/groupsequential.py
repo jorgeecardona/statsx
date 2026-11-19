@@ -1,4 +1,4 @@
-"""Stopping boundaries for a planned number of looks: O'Brien-Fleming and Pocock (SQ-2).
+"""Stopping boundaries for a planned number of looks: O'Brien-Fleming and Pocock.
 
 When you plan K looks at the data (for example after every quarter of the sample) and stop if
 the effect is clear, testing at 5% at each look gives an overall error rate far above 5%. A
