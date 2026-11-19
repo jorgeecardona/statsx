@@ -55,7 +55,7 @@ the volatility, and the RD grows.
 ## What it assumes
 
 - The update is a point estimate. Elo has no interval.
-- Glicko-2 works best with about 10 to 15 games per player per period (Glickman). With one game
+- Glicko-2 works best with at least 10 to 15 games per player per period (Glickman). With one game
   per period the volatility term is poorly determined.
 - `tau` limits how fast the volatility changes. Glickman suggests 0.3 to 1.2 and a value tested
   for predictive accuracy.

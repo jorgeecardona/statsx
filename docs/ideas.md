@@ -40,7 +40,7 @@ Status values: `built`, `planned` (has a need), `open` (a question, no decision)
 
 ### From the PyMC and NumPyro research
 
-- Status: open, ranked list. Not started: CUPED (Deng 2013), PPI++ for judge scores (arXiv:2311.01217),
+- Status: open, ranked list. Not started: CUPED (Deng 2013), PPI++ for judge scores (arXiv:2311.01453),
   PSIS-LOO as public API, cluster-robust errors for evals, ratio-metric confidence sequences,
   Diebold-Mariano.
 - Open decision: MCMC for non-conjugate models and install without JAX or a C compiler (BA-4, BA-6).

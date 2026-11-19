@@ -40,8 +40,8 @@ References:
     evaluating LLMs with fewer examples. arXiv:2402.14992. The use of item response models for
     language models, with new models linked to fixed item parameters.
 
-    Butcher, B., et al. (2025). Cost-of-Pass: an economic framework for evaluating language models.
-    arXiv:2504.13359. The cost to first pass as the cost of an attempt over its pass rate.
+    Erol, M. H., El, B., Suzgun, M., Yuksekgonul, M., and Zou, J. (2025). Cost-of-Pass: an economic
+    framework for evaluating language models. arXiv:2504.13359. The cost to first pass as the cost of an attempt over its pass rate.
 
     Miller, E. (2024). Adding error bars to evals: a statistical approach to language model
     evaluations. arXiv:2411.00640. Paired differences on the same questions.

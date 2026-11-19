@@ -150,7 +150,7 @@ cost to the first pass is
 \text{cost per pass} = \frac{C}{R} .
 \]
 
-This is the cost-of-pass of Butcher et al. (2025). The package draws \(R\) from its Beta posterior and
+This is the cost-of-pass of Erol et al. (2025). The package draws \(R\) from its Beta posterior and
 \(C = \exp(\mu + \sigma^2 / 2)\) from the lognormal model of the costs, using the reference Normal-Inverse-Gamma
 posterior of \(\log\text{cost}\). The two draws are independent, which ignores the link between a task's cost and its
 result. The draws work in `statsx.posterior.compare` (use their logarithms to compare ratios).
@@ -243,7 +243,7 @@ P(frontier cheaper per pass than large) = 1.0
   for Educational Research.
 - Polo, F. M., Weber, L., Choshen, L., Sun, Y., and Yurochkin, M. (2024). tinyBenchmarks: evaluating
   LLMs with fewer examples. <https://arxiv.org/abs/2402.14992>
-- Butcher, B., et al. (2025). Cost-of-Pass: an economic framework for evaluating language models.
+- Erol, M. H., El, B., Suzgun, M., Yuksekgonul, M., and Zou, J. (2025). Cost-of-Pass: an economic framework for evaluating language models.
   <https://arxiv.org/abs/2504.13359>
 - Miller, E. (2024). Adding error bars to evals: a statistical approach to language model evaluations.
   <https://arxiv.org/abs/2411.00640>

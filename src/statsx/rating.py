@@ -1,8 +1,8 @@
 """Online ratings from a stream of match results: Elo and Glicko-2 (CO-9).
 
 Use this when results arrive one match (Elo) or one rating period (Glicko-2) at a time and you want
-the ratings updated in place. To rank systems from a fixed table of comparisons, with intervals,
-use ``statsx.pairwise`` instead.
+a new rating after each. To rank systems from a fixed table of comparisons, with intervals, use
+``statsx.pairwise`` instead.
 
 - Elo: ``elo_update`` moves two ratings by ``k * (score - expected)``. The expected score is
   ``1 / (1 + 10^(-(ra - rb) / 400))``, the same 400-points-per-factor-10 scale as
