@@ -55,7 +55,7 @@ you trust a number.
 
 | You have | You want | Use | Read |
 |---|---|---|---|
-| Predicted probabilities and outcomes | Calibration, Brier decomposition, Platt, isotonic | `statsx.calibration` | [API](api.md#statsxcalibration) |
+| Predicted probabilities and outcomes | Calibration, Brier decomposition, Platt, isotonic | `statsx.calibration` | [Calibration of predicted probabilities](methods/calibration.md) |
 | Sufficient statistics of a sample | A fitted normal, lognormal or shifted exponential | `statsx.distributions` | [Distributions and goodness of fit](methods/distributions.md) |
 | A fitted distribution and a sample | Goodness of fit at an effective sample size | `statsx.goodness` | [Distributions and goodness of fit](methods/distributions.md) |
 | Two samples | Whether they drifted: KS, MMD, classifier test, PSI | `statsx.drift` | [Drift between two samples](methods/drift.md) |

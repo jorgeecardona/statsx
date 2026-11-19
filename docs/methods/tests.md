@@ -81,8 +81,8 @@ Not checked:
 
 ## Example
 
-The data are simulated. System A is better than B by 0.4 on a score. Both systems get the same items
-right or wrong at a threshold of 0.3, and the example runs each test.
+The data are simulated. System A is better than B by 0.4 on a score. A score above 0.3 counts as
+right. The example runs each test.
 
 ```python
 import numpy as np
@@ -99,7 +99,8 @@ print("McNemar on right or wrong:", round(mcnemar(a > 0.3, b > 0.3).p_value, 2))
 print("sign test:", round(sign_test(a, b).p_value, 3))
 print("Wilcoxon below 0.001:", wilcoxon(a, b).p_value < 0.001)
 diff = bootstrap_difference(a, b)
-print("mean difference:", round(diff.estimate, 2), "interval:", round(diff.interval.lower, 2), round(diff.interval.upper, 2))
+low, high = round(diff.interval.lower, 2), round(diff.interval.upper, 2)
+print("mean difference:", round(diff.estimate, 2), "interval:", low, high)
 print("equivalent within 0.2:", tost(a, b, 0.2, paired=True).equivalent)
 
 p = np.array([0.001, 0.008, 0.039, 0.041, 0.2, 0.7])
@@ -108,6 +109,14 @@ for method in ("holm", "bh", "storey"):
 ```
 
 ```text
+McNemar on right or wrong: 0.21
+sign test: 0.002
+Wilcoxon below 0.001: True
+mean difference: 0.41 interval: 0.25 0.56
+equivalent within 0.2: False
+holm rejects 2
+bh rejects 2
+storey rejects 4
 ```
 
 McNemar on right or wrong has a large p-value because only a few items disagree. The sign test and

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New page "Calibration of predicted probabilities" for `statsx.calibration`, with the ECE bias at 100, 1000 and 10000
+  items shown in a runnable example.
+- New page "Tests for paired results, equivalence and many tests" for `statsx.paired`, `statsx.equivalence` and
+  `statsx.multiple`, with a runnable example.
 - New page "Effect of an intervention on a count series" for `causal_impact`: the method, the two assumptions the
   data cannot check, and a runnable example.
 - Every methods page has the same two headings: "What it assumes" and "What the library checks and does not
