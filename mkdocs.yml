@@ -95,6 +95,8 @@ nav:
       - Tests for paired results, equivalence and many tests: methods/tests.md
       - Calibration of predicted probabilities: methods/calibration.md
       - Intervals for a proportion, an effect size and any statistic: methods/intervals.md
+      - Plan a run, power, sample size and allocation: methods/design.md
+      - Time to finish a task: methods/duration.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
       - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md

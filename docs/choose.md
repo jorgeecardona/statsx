@@ -39,8 +39,8 @@ you trust a number.
 
 | You have | You want | Use | Read |
 |---|---|---|---|
-| An expected effect and a variance | Power, sample size, minimum detectable effect | `statsx.design` | [API](api.md#statsxdesign) |
-| An evaluation set with strata | How many items per stratum | `statsx.allocation` | [API](api.md#statsxallocation) |
+| An expected effect and a variance | Power, sample size, minimum detectable effect | `statsx.design` | [Plan a run](methods/design.md) |
+| An evaluation set with strata | How many items per stratum | `statsx.allocation` | [Plan a run](methods/design.md) |
 
 ## Compare models and systems
 
@@ -74,5 +74,5 @@ you trust a number.
 
 | You have | You want | Use | Read |
 |---|---|---|---|
-| Past tasks, with their input parameters and durations | The duration of a new task, with a credible interval | `statsx.eta` | [API](api.md#statsxeta) |
-| A running task with its progress | An updated ETA | `statsx.progress` | [API](api.md#statsxprogress) |
+| Past tasks, with their input parameters and durations | The duration of a new task, with a credible interval | `statsx.eta` | [Time to finish a task](methods/duration.md) |
+| A running task with its progress | An updated ETA | `statsx.progress` | [Time to finish a task](methods/duration.md) |

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New page "Time to finish a task" for `statsx.eta` and `statsx.progress`, with a runnable example.
+- New page "Plan a run: power, sample size and allocation" for `statsx.design` and `statsx.allocation`, with a runnable
+  example.
 - New page "Intervals for a proportion, an effect size and any statistic" for `statsx.proportion`, `statsx.effect`
   and `statsx.bootstrap`. Its example shows an interval that is too narrow when rows of one group are resampled
   one by one.
