@@ -122,3 +122,27 @@ def test_without_a_judge_column_the_fit_has_no_bias_terms() -> None:
 def test_bad_input_is_refused(call: Callable[[], object]) -> None:
     with pytest.raises(ValueError, match=r"."):
         call()
+
+
+def test_p_first_wins_counts_a_tie_as_not_a_win_under_davidson_ties() -> None:
+    # Two equal systems, shown in both orders, one judge with bias 1.0 and tie parameter 0.6.
+    rng = np.random.default_rng(11)
+    gamma, nu, n = 1.0, 0.6, 6000
+    z = 2.0 * math.cosh(gamma / 2.0) + nu
+    p_win, p_loss = math.exp(gamma / 2.0) / z, math.exp(-gamma / 2.0) / z
+    first: list[str] = []
+    second: list[str] = []
+    outcome: list[float] = []
+    item: list[str] = []
+    for i in range(n):
+        a, b = ("s0", "s1") if i % 2 == 0 else ("s1", "s0")
+        u = rng.random()
+        first.append(a)
+        second.append(b)
+        outcome.append(1.0 if u < p_win else 0.0 if u < p_win + p_loss else 0.5)
+        item.append(f"i{i}")
+    data = Comparisons.from_long(first, second, outcome, item=item, judge=["j"] * n)
+    fit = fit_bradley_terry(data, ties="davidson", n_bootstrap=2)
+    assert fit.p_first_wins("j") == pytest.approx(p_win, abs=0.02)
+    assert fit.p_first_wins("j") < 1.0 / (1.0 + math.exp(-fit.position_bias[0]))
+    assert fit.p_first_wins("j") == pytest.approx(sum(1 for o in outcome if o == 1.0) / n, abs=0.02)

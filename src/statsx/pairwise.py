@@ -354,8 +354,15 @@ class BradleyTerryFit:
         return _percentile(self.bias_draws[:, self._judge(judge)], level)
 
     def p_first_wins(self, judge: str) -> float:
-        """Return the chance that the system shown first wins for ``judge``, when both are equal."""
-        return 1.0 / (1.0 + math.exp(-float(self.position_bias[self._judge(judge)])))
+        """Return the chance that the system shown first wins for ``judge``, when both are equal.
+
+        With ``ties="davidson"`` a tie is not a win, so this is below the Bradley-Terry value
+        ``sigmoid(gamma)`` when ``tie_parameter`` is above 0.
+        """
+        gamma = float(self.position_bias[self._judge(judge)])
+        if self.ties == "half":
+            return 1.0 / (1.0 + math.exp(-gamma))
+        return math.exp(gamma / 2.0) / (2.0 * math.cosh(gamma / 2.0) + self.tie_parameter)
 
     def _index(self, name: str) -> int:
         if name not in self.systems:

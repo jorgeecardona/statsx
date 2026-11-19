@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `BradleyTerryFit.p_first_wins` gave the Bradley-Terry value even with Davidson ties, where a tie is not a win.
+  It now follows the fitted model.
+- The Cost-of-Pass authors and the PPI++ arXiv number were wrong in the docs and docstrings.
 - `fit_trend`: both ways of "cannot fit" now share a base, `statsx.errors.StatsxError`. `UnfittableInput` (a
   `ValueError`) is a series that cannot be fitted at all; `FitCheckError` (a `RuntimeError`) is a fit that did
   not pass its check. Old handlers keep working. Fixes GitLab issue #7.

@@ -100,7 +100,8 @@ equally well. `fit_bradley_terry` refuses such data with a `ValueError` that nam
 the order of each pair.
 
 `fit.position_bias` holds one value per judge, `fit.position_bias_interval(judge)` its bootstrap
-interval, and `fit.p_first_wins(judge)` the chance that the first answer wins between equal systems.
+interval, and `fit.p_first_wins(judge)` the chance that the first answer wins between equal systems (with Davidson
+ties, a tie is not a win, so it is below \(\sigma(\gamma_j)\)).
 The strengths are then read as if every judge had no position bias.
 
 ## Example
