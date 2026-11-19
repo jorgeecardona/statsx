@@ -24,7 +24,7 @@ you trust a number.
 | Paired results (same items, two systems) | McNemar, sign, Wilcoxon, or a bootstrap difference | `statsx.paired` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
 | Many p-values | Holm, Benjamini-Hochberg, q-values | `statsx.multiple` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
 | A margin of practical equivalence | TOST or the ROPE probability | `statsx.equivalence` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
-| Two posteriors | P(A > B) and a summary of the difference | `statsx.posterior` | [API](api.md#statsxposterior) |
+| Two posteriors | P(A > B) and a summary of the difference | `statsx.posterior` | [Priors, conjugate updates and posterior summaries](methods/bayes.md) |
 
 ## Stop an experiment early, or choose between arms
 
@@ -64,11 +64,11 @@ you trust a number.
 
 | You have | You want | Use | Read |
 |---|---|---|---|
-| Counts and a conjugate model | The closed-form posterior | `statsx.conjugate` | [API](api.md#statsxconjugate) |
-| An expert's calibrated interval | A lognormal prior | `statsx.prior` | [API](api.md#statsxprior) |
+| Counts and a conjugate model | The closed-form posterior | `statsx.conjugate` | [Priors, conjugate updates and posterior summaries](methods/bayes.md) |
+| An expert's calibrated interval | A lognormal prior | `statsx.prior` | [Priors, conjugate updates and posterior summaries](methods/bayes.md) |
 | Draws from an MCMC run | Convergence checks and Monte Carlo error | `statsx.diagnostics` | [Check MCMC draws](methods/convergence.md) |
 | A posterior method | A test that it is correct | `statsx.sbc` | [Check a posterior method](methods/sbc.md) |
-| Uncertain costs and benefits | A cost distribution, break-even, value of information | `statsx.decision` | [API](api.md#statsxdecision) |
+| Uncertain costs and benefits | A cost distribution, break-even, value of information | `statsx.decision` | [Decisions under uncertainty](methods/decisions.md) |
 
 ## Time to finish a task
 

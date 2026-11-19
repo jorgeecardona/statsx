@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New pages "Priors, conjugate updates and posterior summaries" and "Decisions under uncertainty" for
+  `statsx.prior`, `statsx.conjugate`, `statsx.posterior` and `statsx.decision`, with runnable examples. Every
+  public module now has a methods page.
 - New pages "Backtest a count forecast" and "Agreement between raters" for `statsx.backtest` and
   `statsx.agreement`, with runnable examples. The agreement example shows 90% raw agreement with a kappa of 0.44.
 - New page "Time to finish a task" for `statsx.eta` and `statsx.progress`, with a runnable example.

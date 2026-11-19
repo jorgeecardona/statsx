@@ -63,3 +63,9 @@ def test_every_methods_page_has_the_two_assumption_headings(page: Path) -> None:
     text = page.read_text()
     assert [h for h in _ASSUMPTION_HEADINGS if h not in text] == []
     assert text.index(_ASSUMPTION_HEADINGS[0]) < text.index(_ASSUMPTION_HEADINGS[1])
+
+
+def test_every_module_in_the_choose_page_links_to_a_methods_page() -> None:
+    docs = Path(__file__).resolve().parent.parent / "docs"
+    text = (docs / "choose.md").read_text()
+    assert "api.md#" not in text

@@ -99,6 +99,8 @@ nav:
       - Time to finish a task: methods/duration.md
       - Backtest a count forecast: methods/backtest.md
       - Agreement between raters: methods/agreement.md
+      - Priors, conjugate updates and posterior summaries: methods/bayes.md
+      - Decisions under uncertainty: methods/decisions.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
       - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md
