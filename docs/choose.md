@@ -12,7 +12,7 @@ you trust a number.
 |---|---|---|---|
 | Monthly counts | Trend, season, forecast, anomalies | `statsx.trend` | [Trend, season and forecast](methods/trend.md) |
 | Counts for a treated series and control series | The effect of an intervention | `statsx.impact` | [Effect of an intervention](methods/impact.md) |
-| A monthly count series | A rolling-origin test of its forecast: CRPS and interval coverage | `statsx.backtest` | [API](api.md#statsxbacktest) |
+| A monthly count series | A rolling-origin test of its forecast: CRPS and interval coverage | `statsx.backtest` | [Backtest a count forecast](methods/backtest.md) |
 
 ## Compare two groups or two estimates
 
@@ -49,7 +49,7 @@ you trust a number.
 | Results of several models on shared tasks | One scale for the models, with costs | `statsx.evals` | [Compare models on one scale](methods/model-comparison.md) |
 | Pairwise judgements (A beats B), possibly with judges | One strength per system, with intervals | `statsx.pairwise` | [Rank systems from pairwise results](methods/pairwise.md) |
 | A stream of match results | Online Elo or Glicko-2 ratings | `statsx.rating` | [Update ratings from a stream](methods/rating.md) |
-| Ratings from several raters | Cohen's kappa, Fleiss' kappa, Krippendorff's alpha | `statsx.agreement` | [API](api.md#statsxagreement) |
+| Ratings from several raters | Cohen's kappa, Fleiss' kappa, Krippendorff's alpha | `statsx.agreement` | [Agreement between raters](methods/agreement.md) |
 
 ## Check a classifier, a distribution or a drift
 

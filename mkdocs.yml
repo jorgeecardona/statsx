@@ -97,6 +97,8 @@ nav:
       - Intervals for a proportion, an effect size and any statistic: methods/intervals.md
       - Plan a run, power, sample size and allocation: methods/design.md
       - Time to finish a task: methods/duration.md
+      - Backtest a count forecast: methods/backtest.md
+      - Agreement between raters: methods/agreement.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
       - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md
