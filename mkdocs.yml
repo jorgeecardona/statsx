@@ -91,6 +91,8 @@ nav:
       - Check MCMC draws and their Monte Carlo error: methods/convergence.md
       - Check that a posterior method is correct: methods/sbc.md
       - Trend, season and forecast of a count series: methods/trend.md
+      - Effect of an intervention on a count series: methods/impact.md
+      - Tests for paired results, equivalence and many tests: methods/tests.md
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
       - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md

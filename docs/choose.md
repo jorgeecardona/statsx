@@ -11,7 +11,7 @@ you trust a number.
 | You have | You want | Use | Read |
 |---|---|---|---|
 | Monthly counts | Trend, season, forecast, anomalies | `statsx.trend` | [Trend, season and forecast](methods/trend.md) |
-| Counts for a treated series and control series | The effect of an intervention | `statsx.impact` | [API](api.md#statsximpact) |
+| Counts for a treated series and control series | The effect of an intervention | `statsx.impact` | [Effect of an intervention](methods/impact.md) |
 | A monthly count series | A rolling-origin test of its forecast: CRPS and interval coverage | `statsx.backtest` | [API](api.md#statsxbacktest) |
 
 ## Compare two groups or two estimates
@@ -21,9 +21,9 @@ you trust a number.
 | A count of successes out of trials | An interval for the proportion | `statsx.proportion` | [API](api.md#statsxproportion) |
 | Two groups of values | An effect size with an interval | `statsx.effect` | [API](api.md#statsxeffect) |
 | Any statistic and a sample | A bootstrap interval, with a named resample unit | `statsx.bootstrap` | [API](api.md#statsxbootstrap) |
-| Paired results (same items, two systems) | McNemar, sign, Wilcoxon, or a bootstrap difference | `statsx.paired` | [API](api.md#statsxpaired) |
-| Many p-values | Holm, Benjamini-Hochberg, q-values | `statsx.multiple` | [API](api.md#statsxmultiple) |
-| A margin of practical equivalence | TOST or the ROPE probability | `statsx.equivalence` | [API](api.md#statsxequivalence) |
+| Paired results (same items, two systems) | McNemar, sign, Wilcoxon, or a bootstrap difference | `statsx.paired` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
+| Many p-values | Holm, Benjamini-Hochberg, q-values | `statsx.multiple` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
+| A margin of practical equivalence | TOST or the ROPE probability | `statsx.equivalence` | [Tests for paired results, equivalence and many tests](methods/tests.md) |
 | Two posteriors | P(A > B) and a summary of the difference | `statsx.posterior` | [API](api.md#statsxposterior) |
 
 ## Stop an experiment early, or choose between arms

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New page "Effect of an intervention on a count series" for `causal_impact`: the method, the two assumptions the
+  data cannot check, and a runnable example.
 - Every methods page has the same two headings: "What it assumes" and "What the library checks and does not
   check". A test keeps them.
 - New page "Which method do I use?": your situation in one column, the function and its page in the next. A test
