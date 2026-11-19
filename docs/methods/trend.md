@@ -60,10 +60,22 @@ Pass `require=False` to get the fit anyway, and read `fit.check`: `passed`, the 
 thresholds the library applies. Show such a forecast with a caveat. A check on the computation is
 not a check on the model (see "What the result assumes").
 
+The series below is simulated: 96 months with a trend, a season of period 12 and extra spread.
+
 ```python
-fit = fit_trend(counts, require=False)
-if not fit.check.passed:
-    caveat = fit.check.reasons
+import numpy as np
+from statsx.trend import fit_trend
+
+rng = np.random.default_rng(3)
+t = np.arange(96)
+mean = np.exp(5.0 + 0.004 * t + 0.5 * np.cos(2 * np.pi * t / 12) + 0.3 * np.sin(2 * np.pi * t / 12))
+counts = rng.poisson(mean * rng.gamma(40.0, 1 / 40.0, t.size))
+fit = fit_trend(counts, require=False, seed=0)
+print(fit.check.passed, fit.check.reasons)
+```
+
+```text
+True ()
 ```
 
 ## Reuse the season on another series
@@ -77,10 +89,19 @@ Fit the season once on the long series, then give it to a short slice as a regre
 season of its own:
 
 ```python
-fleet = fit_trend(aggregate_counts, period=12, harmonics=3, seed=0)
-shape = fleet.seasonal.mean(axis=0)
+slice_counts = rng.poisson(0.1 * mean[:18] * rng.gamma(40.0, 1 / 40.0, 18))
+fleet = fit_trend(counts, period=12, harmonics=3, seed=0)
+shape = fleet.seasonal.mean(axis=0)[:18]
 slice_fit = fit_trend(slice_counts, period=12, harmonics=0, regressors=shape, seed=0)
+amplitude = np.quantile(slice_fit.regressor_coefficients[:, 0], [0.05, 0.95])
+print(np.round(amplitude, 1))
 ```
+
+```text
+[0.7 1.4]
+```
+
+The 90% interval of the amplitude holds 1, so the slice follows the aggregate season.
 
 The slice then fits one amplitude instead of `2 * harmonics` coefficients. Two limits:
 
@@ -102,6 +123,13 @@ variables, and the interval comes out too wide.
 future = fit.forecast(12, seed=1)
 quarters = future.bands((0.5, 0.8), every=3)  # bands of 4 quarterly totals
 totals = future.aggregate(3)                  # the draws, and where each bucket starts
+print(quarters[1].lower.round(-1), quarters[1].upper.round(-1))
+print(totals.starts, totals.draws.shape)
+```
+
+```text
+[1090.  640.  360.  630.] [1470.  890.  510.  890.]
+[ 96  99 102 105] (2000, 4)
 ```
 
 - Only the forecast months are bucketed, from the first one.

@@ -65,21 +65,6 @@ item was drawn). The percentile interval of the resampled strengths is the inter
 `p_better(a, b)` is the share of resamples in which \(\theta_a > \theta_b\). It is a bootstrap frequency,
 not a posterior probability.
 
-## The Elo scale
-
-Chess ratings use Elo's scale: 400 points are a factor of 10 in the odds that one side wins
-(Elo 1978). One log-odds unit of strength is 400 / ln 10, about 173.7 points.
-
-```text
-fit.elo("a")                  # 1500 + 173.7 * strength, so the ratings average 1500
-fit.elo_interval("a", 0.95)   # the bootstrap interval, on the same scale
-fit.elo("a", base=1000.0)     # another zero point (Chatbot Arena style)
-```
-
-Only the zero point is a choice. The scale is fixed, so the numbers match what a reader of chess
-or arena tables expects. The interval comes from the item resamples above, not from a game-by-game
-Elo update.
-
 ## Judges: remove the position bias
 
 A judge, a person or a model, often prefers the answer shown first. Give each judge \(j\) a position
@@ -191,6 +176,30 @@ with judges:    1.6
 strict favours the first answer: True
 fair favours the first answer: False
 ```
+
+## The Elo scale
+
+Chess ratings use Elo's scale: 400 points are a factor of 10 in the odds that one side wins
+(Elo 1978). One log-odds unit of strength is 400 / ln 10, about 173.7 points. `fit.elo(system)` is
+`1500 + 173.7 * strength`, so the ratings average 1500; `base=` sets another zero point. The interval
+comes from the item resamples above, not from a game-by-game Elo update.
+
+The fit of the second example, on the Elo scale:
+
+```python
+for name in judged.systems:
+    box = judged.elo_interval(name, 0.9)
+    print(name, round(judged.elo(name)), (round(box.lower), round(box.upper)))
+```
+
+```text
+s1 1499 (1485, 1513)
+s2 1363 (1342, 1381)
+s0 1638 (1619, 1660)
+```
+
+Only the zero point is a choice. The scale is fixed, so the numbers match what a reader of chess
+or arena tables expects.
 
 ## Checked in the tests
 
