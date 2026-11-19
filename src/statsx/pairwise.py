@@ -23,6 +23,11 @@ because rows of one item are not independent (the same prompt, judged for severa
 the rows as independent gives intervals that are too narrow. A bootstrap interval is not a
 credible interval: ``p_better`` is the share of resamples in which ``a`` is above ``b``.
 
+One strength per system assumes that all judges rank the systems alike. ``fit_by_judge`` gives each
+judge its own strengths and tests that assumption with a Wald test. The covariance of the
+differences between judges comes from resampling the items once for all judges, so the dependence
+between rows of one item is kept.
+
 References:
     Bradley, R. A., & Terry, M. E. (1952). Rank analysis of incomplete block designs: I. The
     method of paired comparisons. *Biometrika* 39(3/4):324-345. https://doi.org/10.2307/2334029.
@@ -42,6 +47,10 @@ References:
     Statistical Society B* 69(3):369-390. https://doi.org/10.1111/j.1467-9868.2007.00593.x.
     Resampling whole clusters.
 
+    Wald, A. (1943). Tests of statistical hypotheses concerning several parameters when the
+    number of observations is large. *Transactions of the American Mathematical Society*
+    54(3):426-482. https://doi.org/10.1090/S0002-9947-1943-0012401-3. The Wald statistic.
+
     Chiang, W.-L., et al. (2024). Chatbot Arena: an open platform for evaluating LLMs by human
     preference. *ICML*, PMLR 235. https://proceedings.mlr.press/v235/chiang24b.html. Bradley-Terry
     with bootstrap intervals for language models.
@@ -57,6 +66,7 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
+from statsx import _accel
 from statsx.result import Interval
 
 Ties = Literal["davidson", "half"]
@@ -483,4 +493,179 @@ def fit_bradley_terry(  # noqa: PLR0913 (the data and the settings, keyword-only
         full[k : k + n_j].copy(),
         bias_draws,
         bias_sd,
+    )
+
+
+def _subset(data: Comparisons, judge: int) -> Comparisons:
+    """Return the rows of one judge as a table with that judge only."""
+    assert data.judge is not None  # noqa: S101 (callers check that there is a judge column)
+    rows = data.judge == judge
+    return Comparisons(
+        data.systems,
+        data.first[rows],
+        data.second[rows],
+        data.outcome[rows],
+        data.item[rows],
+        (data.judges[judge],),
+        np.zeros(int(rows.sum()), dtype=np.int64),
+    )
+
+
+def _linked(data: Comparisons) -> bool:
+    """Return True when every system is linked to every other by some chain of comparisons."""
+    parent = list(range(len(data.systems)))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in zip(data.first.tolist(), data.second.tolist(), strict=True):
+        parent[root(a)] = root(b)
+    return len({root(i) for i in range(len(data.systems))}) == 1
+
+
+@dataclass(frozen=True, slots=True)
+class JudgeFits:
+    """One set of strengths per judge, and a test that the judges rank the systems alike.
+
+    Args:
+        judges: The judge names.
+        systems: The system names.
+        strength: The strengths of each judge, shape (judges, systems), each row with mean 0.
+        pooled: The fit with one set of strengths for all judges (and a position bias per judge).
+        draws: The strengths of each resample of the items, shape (resamples, judges, systems).
+        statistic: The Wald statistic of the differences between the judges.
+        df: The degrees of freedom of the statistic.
+        p_value: The p-value of "all judges have the same strengths".
+        n_items: The number of items resampled.
+    """
+
+    judges: tuple[str, ...]
+    systems: tuple[str, ...]
+    strength: npt.NDArray[np.float64]
+    pooled: BradleyTerryFit
+    draws: npt.NDArray[np.float64]
+    statistic: float
+    df: int
+    p_value: float
+    n_items: int
+
+    def ranking(self, judge: str) -> tuple[str, ...]:
+        """Return the systems of ``judge`` from the strongest to the weakest."""
+        row = self.strength[self._judge(judge)]
+        order: list[int] = np.argsort(-row, kind="stable").tolist()
+        return tuple(self.systems[i] for i in order)
+
+    def _judge(self, name: str) -> int:
+        if name not in self.judges:
+            raise ValueError(f"unknown judge {name!r}")
+        return self.judges.index(name)
+
+    def _system(self, name: str) -> int:
+        if name not in self.systems:
+            raise ValueError(f"unknown system {name!r}")
+        return self.systems.index(name)
+
+    def difference_interval(
+        self, judge_a: str, judge_b: str, system: str, level: float = 0.95
+    ) -> Interval:
+        """Return the bootstrap interval of ``strength(judge_a) - strength(judge_b)`` of a system.
+
+        Both judges are refitted on the same resample of the items. Strengths are centred within
+        each judge, so a difference is relative to the other systems of that judge.
+        """
+        i, j, s = self._judge(judge_a), self._judge(judge_b), self._system(system)
+        return _percentile(self.draws[:, i, s] - self.draws[:, j, s], level)
+
+
+def fit_by_judge(  # noqa: PLR0913 (the data and the settings, keyword-only)
+    data: Comparisons,
+    *,
+    ties: Ties = "davidson",
+    prior_sd: float = 3.0,
+    bias_sd: float = 1.0,
+    n_bootstrap: int = 500,
+    seed: int = 0,
+) -> JudgeFits:
+    """Fit a set of strengths to each judge and test whether the judges rank the systems alike.
+
+    Each judge gets its own strengths, position bias and (with Davidson ties) tie parameter. The
+    test is a Wald test of "every judge has the same strengths". Its covariance matrix comes from
+    resampling the items, once for all judges, so rows of one item that depend on each other do
+    not make the test too eager. The statistic is compared with a chi-square distribution.
+
+    Args:
+        data: The comparisons, with a judge column of at least two judges.
+        ties: ``"davidson"`` or ``"half"``, as in ``fit_bradley_terry``.
+        prior_sd: The sd of the Gaussian prior on a strength.
+        bias_sd: The sd of the Gaussian prior on a position bias.
+        n_bootstrap: The number of resamples of the items.
+        seed: The seed of the resampling.
+
+    Raises:
+        ValueError: If there are fewer than two judges, a judge does not link all systems, a
+            judge's position bias cannot be separated from the strengths, a prior sd is not
+            positive, there are too few resamples or items to estimate the covariance of the
+            differences, or Newton's method does not converge.
+    """
+    if data.judge is None or len(data.judges) < 2:  # noqa: PLR2004
+        raise ValueError("fit_by_judge needs a judge column with at least two judges")
+    if ties not in ("davidson", "half"):
+        raise ValueError(f"ties must be 'davidson' or 'half', got {ties!r}")
+    if not (prior_sd > 0.0 and bias_sd > 0.0):
+        raise ValueError("prior_sd and bias_sd must be positive")
+    k, n_j = len(data.systems), len(data.judges)
+    parts = [_subset(data, j) for j in range(n_j)]
+    for part in parts:
+        if not _linked(part):
+            raise ValueError(
+                f"judge {part.judges[0]!r} does not compare every system with the others, "
+                "directly or through other systems: its strengths are not on one scale"
+            )
+        _check_order_balance(part)
+    use_tau = ties == "davidson"
+    precision = np.concatenate(
+        [np.full(k, 1.0 / prior_sd**2), [1.0 / bias_sd**2], np.full(int(use_tau), 1.0 / _TAU_SD**2)]
+    )
+    ones = [np.ones(part.outcome.size) for part in parts]
+    own = [
+        _centered(_newton(part, w, ties, precision, np.zeros(precision.size)), k)
+        for part, w in zip(parts, ones, strict=True)
+    ]
+    n_items = int(data.item.max()) + 1
+    df = (n_j - 1) * (k - 1)
+    if n_bootstrap <= df or n_items <= df:
+        raise ValueError(
+            f"the differences have {df} degrees of freedom: use more than {df} resamples "
+            f"({n_bootstrap} given) and more than {df} items ({n_items} found)"
+        )
+    rng = np.random.default_rng(seed)
+    draws = np.empty((n_bootstrap, n_j, k))
+    for b in range(n_bootstrap):
+        counts = np.bincount(rng.integers(0, n_items, n_items), minlength=n_items).astype(
+            np.float64
+        )
+        for j, part in enumerate(parts):
+            fit = _centered(_newton(part, counts[part.item], ties, precision, own[j]), k)
+            draws[b, j] = fit[:k]
+    strength = np.vstack([x[:k] for x in own])
+    delta = (strength[:-1] - strength[-1]).ravel()
+    sample = (draws[:, :-1, :] - draws[:, -1:, :]).reshape(n_bootstrap, -1)
+    values, vectors = np.linalg.eigh(np.cov(sample, rowvar=False))
+    kept = values > 1e-9 * float(values.max())
+    if int(kept.sum()) < df:
+        raise ValueError(
+            "the covariance of the differences between judges is not estimable: "
+            "use more items or more resamples"
+        )
+    z = np.asarray(vectors[:, kept].T @ delta, dtype=np.float64)
+    statistic = float(np.sum(z * z / values[kept]))
+    p_value = float(_accel.chi2_sf(np.array([statistic]), float(df))[0])
+    pooled = fit_bradley_terry(
+        data, ties=ties, prior_sd=prior_sd, bias_sd=bias_sd, n_bootstrap=2, seed=seed
+    )
+    return JudgeFits(
+        data.judges, data.systems, strength, pooled, draws, statistic, df, p_value, n_items
     )

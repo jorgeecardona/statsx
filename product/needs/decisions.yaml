@@ -1539,3 +1539,26 @@ decisions:
   principles:
   - P-2
   decided_at: '2026-11-18'
+- id: D-57
+  text: 'fit_by_judge(data) fits a set of strengths, a position bias and a tie parameter to each
+    judge, and tests that the judges have the same strengths with a Wald test. The covariance of the
+    differences between judges is the covariance of one item-level bootstrap shared by all judges.
+    The statistic is compared with chi-square with (J - 1)(k - 1) degrees of freedom. A judge that
+    does not link all the systems is refused, and so are too few items or resamples for the
+    covariance.'
+  needs:
+  - CO-10
+  alternatives:
+  - 'A parametric bootstrap under the pooled fit: not used; it draws independent rows and ignores the
+    dependence between rows of one item, which makes the test too eager.'
+  - 'A permutation of the judge labels within an item: not used; it needs every judge to judge the same
+    pairs, which the data need not have.'
+  - 'A rank correlation between judges (Kendall tau) with an interval: not a test of equality, since
+    noise alone pulls tau below 1.'
+  consequences: 'The test keeps its size at 25 and at 60 items (0.053 and 0.047 in 150 runs each) and has
+    power against judges that rank in opposite orders. It tests the ranking, not the position bias: judges that
+    differ only in bias are not different. It needs enough items for the covariance (more than the degrees
+    of freedom).'
+  principles:
+  - P-3
+  decided_at: '2026-11-19'

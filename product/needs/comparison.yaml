@@ -123,5 +123,9 @@ needs:
       whether the judges rank the systems differently, since one strength per system assumes they agree.
     sources:
       - {kind: primary, date: 2026-11-18, who: maintainer, quote: "they all have probably different judging criteria, then they give different results"}
+    proofs:
+      - "test:tests/test_judge_fits.py::test_judges_that_agree_are_rarely_called_different"
+      - "test:tests/test_judge_fits.py::test_judges_that_rank_the_systems_in_opposite_orders_are_found"
+      - "test:tests/test_judge_fits.py::test_a_judge_that_does_not_link_all_systems_is_refused_and_named"
     must: false
 

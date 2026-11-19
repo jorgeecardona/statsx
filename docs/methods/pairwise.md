@@ -177,6 +177,63 @@ strict favours the first answer: True
 fair favours the first answer: False
 ```
 
+## Do the judges rank the systems differently?
+
+One strength per system assumes the judges agree on the ranking. A judge may favour the first answer
+(a position bias, handled above) and still rank the systems like the others. A judge may also have
+other criteria and rank them differently. `fit_by_judge(data)` fits a set of strengths for each judge
+and tests the first assumption.
+
+```python
+from statsx.pairwise import fit_by_judge
+
+data = Comparisons.from_long(first, second, outcome, item=item, judge=judge)
+agree = fit_by_judge(data, ties="half", seed=1)
+print("judges differ in position bias only: p =", round(agree.p_value, 2), "df", agree.df)
+print("strict ranks:", agree.ranking("strict"))
+```
+
+```text
+judges differ in position bias only: p = 0.32 df 2
+strict ranks: ('s0', 's1', 's2')
+```
+
+The test is a Wald test of "every judge has the same strengths". The differences between the judges
+have a covariance matrix that comes from resampling the items once for all judges, so rows of one item
+that depend on each other do not make the test too eager. The statistic is compared with a chi-square
+distribution with \((J - 1)(k - 1)\) degrees of freedom for \(J\) judges and \(k\) systems. The result has
+the strengths of each judge, the ranking of each judge, and
+`difference_interval(judge_a, judge_b, system)`, the interval of the difference of the strengths of one
+system between two judges (strengths are centred within each judge).
+
+A second example, where the judge `fair` ranks the systems in the opposite order of the judge `strict`:
+
+```python
+rng = np.random.default_rng(3)
+truth = {"strict": {"s0": 0.8, "s1": 0.0, "s2": -0.8}, "fair": {"s0": -0.8, "s1": 0.0, "s2": 0.8}}
+first, second, outcome, judge, item = [], [], [], [], []
+for i in range(120):
+    for name, strengths in truth.items():
+        for a, b in (("s0", "s1"), ("s0", "s2"), ("s1", "s2")):
+            if rng.random() < 0.5:
+                a, b = b, a
+            p = 1 / (1 + np.exp(-(strengths[a] - strengths[b])))
+            first.append(a); second.append(b); judge.append(name); item.append(i)
+            outcome.append(float(rng.random() < p))
+data = Comparisons.from_long(first, second, outcome, item=item, judge=judge)
+split = fit_by_judge(data, ties="half", seed=1)
+print("p below 0.001:", split.p_value < 0.001)
+print("strict ranks:", split.ranking("strict"), "fair ranks:", split.ranking("fair"))
+box = split.difference_interval("strict", "fair", "s0")
+print("s0 strength, strict minus fair: interval above 0:", box.lower > 0)
+```
+
+```text
+p below 0.001: True
+strict ranks: ('s0', 's1', 's2') fair ranks: ('s2', 's1', 's0')
+s0 strength, strict minus fair: interval above 0: True
+```
+
 ## The Elo scale
 
 Chess ratings use Elo's scale: 400 points are a factor of 10 in the odds that one side wins
@@ -220,12 +277,17 @@ or arena tables expects.
 - When the stronger system is shown first 90% of the time and one judge favours the first answer, the
   error of the strength gap was 0.11 with the judge term and 0.30 without it (mean of 6 runs).
 - A judge that always sees the same system first is refused, and the message names the judge.
+- `fit_by_judge`: judges that agree are rarely called different (at most 8 rejections of the 5% test in 40 runs),
+  judges that rank the systems in opposite orders are found, the strengths of each judge are recovered, and
+  the difference interval holds the true difference. Over 150 runs at 25 and at 60 items the rejection rate
+  was 0.053 and 0.047 (a check run once, not a test).
 
 ## What it assumes
 
 - Each system has one strength, and \(\mathbb{P}(a \succ b)\) depends only on the difference.
   Preferences are transitive.
-- All judges share one preference scale. Only the position bias of each judge is modelled.
+- All judges share one preference scale. Only the position bias of each judge is modelled. `fit_by_judge`
+  tests this assumption. It does not repair a failed test.
 - Items are independent of each other. Rows of one item are resampled together.
 - Ties follow the model you choose: half a win each, or Davidson's tie parameter.
 
@@ -240,6 +302,8 @@ Not checked:
 
 - A comparison graph that is not connected. Systems in different groups are not on one scale. The
   prior sets each group to mean 0, so the fit runs. `statsx.evals` refuses the same condition.
+- Whether the judges rank the systems alike. `fit_bradley_terry` takes it for granted. `fit_by_judge`
+  tests it, and refuses a judge that does not link all the systems.
 - Judges with other biases (length, style).
 - Intransitive preferences (A beats B, B beats C, C beats A).
 
@@ -255,6 +319,9 @@ Not checked:
 - Field, C. A., and Welsh, A. H. (2007). Bootstrapping clustered data. *Journal of the Royal Statistical
   Society B* 69(3):369-390. <https://doi.org/10.1111/j.1467-9868.2007.00593.x>
 - Elo, A. E. (1978). *The Rating of Chessplayers, Past and Present*. Arco, New York.
+- Wald, A. (1943). Tests of statistical hypotheses concerning several parameters when the number of
+  observations is large. *Transactions of the American Mathematical Society* 54(3):426-482.
+  <https://doi.org/10.1090/S0002-9947-1943-0012401-3>
 - Chiang, W.-L., et al. (2024). Chatbot Arena: an open platform for evaluating LLMs by human preference.
   *ICML*, PMLR 235. <https://proceedings.mlr.press/v235/chiang24b.html>
 - Davidson, R. R., and Beaver, R. J. (1977). On extending the Bradley-Terry model to incorporate

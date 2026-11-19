@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fit_by_judge` gives each judge its own strengths and tests whether the judges rank the systems alike. The
+  test uses a covariance from resampling the items once for all judges.
 - Methods pages for the modules that had none: causal impact, paired tests with equivalence and
   multiple testing, calibration, intervals (proportion, effect size, bootstrap), power and
   allocation, time to finish a task, backtest, agreement, priors with conjugate updates, and
