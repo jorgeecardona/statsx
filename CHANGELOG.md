@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Forecast.rates` divides each count draw by the exposure of its month. The docs now say that a
+  forecast at exposure 1 gives a rate as `mean` but a band of counts that is nearly all 0 (GitLab
+  issue #16).
 - `cost_at_ability` gives each model's cost per solved task at the quality of a reference model,
   counting the retries a weaker model needs (GitLab issue #14).
 - `fit_tokens(..., censored=...)` treats runs that hit the token budget as censored, so a model

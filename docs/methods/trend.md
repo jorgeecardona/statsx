@@ -165,15 +165,18 @@ The counts grow faster, because the exposure grows tenfold in six years: the fit
 gives the slope of the counts.
 
 The forecast needs the future exposure, because it is your assumption and the fit cannot know it.
-Pass ones to read `mean` as a rate per unit of exposure.
+`future.rates` divides each count draw by the exposure of its month. The band of a rate depends on
+the exposure: the Poisson part of the spread shrinks as the exposure grows. Ones give `mean` as a
+rate, but the counts are then integers with a tiny mean, nearly all 0, so their band is not a rate
+interval.
 
 ```python
 future = rate_fit.forecast(12, exposure=np.full(12, 20000.0), seed=0)
-print(future.mean.shape)
+print(future.mean.shape, np.round(np.quantile(future.rates[:, -1], [0.05, 0.95]), 4))
 ```
 
 ```text
-(2000, 84)
+(2000, 84) [0.0923 0.1095]
 ```
 
 The coefficient 1 is an assumption: the count is proportional to the exposure. To check it, fit

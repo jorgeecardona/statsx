@@ -112,3 +112,25 @@ def test_a_poisson_fit_takes_exposure_too() -> None:
     counts = rng.poisson(exposure * np.exp(LOG_RATE)).astype(np.float64)
     fit = fit_trend(counts, exposure=exposure, likelihood="poisson", seed=0)
     assert abs(float(np.median(fit.slope)) - 0.12) < 0.1
+
+
+def test_rates_divide_each_column_by_its_own_exposure() -> None:
+    exposure = _exposure()
+    fit = fit_trend(_counts(exposure), exposure=exposure, seed=0)
+    future = fit.forecast(3, exposure=np.array([1000.0, 2000.0, 4000.0]), seed=1)
+    assert future.exposure is not None
+    assert np.allclose(
+        future.rates[:, MONTHS:], future.counts[:, MONTHS:] / [1000.0, 2000.0, 4000.0]
+    )
+    assert np.allclose(future.rates[:, :MONTHS], future.counts[:, :MONTHS] / exposure)
+    true_rate = math.exp(
+        -3.0 + 0.01 * (MONTHS + 2) + 0.3 * math.sin(2 * math.pi * (MONTHS + 2) / 12)
+    )
+    low, high = np.quantile(future.rates[:, -1], [0.05, 0.95])
+    assert low < true_rate < high and low > 0.0
+
+
+def test_rates_need_a_model_with_exposure() -> None:
+    fit = fit_trend(_counts(np.full(MONTHS, 3000.0)), seed=0)
+    with pytest.raises(ValueError, match="no exposure"):
+        _ = fit.forecast(2).rates

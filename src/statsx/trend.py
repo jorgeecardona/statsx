@@ -153,12 +153,30 @@ class Forecast:
         mean: Draws of the expected count, the exponential of trend plus season.
         counts: Draws of a new count, from the negative binomial given ``mean``.
         n_fitted: Number of fitted months; later columns are forecast months.
+        exposure: The exposure of each column (fitted months, then the forecast exposure you
+            passed), or None for a model without exposure.
     """
 
     trend: npt.NDArray[np.float64]
     mean: npt.NDArray[np.float64]
     counts: npt.NDArray[np.float64]
     n_fitted: int
+    exposure: npt.NDArray[np.float64] | None = None
+
+    @property
+    def rates(self) -> npt.NDArray[np.float64]:
+        """Return draws of a new count divided by the exposure it was drawn at (#16).
+
+        Each column is divided by its own exposure, so the alignment of months is done here. The
+        band of the rate depends on the exposure: a count is an integer, and the Poisson part of
+        its spread shrinks as the exposure grows. Ask with the exposure you expect.
+
+        Raises:
+            ValueError: If the model has no exposure.
+        """
+        if self.exposure is None:
+            raise ValueError("the model has no exposure: there is no rate, read counts or mean")
+        return self.counts / self.exposure
 
     @property
     def horizon(self) -> int:
@@ -446,8 +464,10 @@ class TrendFit:
                 Required when the model has regressors.
             exposure: The exposure of each forecast month, shape (horizon,), above 0. Required
                 when the model was fitted with ``exposure``. Future exposure is your assumption,
-                not something the fit knows. Pass ones to get the mean as a rate per unit of
-                exposure; ``trend`` is the log rate in every case.
+                not something the fit knows. ``trend`` is the log rate in every case. Ones give
+                ``mean`` as a rate per unit of exposure, but then ``counts`` are draws of an
+                integer with a tiny mean, nearly all 0, and their band is not a rate interval.
+                For a rate band pass the exposure you expect and read ``Forecast.rates`` (#16).
             seed: Seed of the NumPy generator; the same seed gives the same draws.
 
         Raises:
@@ -485,7 +505,8 @@ class TrendFit:
             counts = rng.poisson(mean).astype(np.float64)
         else:
             counts = rng.negative_binomial(size, size / (size + mean)).astype(np.float64)
-        return Forecast(trend, mean, counts, months)
+        exposure_all = None if self.exposure is None else np.exp(offset)
+        return Forecast(trend, mean, counts, months, exposure_all)
 
     def _standardize(self, regressors: npt.ArrayLike | None, rows: int) -> npt.NDArray[np.float64]:
         """Return future regressors on the fitted scale, shape (rows, regressors)."""

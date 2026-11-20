@@ -202,8 +202,10 @@ needs:
       is fixed at 1, and forecast counts for an exposure they supply.
     sources:
       - {kind: secondary, date: 2026-11-20, locator: "GitLab issue cardona-oss/statsx#15"}
+      - {kind: secondary, date: 2026-11-20, locator: "GitLab issue cardona-oss/statsx#16"}
     proofs:
       - "test:tests/test_trend_exposure.py::test_the_trend_is_the_log_rate_when_exposure_changes"
       - "test:tests/test_trend_exposure.py::test_a_constant_exposure_only_moves_the_level"
       - "test:tests/test_trend_exposure.py::test_the_forecast_needs_the_future_exposure_and_scales_with_it"
       - "test:tests/test_trend_exposure.py::test_exposure_must_be_positive_finite_and_one_per_month"
+      - "test:tests/test_trend_exposure.py::test_rates_divide_each_column_by_its_own_exposure"
