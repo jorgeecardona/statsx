@@ -1613,3 +1613,24 @@ decisions:
     also works for a model with regressors.'
   decided_at: '2026-11-20'
 
+- id: D-60
+  text: 'cost_per_pass(passed, costs, tasks=...) keeps the total cost and the number of passes of each
+    task, and its draws are a nonparametric bootstrap over tasks: resample the tasks with replacement
+    (multinomial counts), keep all attempts of a task together, and take total cost over total passes
+    (Davison & Hinkley 1997, section 3.8). The interval is the percentile interval of the draws. A
+    resample with no pass gives inf. Without tasks the posterior draws are unchanged.'
+  needs:
+  - CO-11
+  alternatives:
+  - 'A two-level bootstrap (tasks, then attempts within a task): not used; resampling inside a task as
+    well adds the within-task variation a second time, since the task totals already carry it.'
+  - 'A random-effects model of pass rate and cost per task: not used for now; it needs a joint model of
+    the two, and the bootstrap needs no model of how cost and result are linked.'
+  - 'Keep returning the posterior object only and leave the check to the caller: not used; the issue
+    asked for the interval, and the compute-ml comparison reads it.'
+  consequences: 'With 40 tasks of 5 attempts, where hard tasks cost more and fail more, the 90% interval
+    held the true value in 85% of 200 runs, against 51% for the posterior that treats attempts as
+    exchangeable. The percentile interval is a little narrow with few tasks. The result is the same
+    CostPerPass object, so sample(), interval() and compare() work as before.'
+  decided_at: '2026-11-20'
+

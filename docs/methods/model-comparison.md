@@ -155,6 +155,39 @@ This is the cost-of-pass of Erol et al. (2025). The package draws \(R\) from its
 posterior of \(\log\text{cost}\). The two draws are independent, which ignores the link between a task's cost and its
 result. The draws work in `statsx.posterior.compare` (use their logarithms to compare ratios).
 
+### Attempts grouped by task
+
+Pass `tasks` when the attempts come in tasks or sessions. A few hard tasks often cost most and fail
+most, and the posterior above treats every attempt as exchangeable, so its interval is too narrow.
+With `tasks` the draws come from a bootstrap that resamples whole tasks and takes total cost over
+total passes (Davison and Hinkley 1997, section 3.8).
+
+```python
+import numpy as np
+from statsx.evals import cost_per_pass
+
+rng = np.random.default_rng(12)
+difficulty = rng.normal(0.0, 1.5, 40)
+solve = 1.0 / (1.0 + np.exp(-(0.5 - difficulty)))
+task_passed = (rng.random((40, 5)) < solve[:, None]).astype(float).ravel()
+task_cost = np.exp(1.0 + 0.8 * difficulty[:, None] + rng.normal(0.0, 0.3, (40, 5))).ravel()
+task_ids = np.repeat(np.arange(40), 5).tolist()
+flat = cost_per_pass(task_passed, task_cost).interval(0.9)
+by_task = cost_per_pass(task_passed, task_cost, tasks=task_ids).interval(0.9)
+print(f"attempts exchangeable: [{flat.lower:.1f}, {flat.upper:.1f}]")
+print(f"tasks resampled:       [{by_task.lower:.1f}, {by_task.upper:.1f}]")
+```
+
+```text
+attempts exchangeable: [7.1, 10.4]
+tasks resampled:       [5.4, 12.9]
+```
+
+In 200 simulations like this one (40 tasks, 5 attempts each, true value 9.9), the 90% interval held
+the true value in 85% of runs with `tasks` and in 51% without. A resample with no pass gives `inf`,
+so the upper end can be unbounded when passes are rare. With few tasks the percentile interval is a
+little narrow; prefer 40 tasks or more.
+
 ## Example
 
 The data are simulated: four models with true abilities \(-1, 0, 0.8, 1.6\) on 60 tasks, 30% of the cells
@@ -219,7 +252,9 @@ P(frontier cheaper per pass than large) = 1.0
 - A model that solves every task gets a finite ability.
 - The token ratio on a complete design equals the paired t interval exactly. With missing cells and
   different tasks per model, a 90% interval held the true ratio in 91% of 400 simulations.
-- The cost-per-pass 90% interval held the true value in 89% of 300 simulations.
+- The cost-per-pass 90% interval held the true value in 89% of 300 simulations of independent
+  attempts. With attempts grouped by task, it held it in 51% of 200; the bootstrap over tasks held it
+  in 85%.
 - With 3 models on 2 infras and a 20% token shift on one, the 90% interval of the token ratio held the
   true ratio in 88 of 100 runs, and the interval of the infra effect in 91. The Rasch infra shift was
   covered in 90 of 100 runs and the ability gap in 88. Without the infra effect, the ratio is off by
@@ -232,7 +267,8 @@ P(frontier cheaper per pass than large) = 1.0
   The task set decides what the average means.
 - The Rasch model has equal discrimination for all tasks. A task that every model solves or fails
   carries no information about the abilities.
-- Attempts are independent. Repeated attempts of one task by one model share the task and the model,
+- `cost_per_pass` without `tasks` treats attempts as independent and exchangeable. Pass `tasks`
+  when they come in tasks. Repeated attempts of one task by one model share the task and the model,
   which the model accounts for, but not any other link (the same prompt in two forms).
 - The abilities are only comparable for the tasks you ran. A different task set gives a different scale.
 - With few cells per model, the Gaussian posterior is rough. Read probabilities near 0 or 1 with care.
@@ -257,6 +293,8 @@ Not checked: that the Rasch model fits the tasks. The list above is what the fit
   <https://arxiv.org/abs/2411.00640>
 - Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., and Rubin, D. B. (2013).
   *Bayesian Data Analysis*, 3rd ed., chapters 4 and 14. CRC Press. <https://doi.org/10.1201/b16018>
+- Davison, A. C., and Hinkley, D. V. (1997). *Bootstrap Methods and their Application*, section 3.8
+  (hierarchical data). Cambridge University Press. <https://doi.org/10.1017/CBO9780511802843>
 - Linacre, J. M. (1989). *Many-facet Rasch measurement*. MESA Press, Chicago. The Rasch model with
   facets besides model and task, here the infra.
 - Seber, G. A. F., and Lee, A. J. (2003). *Linear Regression Analysis*, 2nd ed., chapter 3 (estimable

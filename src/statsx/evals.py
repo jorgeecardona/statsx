@@ -17,6 +17,7 @@ Two more tools answer the cost side, since a stronger model may also use fewer t
 - ``cost_per_pass``: the expected cost to get one pass, ``C / R``, with a posterior. ``C`` is the
   mean cost of one attempt and ``R`` the pass rate. With independent attempts, the expected number
   of attempts until the first pass is ``1 / R``, so ``C / R`` is the expected cost to first pass.
+  With ``tasks`` the interval comes from a bootstrap over tasks, not from the posterior.
 - ``fit_tokens``: the ratio of tokens between two models on the same tasks, from a two-way model
   ``log tokens = model effect + task effect + noise``. The posterior is the reference one, so each
   ratio has an exact Student t interval.
@@ -45,6 +46,10 @@ References:
 
     Miller, E. (2024). Adding error bars to evals: a statistical approach to language model
     evaluations. arXiv:2411.00640. Paired differences on the same questions.
+
+    Davison, A. C., & Hinkley, D. V. (1997). *Bootstrap Methods and their Application*, section
+    3.8 (hierarchical data). Cambridge University Press.
+    https://doi.org/10.1017/CBO9780511802843. The bootstrap over tasks in ``cost_per_pass``.
 
     Linacre, J. M. (1989). *Many-facet Rasch measurement*. MESA Press, Chicago. Facets besides
     model and task, used here for the infra.
@@ -475,21 +480,40 @@ class CostPerPass:
     The pass rate ``R`` has a Beta posterior. The mean cost of an attempt ``C`` comes from a
     lognormal model of the costs: its mean is ``exp(mu + sigma2 / 2)`` with ``(mu, sigma2)`` from
     the reference Normal-Inverse-Gamma posterior of the log costs. The two are drawn
-    independently, which ignores the link between a task's cost and its result: a check by
-    resampling tasks is advised when the cost differs a lot between passes and fails.
+    independently and every attempt counts as exchangeable. That ignores that attempts come in
+    tasks, and that a few hard tasks can cost most and fail most: the interval is then too narrow.
+
+    With ``task_cost`` and ``task_passes`` (from ``cost_per_pass(..., tasks=...)``) the draws come
+    from a bootstrap over tasks instead: resample the tasks with replacement, keep all attempts of
+    a task together, and take total cost over total passes (Davison & Hinkley 1997, section 3.8).
 
     Args:
         pass_rate: The posterior of the pass rate.
         log_cost: The posterior of the mean and variance of the log cost of an attempt.
         n: The number of attempts.
+        task_cost: The total cost of each task, or None for the posterior draws.
+        task_passes: The number of passes of each task, or None.
     """
 
     pass_rate: Beta
     log_cost: NormalInverseGamma
     n: int
+    task_cost: npt.NDArray[np.float64] | None = None
+    task_passes: npt.NDArray[np.float64] | None = None
+
+    @property
+    def n_tasks(self) -> int:
+        """Return the number of tasks resampled; 0 when the draws are the posterior ones."""
+        return 0 if self.task_cost is None else self.task_cost.size
 
     def sample(self, n: int, *, seed: int = 0) -> npt.NDArray[np.float64]:
-        """Return ``n`` draws of the cost per pass; the same seed gives the same draws."""
+        """Return ``n`` draws of the cost per pass; the same seed gives the same draws.
+
+        With tasks, a draw is total cost over total passes of one resample of the tasks. A
+        resample with no pass gives ``inf``: the cost per pass has no upper bound there.
+        """
+        if self.task_cost is not None and self.task_passes is not None:
+            return _task_bootstrap(self.task_cost, self.task_passes, n, seed)
         rate = self.pass_rate.sample(n, seed=seed)
         mu, sigma2 = self.log_cost.sample_joint(n, seed=seed + 2)
         return np.exp(mu + 0.5 * sigma2) / rate
@@ -498,8 +522,31 @@ class CostPerPass:
         """Return the equal-tailed credible interval of the cost per pass."""
         _check_level(level)
         draws = self.sample(n_draws, seed=seed)
-        lo, hi = np.quantile(draws, [0.5 - level / 2.0, 0.5 + level / 2.0])
+        tails = [0.5 - level / 2.0, 0.5 + level / 2.0]
+        lo, hi = np.quantile(draws, tails, method="inverted_cdf")
         return Interval(float(lo), float(hi), level)
+
+
+_CHUNK = 4096
+"""Bootstrap resamples drawn at once, so memory stays at chunk x tasks."""
+
+
+def _task_bootstrap(
+    cost: npt.NDArray[np.float64], passes: npt.NDArray[np.float64], n: int, seed: int
+) -> npt.NDArray[np.float64]:
+    """Return ``n`` bootstrap draws of total cost over total passes, resampling tasks."""
+    rng = np.random.default_rng(seed)
+    k = cost.size
+    out = np.empty(n)
+    for start in range(0, n, _CHUNK):
+        rows = min(_CHUNK, n - start)
+        counts = rng.multinomial(k, np.full(k, 1.0 / k), size=rows).astype(np.float64)
+        total_cost, total_passes = counts @ cost, counts @ passes
+        with np.errstate(divide="ignore"):
+            out[start : start + rows] = np.where(
+                total_passes > 0.0, total_cost / np.maximum(total_passes, 1e-300), np.inf
+            )
+    return out
 
 
 def cost_per_pass(
@@ -507,18 +554,25 @@ def cost_per_pass(
     costs: npt.ArrayLike,
     *,
     prior: Beta = Beta(1.0, 1.0),  # noqa: B008
+    tasks: Sequence[object] | None = None,
 ) -> CostPerPass:
     """Return the posterior of the expected cost to get one pass, from the attempts of one model.
+
+    Without ``tasks`` every attempt counts as exchangeable. Pass ``tasks`` when attempts come in
+    tasks (or sessions): the draws then come from a bootstrap that resamples whole tasks, which
+    keeps a hard task's cost and its failures together (#12).
 
     Args:
         passed: The result of each attempt: 1 for a pass, 0 for a fail (a score in [0, 1] counts as
             that share of a pass).
         costs: The cost of each attempt, above 0, in one unit (tokens or money), failures included.
         prior: The Beta prior of the pass rate.
+        tasks: The task (or session) of each attempt. Attempts with the same task are resampled
+            together. At least 2 tasks.
 
     Raises:
-        ValueError: If the lengths differ, there are fewer than 2 attempts, a cost is not above 0,
-            the costs are all equal, or a result is outside [0, 1].
+        ValueError: If the lengths differ, there are fewer than 2 attempts or 2 tasks, a cost is
+            not above 0, the costs are all equal, or a result is outside [0, 1].
     """
     y = np.asarray(passed, dtype=np.float64).ravel()
     c = np.asarray(costs, dtype=np.float64).ravel()
@@ -530,7 +584,19 @@ def cost_per_pass(
         raise ValueError("passed must be between 0 and 1")
     successes = float(y.sum())
     pass_rate = Beta(prior.alpha + successes, prior.beta + y.size - successes)
-    return CostPerPass(pass_rate, NormalInverseGamma.reference(np.log(c)), int(y.size))
+    log_cost = NormalInverseGamma.reference(np.log(c))
+    if tasks is None:
+        return CostPerPass(pass_rate, log_cost, int(y.size))
+    if len(tasks) != y.size:
+        raise ValueError("tasks must have the same length as passed")
+    names = list(dict.fromkeys(tasks))
+    if len(names) < 2:  # noqa: PLR2004
+        raise ValueError("tasks must hold at least 2 different tasks to resample")
+    index = {name: i for i, name in enumerate(names)}
+    task = np.array([index[name] for name in tasks])
+    task_cost = np.bincount(task, weights=c, minlength=len(names))
+    task_passes = np.bincount(task, weights=y, minlength=len(names))
+    return CostPerPass(pass_rate, log_cost, int(y.size), task_cost, task_passes)
 
 
 @dataclass(frozen=True, slots=True)

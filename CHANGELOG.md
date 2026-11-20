@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `cost_per_pass(..., tasks=...)` resamples whole tasks for its interval, so a few hard, costly
+  tasks no longer make it too narrow (GitLab issue #12).
 - `fit_trend(exposure=...)` fits the trend of a rate: the log of the exposure (population,
   person-time, trials, hours) enters the model with its coefficient fixed at 1. `forecast` then
   takes the future exposure (GitLab issue #15).

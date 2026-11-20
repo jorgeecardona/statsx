@@ -129,3 +129,16 @@ needs:
       - "test:tests/test_judge_fits.py::test_a_judge_that_does_not_link_all_systems_is_refused_and_named"
     must: false
 
+  - id: CO-11
+    text: >
+      When the attempts of a model come in tasks or sessions, the caller can get the cost per pass
+      with an interval from a bootstrap over tasks, so that a few hard, costly tasks do not make the
+      interval too narrow.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#12, from the compute-ml model comparison"}
+    proofs:
+      - "test:tests/test_cost_by_task.py::test_resampling_tasks_covers_where_exchangeable_attempts_do_not"
+      - "test:tests/test_cost_by_task.py::test_the_draws_are_total_cost_over_total_passes_of_a_task_resample"
+      - "test:tests/test_cost_by_task.py::test_a_resample_with_no_pass_has_no_upper_bound"
+    must: false
+
