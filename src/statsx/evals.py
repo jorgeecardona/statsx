@@ -925,3 +925,178 @@ def _censored_derivatives(
     hessian[:p, p] = hessian[p, :p] = design.T @ h_eta_s
     hessian[p, p] = h_s.sum()
     return gradient, hessian
+
+
+MAX_ATTEMPTS = 100
+"""Most attempts per task ``cost_at_ability`` allows a model to reach the reference."""
+
+
+@dataclass(frozen=True, slots=True)
+class MatchedCost:
+    """The expected cost per solved task of each model when it reaches one reference quality.
+
+    The quality is the expected share of the tasks solved. A model below the reference reaches it
+    by trying a task up to ``k`` times and stopping at the first pass (``k`` is mixed with ``k + 1``
+    so the quality matches exactly). A model above the reference is read at one attempt, where its
+    quality is higher than the reference.
+
+    Args:
+        models: The model names.
+        reference_quality: The posterior mean of the reference quality.
+        attempts: The attempts per task at the posterior mode, one per model (a mix of ``k`` and
+            ``k + 1`` gives a fraction). ``inf`` where the model cannot reach the reference within
+            ``MAX_ATTEMPTS``.
+        draws: Draws of the cost per solved task, shape (draws, models). ``inf`` in a draw where the
+            model cannot reach the reference.
+    """
+
+    models: tuple[str, ...]
+    reference_quality: float
+    attempts: npt.NDArray[np.float64]
+    draws: npt.NDArray[np.float64]
+
+    def _column(self, model: str) -> npt.NDArray[np.float64]:
+        if model not in self.models:
+            raise ValueError(f"unknown model {model!r}")
+        return self.draws[:, self.models.index(model)]
+
+    def interval(self, model: str, level: float = 0.9) -> Interval:
+        """Return the equal-tailed interval of the cost per solved task of ``model``."""
+        _check_level(level)
+        tails = [0.5 - level / 2.0, 0.5 + level / 2.0]
+        lo, hi = np.quantile(self._column(model), tails, method="inverted_cdf")
+        return Interval(float(lo), float(hi), level)
+
+    def ratio(self, a: str, b: str, level: float = 0.9) -> Interval:
+        """Return the interval of how many times the cost of ``a`` is the cost of ``b``."""
+        _check_level(level)
+        with np.errstate(invalid="ignore"):
+            r = self._column(a) / self._column(b)
+        r = np.where(np.isnan(r), np.inf, r)
+        tails = [0.5 - level / 2.0, 0.5 + level / 2.0]
+        lo, hi = np.quantile(r, tails, method="inverted_cdf")
+        return Interval(float(lo), float(hi), level)
+
+    def p_cheaper(self, a: str, b: str) -> float:
+        """Return the probability that ``a`` costs less per solved task than ``b``."""
+        return float(np.mean(self._column(a) < self._column(b)))
+
+
+def _attempts_to_reach(
+    p: npt.NDArray[np.float64], cost: npt.NDArray[np.float64], target: float
+) -> tuple[float, float]:
+    """Return the attempts per task and the cost per solved task that reach ``target``.
+
+    ``p`` and ``cost`` hold one value per task. With up to ``k`` attempts and a stop at the first
+    pass, task ``t`` is solved with ``1 - (1 - p)^k`` and uses ``(1 - (1 - p)^k) / p`` attempts.
+    """
+    miss = 1.0 - p
+    solved_prev, spent_prev = float(p.mean()), float((cost * 1.0).sum())
+    if solved_prev >= target:
+        return 1.0, spent_prev / float(p.sum())
+    for k in range(2, MAX_ATTEMPTS + 1):
+        reach = 1.0 - miss**k
+        solved = float(reach.mean())
+        spent = float((cost * reach / np.maximum(p, 1e-300)).sum())
+        if solved >= target:
+            w = (target - solved_prev) / (solved - solved_prev)
+            total_spent = (1.0 - w) * spent_prev + w * spent
+            return k - 1 + w, total_spent / (target * p.size)
+        solved_prev, spent_prev = solved, spent
+    return math.inf, math.inf
+
+
+def cost_at_ability(  # noqa: PLR0913 (data columns, then keyword-only settings)
+    models: Sequence[str],
+    tasks: Sequence[str],
+    passed: npt.ArrayLike,
+    costs: npt.ArrayLike,
+    *,
+    reference: str | float,
+    infra: Sequence[str] | None = None,
+    n_draws: int = 2000,
+    seed: int = 0,
+) -> MatchedCost:
+    """Return the expected cost per solved task of each model at the quality of a reference (#14).
+
+    The quality of an ability is the expected share of the fitted tasks it solves in one attempt,
+    from the Rasch fit. ``reference`` is a model name (its ability) or an ability in logits. Each
+    model reaches the reference quality by trying each task up to ``k`` times and stopping at the
+    first pass. The cost of an attempt of model ``m`` on task ``t`` is ``exp(alpha_m + c_t +
+    s^2 / 2)`` from the two-way model of the log costs (``fit_tokens``), so retries on hard tasks
+    cost what hard tasks cost. With ``infra`` both fits remove the infra effect, so a judge or
+    machine offset does not leak into the ability or the cost.
+
+    The draws combine the Rasch posterior (abilities and difficulties jointly) with the posterior
+    of the cost effects; the two are drawn independently.
+
+    Assumptions, not checked: attempts at one task are independent given the model and the task,
+    and a verifier tells which attempt passed. Retries of a language model on one task are usually
+    more alike than that, so the attempts a weak model needs are a lower bound and so is its cost.
+
+    Args:
+        models: The model of each attempt.
+        tasks: The task of each attempt.
+        passed: 1 for a pass, 0 for a fail, or a score in [0, 1].
+        costs: The cost of each attempt, above 0, failures included.
+        reference: The model whose quality the others must reach, or an ability in logits.
+        infra: The infra of each attempt, or None.
+        n_draws: Number of posterior draws.
+        seed: Seed of the generator; the same seed gives the same draws.
+
+    Raises:
+        ValueError: If the columns differ in length, the reference model is unknown, ``n_draws``
+            is below 100, or the Rasch or cost fit refuses the data.
+    """
+    if n_draws < 100:  # noqa: PLR2004
+        raise ValueError(f"n_draws must be at least 100, got {n_draws}")
+    rasch = fit_rasch(Responses.from_long(models, tasks, passed, infra))
+    tokens = fit_tokens(models, tasks, costs, infra)
+    if tokens.models != rasch.models or tokens.tasks != rasch.tasks:
+        raise ValueError("the models and tasks of the two fits differ")  # same rows, same order
+    if isinstance(reference, str) and reference not in rasch.models:
+        raise ValueError(f"unknown model {reference!r}")
+    n_m, n_t = len(rasch.models), len(rasch.tasks)
+    rng = np.random.default_rng(seed)
+    mode = np.concatenate([rasch.ability, rasch.difficulty, rasch.infra_shift[1:]])
+    latent = rng.multivariate_normal(mode, rasch.covariance, size=n_draws, method="cholesky")
+    effects = _draw_effects(tokens, n_draws, rng)
+    draws = np.empty((n_draws, n_m))
+    reach = np.zeros(n_draws)
+    for d in range(n_draws):
+        ability, difficulty = latent[d, :n_m], latent[d, n_m : n_m + n_t]
+        level = ability[rasch.models.index(reference)] if isinstance(reference, str) else reference
+        target = float(_sigmoid(level - difficulty).mean())
+        reach[d] = target
+        log_cost = effects[d, :n_m, None] + effects[d, None, n_m : n_m + n_t]
+        cost = np.exp(log_cost + 0.5 * tokens.noise_sd**2)
+        for m in range(n_m):
+            p = _sigmoid(ability[m] - difficulty)
+            draws[d, m] = _attempts_to_reach(p, cost[m], target)[1]
+    level = (
+        rasch.ability[rasch.models.index(reference)] if isinstance(reference, str) else reference
+    )
+    target = float(_sigmoid(level - rasch.difficulty).mean())
+    cost_mode = np.exp(
+        tokens.effects[:n_m, None]
+        + tokens.effects[None, n_m : n_m + n_t]
+        + 0.5 * tokens.noise_sd**2
+    )
+    attempts = np.array(
+        [
+            _attempts_to_reach(_sigmoid(rasch.ability[m] - rasch.difficulty), cost_mode[m], target)[
+                0
+            ]
+            for m in range(n_m)
+        ]
+    )
+    return MatchedCost(rasch.models, float(reach.mean()), attempts, draws)
+
+
+def _draw_effects(fit: TokenFit, n: int, rng: np.random.Generator) -> npt.NDArray[np.float64]:
+    """Return draws of the cost effects from their multivariate t posterior, shape (n, effects)."""
+    values, vectors = np.linalg.eigh(fit.gram_pinv * fit.noise_sd**2)
+    root = vectors * np.sqrt(np.clip(values, 0.0, None))
+    normal = rng.standard_normal((n, fit.effects.size)) @ root.T
+    scale = np.sqrt(fit.df / rng.chisquare(fit.df, size=(n, 1)))
+    return fit.effects + normal * scale

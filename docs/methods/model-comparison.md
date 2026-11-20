@@ -236,6 +236,67 @@ the true value in 85% of runs with `tasks` and in 51% without. A resample with n
 so the upper end can be unbounded when passes are rare. With few tasks the percentile interval is a
 little narrow; prefer 40 tasks or more.
 
+## Cost at the quality of a reference
+
+Use `cost_at_ability` to ask what a model costs per solved task when it must reach the quality of
+another model. Token price alone does not answer it: a cheap model that fails often or needs many
+tokens may not be cheaper.
+
+1. The Rasch fit gives the abilities and the difficulties. The quality of an ability is the expected
+   share of the tasks it solves in one attempt. `reference` is a model name or an ability.
+2. A model below the reference tries each task up to \(k\) times and stops at the first pass. Task
+   \(t\) is then solved with probability \(1 - (1 - p_{mt})^k\). The number \(k\) is the smallest that reaches
+   the reference, mixed with \(k - 1\) so the quality matches exactly. A model above the reference
+   is read at one attempt.
+3. The cost of an attempt is \(\exp(\alpha_m + c_t + s^2/2)\) from the two-way model of the log costs,
+   so retries on hard tasks cost what hard tasks cost. With `infra`, both fits remove the infra effect.
+
+```python
+import math
+
+import numpy as np
+from statsx.evals import cost_at_ability
+
+rng = np.random.default_rng(14)
+hardness = rng.normal(0.0, 1.0, 60)
+ability_of = {"weak": -0.5, "strong": 1.0}
+price = {"weak": 1.0, "strong": 6.0}
+attempt_rows = []
+for name, theta in ability_of.items():
+    for t in range(60):
+        p = 1.0 / (1.0 + math.exp(-(theta - hardness[t])))
+        for _ in range(3):
+            cost = price[name] * math.exp(0.4 * hardness[t] + rng.normal(0.0, 0.2))
+            attempt_rows.append((name, f"t{t}", float(rng.random() < p), cost))
+m_col, t_col, p_col, c_col = (list(c) for c in zip(*attempt_rows, strict=True))
+matched = cost_at_ability(m_col, t_col, p_col, c_col, reference="strong", n_draws=1000)
+print(f"reference quality {matched.reference_quality:.2f}")
+for name in matched.models:
+    k = matched.attempts[matched.models.index(name)]
+    c = matched.interval(name, 0.9)
+    print(f"{name:6s} {k:.1f} attempts per task, cost per solved task 90% [{c.lower:.1f}, {c.upper:.1f}]")
+print(f"P(weak cheaper at the quality of strong) = {matched.p_cheaper('weak', 'strong'):.2f}")
+```
+
+```text
+reference quality 0.63
+weak   2.9 attempts per task, cost per solved task 90% [3.2, 5.1]
+strong 1.0 attempts per task, cost per solved task 90% [10.1, 11.9]
+P(weak cheaper at the quality of strong) = 1.00
+```
+
+In 30 simulations like this one, the 90% interval held the true cost per solved task in 26 for each
+model.
+
+What it assumes, and does not check:
+
+- Attempts at one task are independent given the model and the task, and a verifier tells which
+  attempt passed. Retries of a language model on one task are usually more alike than that. The
+  attempts a weak model needs, and so its cost, are then a lower bound.
+- The quality is the share of these tasks solved. A different task set gives a different answer.
+- The Rasch posterior and the cost posterior are drawn independently.
+- A reference out of reach within `MAX_ATTEMPTS` (100) attempts gives `inf`.
+
 ## Example
 
 The data are simulated: four models with true abilities \(-1, 0, 0.8, 1.6\) on 60 tasks, 30% of the cells

@@ -1656,3 +1656,28 @@ decisions:
     fit on passed runs only is valid only for tasks both models solved.'
   decided_at: '2026-11-20'
 
+- id: D-62
+  text: 'cost_at_ability(models, tasks, passed, costs, reference=...) defines the quality of an ability as
+    the expected share of the fitted tasks solved in one attempt (Rasch). A model below the reference
+    reaches it with up to k attempts per task and a stop at the first pass, k mixed with k - 1 so the
+    quality matches exactly; a model above it is read at one attempt. The cost of an attempt is
+    exp(alpha_m + c_t + s^2 / 2) from fit_tokens on the costs, so retries on hard tasks cost what hard
+    tasks cost. Draws combine the Rasch Laplace posterior and the multivariate t posterior of the
+    cost effects, drawn independently. With infra both fits remove the infra effect.'
+  needs:
+  - CO-13
+  alternatives:
+  - 'Extrapolate with effort (more tokens per attempt buys ability): not used; the data have one effort
+    level per model, so the link between tokens and ability is not identified from them.'
+  - 'A mean cost per attempt per model, not per task: not used; retries happen on hard tasks, which cost
+    more, so it understates the cost of a weak model.'
+  - 'Correlated retries (a task-level random effect per model): not used; one attempt per cell cannot
+    identify it. The independence is stated as an assumption that makes the weak model''s cost a
+    lower bound.'
+  consequences: 'In 30 simulations the 90% interval held the true cost per solved task in 26 for each of
+    two models. The answer depends on the task set, needs a verifier to stop at the first pass, and
+    is optimistic for weak models when retries are correlated; the docstring and the docs say so.'
+  principles:
+  - P-3
+  decided_at: '2026-11-20'
+

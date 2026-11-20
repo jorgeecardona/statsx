@@ -156,3 +156,17 @@ needs:
       - "test:tests/test_tokens_censored.py::test_a_task_where_every_run_hit_the_budget_is_left_out_and_named"
     must: false
 
+  - id: CO-13
+    text: >
+      When models differ in ability and in cost, the caller can get the expected cost per solved task
+      of each model at the quality of a reference model, with an interval, so that a cheap model that
+      fails often is not read as cheaper.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#14, from the compute-ml model comparison"}
+    proofs:
+      - "test:tests/test_matched_cost.py::test_the_weak_model_needs_retries_and_the_interval_covers_the_truth"
+      - "test:tests/test_matched_cost.py::test_the_reach_matches_the_target_exactly"
+      - "test:tests/test_matched_cost.py::test_an_infra_offset_does_not_leak_into_the_cost"
+      - "test:tests/test_matched_cost.py::test_an_unreachable_reference_gives_inf"
+    must: false
+
