@@ -1589,3 +1589,27 @@ decisions:
   principles:
   - P-3
   decided_at: '2026-11-20'
+
+- id: D-59
+  text: 'fit_trend(exposure=E) adds log(E) to the log mean with its coefficient fixed at 1, an offset as
+    in log-linear models for rates (McCullagh & Nelder 1989, section 6.2.3). The offset is not
+    standardized and is passed to the Rust fit as its own vector. The intercept prior is centred on
+    the log of the mean count per unit of mean exposure. TrendFit keeps the exposure, forecast()
+    requires the future exposure when the model has one, and trend stays the log rate.'
+  needs:
+  - TS-19
+  alternatives:
+  - 'Return a rate-valued projection and let the caller multiply: not used; a second return shape. A
+    caller who wants the rate passes an exposure of 1 and reads mean.'
+  - 'Pass log(E) as a column of regressors: a free coefficient is a different model (elasticity), and
+    standardization rescales the column, so it cannot hold a coefficient of 1. It stays the way to
+    check proportionality.'
+  - 'Divide the counts by the exposure: not used; the counts would no longer be counts, and the
+    negative binomial likelihood needs counts.'
+  consequences: 'With exposure that grows tenfold in six years the fit recovers the log rate with an rms
+    error below 0.1, and the slope is that of the rate (about 0.12 a year), not of the counts (about
+    0.5). Exposure None gives the same model as before. Future exposure is the caller''s assumption.
+    anomalies() now passes the last fitted regressors and exposure to its one-month forecast, so it
+    also works for a model with regressors.'
+  decided_at: '2026-11-20'
+

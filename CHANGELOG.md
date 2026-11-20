@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fit_trend(exposure=...)` fits the trend of a rate: the log of the exposure (population,
+  person-time, trials, hours) enters the model with its coefficient fixed at 1. `forecast` then
+  takes the future exposure (GitLab issue #15).
 - `TrendFit.predictive_check()` asks the data whether the model holds. It simulates series from the
   fit and flags an outlier, a surplus of zeros, a season shape the harmonics cannot hold, and counts
   that alternate. The docs list what it cannot see: a changing level or season is absorbed by the drift.

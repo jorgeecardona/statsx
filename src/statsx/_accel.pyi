@@ -35,6 +35,7 @@ def nig_predict(
 def fit_structural(
     y: npt.NDArray[np.float64],
     design: npt.NDArray[np.float64],
+    offset: npt.NDArray[np.float64],
     prior_mean: npt.NDArray[np.float64],
     prior_prec: npt.NDArray[np.float64],
     sigma_scale: float,

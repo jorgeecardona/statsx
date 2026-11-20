@@ -140,6 +140,46 @@ In 40 simulated series that follow the model, 1 was flagged (a `tails` flag) at 
 same level the check found an outlier (3 times the mean), a surplus of 20% zeros, a season spike that two
 harmonics cannot hold, and counts that alternate by 0.25 on the log scale, in every simulated series.
 
+## Counts per unit of exposure
+
+Pass `exposure` when each month had a different amount of exposure: population, person-time,
+trials, operating hours. Its log enters the log mean with the coefficient fixed at 1 (an offset,
+McCullagh and Nelder 1989). The trend and the season are then the log of the rate, not of the count.
+
+```python
+exposure = 2000.0 * np.exp(np.linspace(0.0, np.log(10.0), 72))
+months = np.arange(72)
+log_rate = -3.0 + 0.01 * months + 0.3 * np.sin(2 * np.pi * months / 12)
+cases = np.random.default_rng(15).poisson(exposure * np.exp(log_rate))
+rate_fit = fit_trend(cases, exposure=exposure, seed=0)
+count_fit = fit_trend(cases, seed=0)
+print(round(float(np.median(rate_fit.slope)), 2), round(float(np.median(count_fit.slope)), 2))
+```
+
+```text
+0.12 0.51
+```
+
+The simulated rate grows by 0.12 a year on the log scale, and the fit with `exposure` finds that.
+The counts grow faster, because the exposure grows tenfold in six years: the fit without `exposure`
+gives the slope of the counts.
+
+The forecast needs the future exposure, because it is your assumption and the fit cannot know it.
+Pass ones to read `mean` as a rate per unit of exposure.
+
+```python
+future = rate_fit.forecast(12, exposure=np.full(12, 20000.0), seed=0)
+print(future.mean.shape)
+```
+
+```text
+(2000, 84)
+```
+
+The coefficient 1 is an assumption: the count is proportional to the exposure. To check it, fit
+`np.log(exposure)` as a column of `regressors` (a free coefficient) and see whether its interval
+holds 1. `regressors` cannot replace `exposure`: they are standardized and their coefficient is free.
+
 ## Reuse the season on another series
 
 The seasonal shape of a count process often belongs to the whole population: weather and holidays
@@ -228,6 +268,9 @@ by using integrated nested Laplace approximations. *Journal of the Royal Statist
 
 Vehtari, A., Simpson, D., Gelman, A., Yao, Y., & Gabry, J. (2024). Pareto smoothed importance
 sampling. *Journal of Machine Learning Research* 25(72):1-58.
+
+McCullagh, P., & Nelder, J. A. (1989). *Generalized Linear Models*, 2nd ed. Chapman and Hall,
+London. https://doi.org/10.1007/978-1-4899-3242-6.
 
 Gelman, A., Meng, X.-L., & Stern, H. (1996). Posterior predictive assessment of model fitness via
 realized discrepancies. *Statistica Sinica* 6(4):733-760.

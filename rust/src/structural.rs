@@ -29,6 +29,8 @@ pub struct Spec {
     pub y: Vec<f64>,
     pub f: Vec<f64>,
     pub nf: usize,
+    /// Known term of the log mean with coefficient 1, one per month (the log exposure).
+    pub offset: Vec<f64>,
     pub prior_mean: Vec<f64>,
     pub prior_prec: Vec<f64>,
     /// Scale s of the half-normal prior on sigma.
@@ -154,7 +156,7 @@ impl Spec {
         (0..self.t())
             .map(|t| {
                 let fixed: f64 = (0..nf).map(|k| self.f[t * nf + k] * x[k]).sum();
-                (fixed + x[nf + t]).clamp(-ETA_LIMIT, ETA_LIMIT)
+                (fixed + self.offset[t] + x[nf + t]).clamp(-ETA_LIMIT, ETA_LIMIT)
             })
             .collect()
     }
@@ -308,10 +310,13 @@ impl Spec {
     fn start(&self) -> Vec<f64> {
         let mut x = vec![0.0; self.p()];
         x[..self.nf].copy_from_slice(&self.prior_mean);
-        let seen: Vec<f64> = self.y.iter().copied().filter(|v| !v.is_nan()).collect();
-        let mean = seen.iter().sum::<f64>() / seen.len().max(1) as f64;
+        let seen: Vec<usize> = (0..self.t()).filter(|&t| !self.y[t].is_nan()).collect();
+        let n = seen.len().max(1) as f64;
+        let mean = seen.iter().map(|&t| self.y[t]).sum::<f64>() / n;
+        let exposure = seen.iter().map(|&t| self.offset[t].exp()).sum::<f64>() / n;
         // Shift the first fixed effect (the intercept column) so exp(eta) starts near the mean.
-        x[0] = (mean + 0.1).ln() - (1..self.nf).map(|k| self.f[k] * self.prior_mean[k]).sum::<f64>();
+        x[0] = ((mean + 0.1) / exposure).ln()
+            - (1..self.nf).map(|k| self.f[k] * self.prior_mean[k]).sum::<f64>();
         x
     }
 
@@ -482,6 +487,7 @@ pub fn fit_structural<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
     design: PyReadonlyArray2<'py, f64>,
+    offset: PyReadonlyArray1<'py, f64>,
     prior_mean: PyReadonlyArray1<'py, f64>,
     prior_prec: PyReadonlyArray1<'py, f64>,
     sigma_scale: f64,
@@ -505,6 +511,10 @@ pub fn fit_structural<'py>(
     if yv.iter().filter(|v| !v.is_nan()).count() < 2 {
         return Err(PyValueError::new_err("y needs at least 2 observed values"));
     }
+    let off = offset.as_slice()?.to_vec();
+    if off.len() != t_len || off.iter().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err("offset must be finite, one per observation"));
+    }
     let (pm, pp) = (prior_mean.as_slice()?.to_vec(), prior_prec.as_slice()?.to_vec());
     if pm.len() != nf || pp.len() != nf || pp.iter().any(|v| v.is_nan() || *v <= 0.0) {
         return Err(PyValueError::new_err("priors need one mean and one positive precision per column"));
@@ -519,6 +529,7 @@ pub fn fit_structural<'py>(
         y: yv,
         f: dv.iter().cloned().collect(),
         nf,
+        offset: off,
         prior_mean: pm,
         prior_prec: pp,
         sigma_scale,
@@ -572,6 +583,7 @@ mod tests {
             y,
             f: design(t),
             nf: 6,
+            offset: vec![0.0; t],
             prior_mean: vec![0.0; 6],
             prior_prec: vec![0.25, 1.0, 1.0, 1.0, 1.0, 1.0],
             sigma_scale: 0.2,
@@ -674,6 +686,19 @@ mod tests {
             err2 += (mean - trend[t]).powi(2);
         }
         assert!((err2 / 60.0).sqrt() < 0.15, "rmse {}", (err2 / 60.0).sqrt());
+    }
+
+    #[test]
+    fn the_offset_enters_the_log_mean_with_coefficient_one() {
+        let (y, _) = simulate(24, 5.0, 8.0, 4);
+        let plain = spec(y.clone());
+        let mut shifted = spec(y);
+        shifted.offset = (0..24).map(|t| 0.1 * t as f64).collect();
+        let x = plain.start();
+        let (a, b) = (plain.eta(&x), shifted.eta(&x));
+        for t in 0..24 {
+            assert!((b[t] - a[t] - 0.1 * t as f64).abs() < 1e-12);
+        }
     }
 
     #[test]

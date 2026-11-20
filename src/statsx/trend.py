@@ -28,6 +28,10 @@ References:
     American Statistical Association* 95(452):1127-1142.
     https://doi.org/10.1080/01621459.2000.10474309.
 
+    McCullagh, P., & Nelder, J. A. (1989). *Generalized Linear Models*, 2nd ed., section 6.2.3
+    (the offset in log-linear models for rates). Chapman and Hall, London.
+    https://doi.org/10.1007/978-1-4899-3242-6.
+
     Cameron, A. C., & Trivedi, P. K. (2013). *Regression Analysis of Count Data*, 2nd ed.,
     chapter 3. Cambridge University Press. https://doi.org/10.1017/CBO9781139013567.
 """
@@ -325,6 +329,8 @@ class TrendFit:
         regressors: The regressors as fitted, standardized, shape (months, regressors).
         regressor_center: Mean of each regressor before standardizing.
         regressor_scale: Standard deviation of each regressor before standardizing.
+        exposure: The exposure of each fitted month, or None. Its log enters the log mean with
+            coefficient 1, so the trend and the season are on the log scale of the rate.
     """
 
     latent: npt.NDArray[np.float64]
@@ -337,6 +343,7 @@ class TrendFit:
     regressors: npt.NDArray[np.float64]
     regressor_center: npt.NDArray[np.float64]
     regressor_scale: npt.NDArray[np.float64]
+    exposure: npt.NDArray[np.float64] | None = None
 
     @property
     def n_months(self) -> int:
@@ -397,7 +404,10 @@ class TrendFit:
 
     @property
     def trend(self) -> npt.NDArray[np.float64]:
-        """Return draws of the log trend, shape (draws, months): level + slope + drift."""
+        """Return draws of the log trend, shape (draws, months): level + slope + drift.
+
+        With ``exposure`` it is the log of the rate per unit of exposure, not of the count.
+        """
         months = self.n_months
         centred = (np.arange(months) - (months - 1) / 2) / self.period
         drift = self.latent[:, -months:]
@@ -420,6 +430,7 @@ class TrendFit:
         horizon: int,
         *,
         regressors: npt.ArrayLike | None = None,
+        exposure: npt.ArrayLike | None = None,
         seed: int = 0,
     ) -> Forecast:
         """Return draws for the fitted months and the next ``horizon`` months.
@@ -433,16 +444,22 @@ class TrendFit:
             horizon: Number of months ahead, at least 1.
             regressors: The regressors for the forecast months, shape (horizon, regressors).
                 Required when the model has regressors.
+            exposure: The exposure of each forecast month, shape (horizon,), above 0. Required
+                when the model was fitted with ``exposure``. Future exposure is your assumption,
+                not something the fit knows. Pass ones to get the mean as a rate per unit of
+                exposure; ``trend`` is the log rate in every case.
             seed: Seed of the NumPy generator; the same seed gives the same draws.
 
         Raises:
-            ValueError: If ``horizon`` is below 1, or the regressors are missing or misshaped.
+            ValueError: If ``horizon`` is below 1, or the regressors or the exposure are missing
+                or misshaped.
         """
         if horizon < 1:
             raise ValueError(f"horizon must be at least 1, got {horizon}")
         months, draws = self.n_months, self.latent.shape[0]
         columns = 2 + 2 * self.harmonics + self.n_regressors
         future_regressors = self._standardize(regressors, horizon)
+        offset = np.concatenate([self._offset(), self._future_offset(exposure, horizon)])
         rng = np.random.default_rng(seed)
         sigma = np.exp(self.hyper[:, [0]])
         fixed, drift = self.latent[:, :columns], self.latent[:, columns:]
@@ -460,7 +477,7 @@ class TrendFit:
         )
         drift_future = drift[:, [-1]] + np.cumsum(sigma * rng.standard_normal((draws, horizon)), 1)
         drift_all = np.hstack([drift, drift_future])
-        eta = np.clip(fixed @ design.T + drift_all, -_ETA_LIMIT, _ETA_LIMIT)
+        eta = np.clip(fixed @ design.T + offset + drift_all, -_ETA_LIMIT, _ETA_LIMIT)
         trend = fixed[:, [0]] + fixed[:, [1]] * design[:, 1] + drift_all
         mean = np.exp(eta)
         size = self._size()
@@ -485,6 +502,26 @@ class TrendFit:
             )
         return (x - self.regressor_center) / self.regressor_scale
 
+    def _raw_regressors(self) -> npt.NDArray[np.float64]:
+        """Return the fitted regressors on their own scale, shape (months, regressors)."""
+        return self.regressors * self.regressor_scale + self.regressor_center
+
+    def _offset(self) -> npt.NDArray[np.float64]:
+        """Return the log exposure of each fitted month; zeros without exposure."""
+        if self.exposure is None:
+            return np.zeros(self.n_months)
+        return np.log(self.exposure)
+
+    def _future_offset(self, exposure: npt.ArrayLike | None, rows: int) -> npt.NDArray[np.float64]:
+        """Return the log exposure of the forecast months, shape (rows,)."""
+        if self.exposure is None:
+            if exposure is not None:
+                raise ValueError("the model has no exposure")
+            return np.zeros(rows)
+        if exposure is None:
+            raise ValueError("the model was fitted with exposure: pass it for the forecast months")
+        return np.log(_check_exposure(exposure, rows))
+
     def anomalies(self, level: float = 0.95, *, seed: int = 0) -> Anomalies:
         """Return the months whose count is outside the central ``level`` band of a new count.
 
@@ -495,7 +532,9 @@ class TrendFit:
         Raises:
             ValueError: If ``level`` is not in (0, 1).
         """
-        band = self.forecast(1, seed=seed).bands((level,))[0]
+        last = None if self.exposure is None else self.exposure[-1:]
+        regressors = None if self.n_regressors == 0 else self._raw_regressors()[-1:]
+        band = self.forecast(1, regressors=regressors, exposure=last, seed=seed).bands((level,))[0]
         lower, upper = band.lower[: self.n_months], band.upper[: self.n_months]
         direction = np.where(self.counts < lower, -1, np.where(self.counts > upper, 1, 0))
         return Anomalies(level, self.counts, lower, upper, direction.astype(np.int64))
@@ -562,7 +601,7 @@ class TrendFit:
         """Return the draws of the mean count of each fitted month, shape (draws, months)."""
         columns = 2 + 2 * self.harmonics + self.n_regressors
         design = np.hstack([_design(self.n_months, self.period, self.harmonics), self.regressors])
-        eta = self.latent[:, :columns] @ design.T + self.latent[:, columns:]
+        eta = self.latent[:, :columns] @ design.T + self._offset() + self.latent[:, columns:]
         return np.exp(np.clip(eta, -_ETA_LIMIT, _ETA_LIMIT))
 
     def _size(self) -> npt.NDArray[np.float64] | None:
@@ -656,6 +695,16 @@ def _as_columns(values: npt.ArrayLike) -> npt.NDArray[np.float64]:
     if x.ndim != 2 or not np.all(np.isfinite(x)):  # noqa: PLR2004 (months x regressors)
         raise ValueError("regressors must be finite, shape (months,) or (months, regressors)")
     return x
+
+
+def _check_exposure(values: npt.ArrayLike, rows: int) -> npt.NDArray[np.float64]:
+    """Return the exposure as floats, or raise when it is not ``rows`` finite values above 0."""
+    e = np.asarray(values, dtype=np.float64)
+    if e.shape != (rows,):
+        raise ValueError(f"exposure must have shape {(rows,)}, got {e.shape}")
+    if not np.all(np.isfinite(e)) or np.any(e <= 0.0):
+        raise ValueError("exposure must be finite and above 0 in every month")
+    return e
 
 
 def _design(months: int, period: float, harmonics: int) -> npt.NDArray[np.float64]:
@@ -784,6 +833,7 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     harmonics: int | Literal["auto"] = 2,
     max_harmonics: int = 3,
     regressors: npt.ArrayLike | None = None,
+    exposure: npt.ArrayLike | None = None,
     likelihood: Likelihood = "negative_binomial",
     n_draws: int = 2000,
     seed: int = 0,
@@ -798,9 +848,10 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
 ) -> TrendFit:
     """Fit a structural series of counts and return the checked posterior.
 
-    The log mean is a level, a slope, a Fourier season, regressor terms and a random-walk drift.
-    The counts are negative binomial or Poisson. The intercept prior is centred on the log of the
-    mean count with sd ``intercept_scale`` (default 2); the slope (per ``period`` months), each
+    The log mean is a level, a slope, a Fourier season, regressor terms, a random-walk drift and,
+    with ``exposure``, the log exposure with coefficient 1. The counts are negative binomial or
+    Poisson. The intercept prior is centred on the log of the mean count (per unit of mean
+    exposure) with sd ``intercept_scale`` (default 2); the slope (per ``period`` months), each
     Fourier coefficient and each regressor coefficient (regressors are standardized) have normal
     priors with sd ``slope_scale``, ``seasonal_scale`` and ``regressor_scale`` (default 1).
     The drift sd and, for the negative binomial, the dispersion ``phi`` (size = 1 / (phi^2 +
@@ -829,6 +880,14 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
             months that were not observed), shape (months,) or (months, regressors). None of
             them may be constant. Their effect is in ``TrendFit.regressor_coefficients``, not in
             the trend.
+        exposure: Optional exposure of each month (population, person-time, trials, hours),
+            one per month of the dense series, finite and above 0. ``log(exposure)`` enters the
+            log mean with its coefficient fixed at 1 and is not standardized (an offset,
+            McCullagh and Nelder 1989). The trend, the season and ``regressor_coefficients``
+            are then on the scale of the log rate. ``forecast`` needs the future exposure.
+            None keeps the model without it. To check proportionality instead of assuming it,
+            fit ``log(exposure)`` as a column of ``regressors`` and see whether the interval of
+            its coefficient holds 1.
         likelihood: ``"negative_binomial"`` or ``"poisson"``.
         n_draws: Number of posterior draws, at least 400.
         seed: Seed of the random number generator; the same seed gives the same draws.
@@ -859,7 +918,8 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         UnfittableInput: If the series cannot be fitted whatever the settings: fewer than 4
             observed months, a negative count, too few months for ``harmonics``, a constant
             regressor. Both errors derive from ``StatsxError``.
-        ValueError: If an argument is out of range.
+        ValueError: If an argument is out of range, or ``exposure`` is misshaped, not finite or
+            not above 0.
     """
     y = np.ascontiguousarray(counts, dtype=np.float64)
     if index is not None:
@@ -881,6 +941,8 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
         x = _as_columns(regressors)
         if x.shape[0] != y.size:
             raise ValueError(f"regressors have {x.shape[0]} rows for {y.size} months")
+    e = None if exposure is None else _check_exposure(exposure, y.size)
+    offset = np.zeros(y.size) if e is None else np.log(e)
     center, scale = x.mean(axis=0), x.std(axis=0)
     if np.any(scale == 0.0):
         raise UnfittableInput("a regressor is constant")
@@ -888,17 +950,27 @@ def fit_trend(  # noqa: PLR0913 (model choices, all keyword-only)
     design = np.ascontiguousarray(np.hstack([_design(y.size, period, harmonics), standardized]))
     columns = design.shape[1]
     prior_mean = np.zeros(columns)
-    prior_mean[0] = math.log(float(np.nanmean(y)) + 0.1)
+    seen = ~np.isnan(y)
+    prior_mean[0] = math.log((float(np.nanmean(y)) + 0.1) / float(np.mean(np.exp(offset[seen]))))
     prior_sd = np.full(columns, regressor_scale)
     prior_sd[0], prior_sd[1] = intercept_scale, slope_scale
     prior_sd[2 : 2 + 2 * harmonics] = seasonal_scale
     prior_prec = 1.0 / prior_sd**2
     latent, hyper, diagnostics = _accel.fit_structural(
-        y, design, prior_mean, prior_prec, drift_scale, dispersion_scale, likelihood, n_draws, seed
+        y,
+        design,
+        offset,
+        prior_mean,
+        prior_prec,
+        drift_scale,
+        dispersion_scale,
+        likelihood,
+        n_draws,
+        seed,
     )
     check = _check(diagnostics, n_draws)
     if require:
         check.require()
     return TrendFit(
-        latent, hyper, check, period, harmonics, y, likelihood, standardized, center, scale
+        latent, hyper, check, period, harmonics, y, likelihood, standardized, center, scale, e
     )

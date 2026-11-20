@@ -194,3 +194,16 @@ needs:
     proofs:
       - "test:tests/test_trend.py::test_buckets_sum_inside_each_draw_and_not_across_the_bands"
       - "test:tests/test_trend.py::test_aggregation_refuses_what_it_cannot_do"
+
+  - id: TS-19
+    text: >
+      When each month had a different amount of exposure (population, person-time, trials, hours),
+      the caller can fit the trend of the rate, with the log exposure as an offset whose coefficient
+      is fixed at 1, and forecast counts for an exposure they supply.
+    sources:
+      - {kind: secondary, date: 2026-11-20, locator: "GitLab issue cardona-oss/statsx#15"}
+    proofs:
+      - "test:tests/test_trend_exposure.py::test_the_trend_is_the_log_rate_when_exposure_changes"
+      - "test:tests/test_trend_exposure.py::test_a_constant_exposure_only_moves_the_level"
+      - "test:tests/test_trend_exposure.py::test_the_forecast_needs_the_future_exposure_and_scales_with_it"
+      - "test:tests/test_trend_exposure.py::test_exposure_must_be_positive_finite_and_one_per_month"
