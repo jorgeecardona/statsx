@@ -21,6 +21,13 @@ References:
     chapter 4 (filtering, smoothing and forecasting). Oxford University Press.
     https://doi.org/10.1093/acprof:oso/9780199641178.001.0001.
 
+    Gelman, A., Meng, X.-L., & Stern, H. (1996). Posterior predictive assessment of model fitness
+    via realized discrepancies. *Statistica Sinica* 6(4):733-760.
+
+    Bayarri, M. J., & Berger, J. O. (2000). P values for composite null models. *Journal of the
+    American Statistical Association* 95(452):1127-1142.
+    https://doi.org/10.1080/01621459.2000.10474309.
+
     Cameron, A. C., & Trivedi, P. K. (2013). *Regression Analysis of Count Data*, 2nd ed.,
     chapter 3. Cambridge University Press. https://doi.org/10.1017/CBO9781139013567.
 """
@@ -244,6 +251,59 @@ class Anomalies:
 
 
 @dataclass(frozen=True, slots=True)
+class Discrepancy:
+    """One posterior predictive check of the model against the observed counts (AS-1).
+
+    The statistic is computed on the observed counts and on counts simulated from the fitted model,
+    with the same draw of the parameters. ``p_value`` is the share of simulated values at least as
+    large as the observed one, so a small value says the data show more of it than the model does.
+
+    Args:
+        name: ``"tails"``, ``"zeros"``, ``"phase"`` or ``"autocorrelation"``.
+        what: What the statistic looks for, in words.
+        observed: The statistic on the observed counts (posterior mean over the draws).
+        simulated: The mean of the statistic on the simulated counts.
+        p_value: Posterior predictive p-value, ``P(simulated >= observed)``.
+        flagged: True when ``p_value`` is below the level of the check.
+    """
+
+    name: str
+    what: str
+    observed: float
+    simulated: float
+    p_value: float
+    flagged: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ModelCheck:
+    """The posterior predictive check of a ``TrendFit``: where the data contradict the model.
+
+    A posterior predictive p-value is not uniform under the model. It is conservative: it sits
+    nearer 0.5 than a uniform p-value would (Bayarri & Berger 2000), so a flag is evidence and a
+    missing flag is weak evidence. The drift absorbs slow changes of level, and it also absorbs
+    some changes of the season, so those are not seen here.
+
+    Args:
+        level: A check is flagged when its p-value is below this.
+        discrepancies: One entry per check that could be run.
+    """
+
+    level: float
+    discrepancies: tuple[Discrepancy, ...]
+
+    @property
+    def flagged(self) -> tuple[str, ...]:
+        """Return the names of the checks the data contradict."""
+        return tuple(d.name for d in self.discrepancies if d.flagged)
+
+    @property
+    def contradicted(self) -> bool:
+        """Return True when at least one check is flagged."""
+        return any(d.flagged for d in self.discrepancies)
+
+
+@dataclass(frozen=True, slots=True)
 class TrendFit:
     """A fit with its check.
 
@@ -403,11 +463,11 @@ class TrendFit:
         eta = np.clip(fixed @ design.T + drift_all, -_ETA_LIMIT, _ETA_LIMIT)
         trend = fixed[:, [0]] + fixed[:, [1]] * design[:, 1] + drift_all
         mean = np.exp(eta)
-        if self.likelihood == "poisson":
+        size = self._size()
+        if size is None:
             counts = rng.poisson(mean).astype(np.float64)
         else:
-            alpha = 1.0 / (np.exp(2.0 * self.hyper[:, [1]]) + _DISPERSION_FLOOR)
-            counts = rng.negative_binomial(alpha, alpha / (alpha + mean)).astype(np.float64)
+            counts = rng.negative_binomial(size, size / (size + mean)).astype(np.float64)
         return Forecast(trend, mean, counts, months)
 
     def _standardize(self, regressors: npt.ArrayLike | None, rows: int) -> npt.NDArray[np.float64]:
@@ -440,9 +500,126 @@ class TrendFit:
         direction = np.where(self.counts < lower, -1, np.where(self.counts > upper, 1, 0))
         return Anomalies(level, self.counts, lower, upper, direction.astype(np.int64))
 
+    def predictive_check(self, level: float = 0.05, *, seed: int = 0) -> ModelCheck:
+        """Return a posterior predictive check of the model against the observed counts (AS-1).
+
+        For each posterior draw the model simulates a new series with the same means and
+        dispersion. Four statistics of the Pearson residuals and the counts are compared between
+        the observed and the simulated series (Gelman, Meng & Stern 1996). Each is "larger is
+        worse", so a flag means the data show more of it than the model does:
+
+        - ``tails``: the largest absolute residual. Finds an outlier.
+        - ``zeros``: the number of zero counts. Finds a surplus of zeros.
+        - ``phase``: the squared mean residual in each phase of the season, summed. Finds a season
+          whose shape the harmonics cannot hold.
+        - ``autocorrelation``: the absolute lag-1 autocorrelation of the residuals. Finds counts
+          that alternate from month to month.
+
+        What it does not find. The drift is flexible: it follows a level that changes, a pulse, a
+        season whose amplitude or phase changes, and extra spread under the Poisson fit. In
+        simulation those passed every check. A check that is not flagged does not show the model is
+        right (P-3). The fit has seen these counts, and the p-values are conservative (see
+        ``ModelCheck``).
+
+        Args:
+            level: A check is flagged when its p-value is below this. Four checks run, so a
+                well specified series flags at most about ``4 * level`` of the time. The measured
+                rate is lower.
+            seed: Seed of the generator that simulates the series.
+
+        Raises:
+            ValueError: If ``level`` is not in (0, 1).
+        """
+        if not 0.0 < level < 1.0:
+            raise ValueError(f"level must be in (0, 1), got {level}")
+        observed = ~np.isnan(self.counts)
+        mean = self._fitted_mean()
+        size = self._size()
+        rng = np.random.default_rng(seed)
+        if size is None:
+            simulated = rng.poisson(mean).astype(np.float64)
+        else:
+            simulated = rng.negative_binomial(size, size / (size + mean)).astype(np.float64)
+        seen = np.where(observed, self.counts, 0.0)
+        t_seen = _discrepancies(seen[None, :], mean, size, observed, self.period)
+        t_new = _discrepancies(simulated, mean, size, observed, self.period)
+        found: list[Discrepancy] = []
+        for name, seen_t in t_seen.items():
+            p_value = float(np.mean(t_new[name] >= seen_t))
+            found.append(
+                Discrepancy(
+                    name,
+                    _WHAT[name],
+                    float(np.mean(seen_t)),
+                    float(np.mean(t_new[name])),
+                    p_value,
+                    p_value < level,
+                )
+            )
+        return ModelCheck(level, tuple(found))
+
+    def _fitted_mean(self) -> npt.NDArray[np.float64]:
+        """Return the draws of the mean count of each fitted month, shape (draws, months)."""
+        columns = 2 + 2 * self.harmonics + self.n_regressors
+        design = np.hstack([_design(self.n_months, self.period, self.harmonics), self.regressors])
+        eta = self.latent[:, :columns] @ design.T + self.latent[:, columns:]
+        return np.exp(np.clip(eta, -_ETA_LIMIT, _ETA_LIMIT))
+
+    def _size(self) -> npt.NDArray[np.float64] | None:
+        """Return the negative binomial size of each draw, shape (draws, 1); None for Poisson."""
+        if self.likelihood == "poisson":
+            return None
+        return 1.0 / (np.exp(2.0 * self.hyper[:, [1]]) + _DISPERSION_FLOOR)
+
     def p_increasing(self) -> float:
         """Return the posterior probability that the slope is above 0 (TS-3)."""
         return float(np.mean(self.slope > 0.0))
+
+
+_WHAT = {
+    "tails": "an outlier: the largest absolute residual",
+    "zeros": "a surplus of zero counts",
+    "phase": "a season shape the harmonics cannot hold: squared mean residual by season phase",
+    "autocorrelation": "residuals that follow or alternate: absolute lag-1 autocorrelation",
+}
+
+_MAX_PHASES = 12
+"""Most season phases the ``phase`` check uses."""
+
+
+def _discrepancies(
+    y: npt.NDArray[np.float64],
+    mean: npt.NDArray[np.float64],
+    size: npt.NDArray[np.float64] | None,
+    observed: npt.NDArray[np.bool_],
+    period: float,
+) -> dict[str, npt.NDArray[np.float64]]:
+    """Return each check statistic for every draw; ``y`` is (1, months) or (draws, months)."""
+    variance = mean if size is None else mean + mean**2 / size
+    resid = ((y - mean) / np.sqrt(variance))[:, observed]
+    out = {
+        "tails": np.abs(resid).max(axis=1),
+        "zeros": (y[:, observed] == 0.0).sum(axis=1).astype(np.float64),
+    }
+    phases = min(_MAX_PHASES, int(period))
+    if phases >= 2 and observed.sum() >= 2 * phases:  # noqa: PLR2004 (two cycles at least)
+        position = np.floor(
+            np.mod(np.arange(y.shape[1], dtype=np.float64), period) / period * phases
+        )
+        phase = position.astype(np.int64)[observed]
+        total = np.zeros(resid.shape[0])
+        for k in range(phases):
+            cell = phase == k
+            if cell.any():
+                total += resid[:, cell].sum(axis=1) ** 2 / cell.sum()
+        out["phase"] = total
+    pairs = (observed[1:] & observed[:-1]) if y.shape[1] > 1 else np.zeros(0, dtype=np.bool_)
+    if pairs.sum() >= 3:  # noqa: PLR2004 (a correlation needs a few pairs)
+        full = (y - mean) / np.sqrt(variance)
+        a, b = full[:, 1:][:, pairs], full[:, :-1][:, pairs]
+        denom = np.sqrt((a * a).sum(axis=1) * (b * b).sum(axis=1))
+        out["autocorrelation"] = np.abs((a * b).sum(axis=1)) / np.maximum(denom, 1e-12)
+    return out
 
 
 def _design_rows(

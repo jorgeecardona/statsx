@@ -9,7 +9,8 @@ Status values: `built`, `planned` (has a need), `open` (a question, no decision)
 
 ### A computation that runs does not prove its assumption
 
-- Status: planned (principle P-3, need AS-1).
+- Status: partly built (principle P-3, need AS-1). `fit_trend` has `predictive_check()` (D-58). The
+  paired tests and the other fits do not have a check of their model yet.
 - Idea: an algorithm gives a number for any data once you assume a model. That the number comes out,
   or that the iteration converges, is no evidence that the model is right. This is circular: the
   assumption defines the computation, and the computation cannot confirm the assumption.

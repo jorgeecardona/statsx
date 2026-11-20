@@ -8,6 +8,13 @@ needs:
       contradict it, so that a computation that ran is not read as a model that is right.
     sources:
       - {kind: primary, date: 2026-11-18, who: maintainer, quote: "just because we can do the computation and the computation give us something, that means that the underlying assumption can be forgotten"}
+    proofs:
+      - "test:tests/test_predictive_check.py::test_well_specified_series_are_rarely_flagged"
+      - "test:tests/test_predictive_check.py::test_an_outlier_is_flagged_as_tails"
+      - "test:tests/test_predictive_check.py::test_a_season_the_harmonics_cannot_hold_is_flagged_as_phase"
+      - "test:tests/test_predictive_check.py::test_a_surplus_of_zeros_is_flagged"
+      - "test:tests/test_predictive_check.py::test_counts_that_alternate_are_flagged_as_autocorrelation"
+      - "test:tests/test_predictive_check.py::test_a_pulse_in_the_level_is_not_seen"
     must: false
 
   - id: ED-1

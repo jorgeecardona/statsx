@@ -1562,3 +1562,30 @@ decisions:
   principles:
   - P-3
   decided_at: '2026-11-19'
+
+- id: D-58
+  text: 'TrendFit.predictive_check() is a posterior predictive check (Gelman, Meng & Stern 1996). For each
+    posterior draw it simulates a series from the fitted means and dispersion, and compares four
+    statistics of the Pearson residuals and the counts with the observed ones: the largest absolute
+    residual (tails), the number of zeros, the squared mean residual by season phase, and the absolute
+    lag-1 autocorrelation. Each is one-sided, and a check is flagged when the p-value is below the level
+    (default 0.05). It does not run the phase check below two cycles of observed months.'
+  needs:
+  - AS-1
+  alternatives:
+  - 'A dispersion check (mean squared residual): dropped. A negative binomial fit estimates its spread,
+    so the statistic stays near 0.5, and under a Poisson fit the drift absorbs the extra spread, so
+    it never fired in 40 simulated series.'
+  - 'Replacing the drift by a draw from its random-walk prior in each simulated series (a mixed
+    predictive check): not used; it needs a statistic that does not depend on the drift, and the
+    candidates (differences of the log counts) have no power against iid noise on a random walk.'
+  - 'Refitting the model on each simulated series (a parametric bootstrap of the statistic): not used;
+    it removes the conservatism of the p-value but costs a fit per replicate, about 1 s each.'
+  consequences: 'The check found an outlier, 20% surplus zeros, a spiked season with two harmonics and
+    counts that alternate, in every simulated series. It flagged 1 of 40 series that follow the model
+    at the 5% level. It does not see a level that changes, a pulse, or a season whose amplitude or phase
+    changes: the drift follows them. The p-values are conservative (Bayarri & Berger 2000), so a flag
+    is evidence and no flag is weak evidence. The docs and the docstring say so.'
+  principles:
+  - P-3
+  decided_at: '2026-11-20'

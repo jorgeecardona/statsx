@@ -36,10 +36,12 @@ raises `FitCheckError` when it fails.
 
 Not checked:
 
-- That the season has a fixed shape, that the level is a random walk, or that the counts are negative
-  binomial. A passing fit says the computation worked, not that these hold. A posterior predictive
-  check is planned (need AS-1) and does not exist yet.
+- That the level is a random walk, or that the season keeps its amplitude and phase. The drift
+  follows such changes, so the model check below does not see them.
 - That a regressor causes the change you attribute to it.
+
+A passing fit says the computation worked, not that the model holds. `fit.predictive_check()` asks
+the data about four of the assumptions (see "Does the model fit the data?").
 
 ## The period
 
@@ -91,6 +93,52 @@ print(fit.check.passed, fit.check.reasons)
 ```text
 True ()
 ```
+
+## Does the model fit the data?
+
+`fit.predictive_check()` simulates new series from the fitted model, one per posterior draw, and
+compares four statistics of the observed counts with the same statistics of the simulated ones
+(Gelman, Meng and Stern 1996). Each statistic is "larger is worse". The p-value is the share of
+simulated values at least as large as the observed one. A p-value below `level` (default 0.05) is
+a flag.
+
+| Check | Looks for |
+|---|---|
+| `tails` | an outlier: the largest absolute Pearson residual |
+| `zeros` | a surplus of zero counts |
+| `phase` | a season shape the harmonics cannot hold |
+| `autocorrelation` | counts that alternate or follow each other from month to month |
+
+The series below is the one above with one month multiplied by 4.
+
+```python
+bad = counts.astype(float)
+bad[50] *= 4
+print(fit.predictive_check().flagged)
+print(fit_trend(bad, require=False, seed=0).predictive_check().flagged)
+```
+
+```text
+()
+('tails',)
+```
+
+Read a flag as "the model does not describe this". It does not say what to change. An outlier may
+be a data error, or a real event for which you need a regressor.
+
+What the check cannot do:
+
+- It does not see a level that changes or jumps, a pulse, or a season whose amplitude or phase
+  changes. The drift follows them. In simulation each of these passed every check.
+- It does not see extra spread under a Poisson fit. The drift absorbs it.
+- A negative binomial fit estimates its spread, so a spread check would stay near 0.5. There is none.
+- The p-values are conservative (Bayarri and Berger 2000). A flag is evidence. No flag is weak
+  evidence, not a proof that the model is right.
+- The fit has seen these counts, so the check is not a test on new data. Use `backtest` for that.
+
+In 40 simulated series that follow the model, 1 was flagged (a `tails` flag) at the 5% level. At the
+same level the check found an outlier (3 times the mean), a surplus of 20% zeros, a season spike that two
+harmonics cannot hold, and counts that alternate by 0.25 on the log scale, in every simulated series.
 
 ## Reuse the season on another series
 
@@ -180,3 +228,10 @@ by using integrated nested Laplace approximations. *Journal of the Royal Statist
 
 Vehtari, A., Simpson, D., Gelman, A., Yao, Y., & Gabry, J. (2024). Pareto smoothed importance
 sampling. *Journal of Machine Learning Research* 25(72):1-58.
+
+Gelman, A., Meng, X.-L., & Stern, H. (1996). Posterior predictive assessment of model fitness via
+realized discrepancies. *Statistica Sinica* 6(4):733-760.
+
+Bayarri, M. J., & Berger, J. O. (2000). P values for composite null models. *Journal of the
+American Statistical Association* 95(452):1127-1142.
+https://doi.org/10.1080/01621459.2000.10474309.
