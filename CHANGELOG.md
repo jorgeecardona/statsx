@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `fit_tokens(..., censored=...)` treats runs that hit the token budget as censored, so a model
+  that needs more than the budget no longer looks cheaper (GitLab issue #13).
 - `cost_per_pass(..., tasks=...)` resamples whole tasks for its interval, so a few hard, costly
   tasks no longer make it too narrow (GitLab issue #12).
 - `fit_trend(exposure=...)` fits the trend of a rate: the log of the exposure (population,

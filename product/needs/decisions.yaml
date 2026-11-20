@@ -1634,3 +1634,25 @@ decisions:
     CostPerPass object, so sample(), interval() and compare() work as before.'
   decided_at: '2026-11-20'
 
+- id: D-61
+  text: 'fit_tokens(..., censored=flags) fits the two-way model of log tokens as a right-censored normal
+    regression (Tobin 1958) by maximum likelihood: Newton steps on (effects, log sigma) with step
+    halving and a pseudo-inverse for the rank-deficient design. The covariance is the inverse of the
+    observed information, and both it and sigma are scaled by rows over degrees of freedom, so that
+    with no censored row the fit is the exact reference-prior one. Intervals are Wald with the t
+    quantile of the degrees of freedom. A task where every row is censored is left out and named; a
+    model where every row is censored is refused.'
+  needs:
+  - CO-12
+  alternatives:
+  - 'Take the budget as the token count: not used; it pulls the heavy model toward the budget (median
+    ratio 1.32 for a true 1.5 in the test).'
+  - 'Drop the runs that hit the budget: not used; it keeps only the short runs of the heavy model
+    (median 1.41).'
+  - 'A Bayesian censored model sampled by MCMC: not used; it needs a sampler for one more model, and the
+    Wald interval covered 85% at 90% in the test.'
+  consequences: 'With 32% of runs at the budget the 90% interval held the true ratio in 85% of 150 runs.
+    The interval is approximate, a little narrow; the docs say so. Failed runs are to be fitted, since a
+    fit on passed runs only is valid only for tasks both models solved.'
+  decided_at: '2026-11-20'
+

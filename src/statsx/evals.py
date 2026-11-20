@@ -51,6 +51,10 @@ References:
     3.8 (hierarchical data). Cambridge University Press.
     https://doi.org/10.1017/CBO9780511802843. The bootstrap over tasks in ``cost_per_pass``.
 
+    Tobin, J. (1958). Estimation of relationships for limited dependent variables.
+    *Econometrica* 26(1):24-36. https://doi.org/10.2307/1907382. The censored normal regression
+    in ``fit_tokens(..., censored=...)``.
+
     Linacre, J. M. (1989). *Many-facet Rasch measurement*. MESA Press, Chicago. Facets besides
     model and task, used here for the infra.
 
@@ -619,6 +623,12 @@ class TokenFit:
         noise_sd: The residual standard deviation on the log scale.
         df: The degrees of freedom of the noise estimate: rows minus the rank of the design.
         infras: The infra names; empty when the fit has no infra effect.
+        n_censored: The number of rows that hit the token budget. With censored rows the fit is
+            the maximum likelihood of a censored normal on the log scale, and ``gram_pinv`` times
+            ``noise_sd ** 2`` is the inverse of its observed information, so the intervals are
+            approximate (Wald, with the t quantile of ``df``).
+        left_out: The tasks where every row hit the budget. They are left out of the fit: they
+            say only that every model needs more than the budget, nothing about the ratio.
     """
 
     models: tuple[str, ...]
@@ -628,6 +638,8 @@ class TokenFit:
     noise_sd: float
     df: int
     infras: tuple[str, ...] = ()
+    n_censored: int = 0
+    left_out: tuple[str, ...] = ()
 
     def _summarize(self, contrast: npt.NDArray[np.float64]) -> tuple[float, float]:
         scale = self.noise_sd * math.sqrt(float(contrast @ self.gram_pinv @ contrast))
@@ -699,6 +711,8 @@ def fit_tokens(
     tasks: Sequence[str],
     tokens: npt.ArrayLike,
     infra: Sequence[str] | None = None,
+    *,
+    censored: npt.ArrayLike | None = None,
 ) -> TokenFit:
     """Fit ``log tokens = model effect + task effect (+ infra effect) + noise``, one row per attempt.
 
@@ -707,14 +721,39 @@ def fit_tokens(
     penalized for them. With ``infra`` (the GPU, driver or host of each row) the ratio of two
     models is read after the infra effect is removed. The first infra is the reference.
 
+    Pass every run that spent tokens, failed runs included: a model that fails its long tasks
+    looks cheaper when only passed runs are fitted. A fit on passed runs only is valid for the
+    tasks that both models solved. A run that hit the token budget did not show how many tokens
+    it needed, only that it needed at least the budget: mark it in ``censored``. The fit is then
+    a censored normal regression on the log scale (Tobin 1958), by maximum likelihood (#13).
+
+    Args:
+        models: The model of each row.
+        tasks: The task of each row.
+        tokens: The tokens of each row, above 0. For a censored row, the budget it hit.
+        infra: The infra of each row, or None.
+        censored: True for a row that hit the token budget, or None when none did.
+
     Raises:
         ValueError: If the columns differ in length, a count is not above 0, the models and tasks
             are not linked, the infras leave models that cannot be compared (the message names
-            them), or there are no degrees of freedom left for the noise.
+            them), there are no degrees of freedom left for the noise, or a model has only
+            censored rows (its effect has no upper bound). A task with only censored rows is
+            left out and named in ``TokenFit.left_out``.
     """
     x = np.asarray(tokens, dtype=np.float64).ravel()
     if not (len(models) == len(tasks) == x.size) or x.size == 0:
         raise ValueError("models, tasks and tokens must be non-empty and of the same length")
+    cut = _censored_rows(censored, x.size)
+    left_out = _all_censored(tasks, cut)
+    if left_out:
+        keep = [task not in left_out for task in tasks]
+        models = [m for m, k in zip(models, keep, strict=True) if k]
+        tasks = [t for t, k in zip(tasks, keep, strict=True) if k]
+        infra = None if infra is None else [i for i, k in zip(infra, keep, strict=True) if k]
+        x, cut = x[np.asarray(keep)], cut[np.asarray(keep)]
+        if x.size == 0:
+            raise ValueError("every row hit the budget: there is nothing to fit")
     if not np.all(np.isfinite(x)) or np.any(x <= 0.0):
         raise ValueError("tokens must be above 0")
     table = Responses.from_long(models, tasks, np.zeros(x.size), infra)
@@ -738,4 +777,151 @@ def fit_tokens(
         raise ValueError("no degrees of freedom left for the noise: add attempts or tasks")
     resid = y - design @ effects
     noise_sd = math.sqrt(float(resid @ resid) / df)
-    return TokenFit(table.models, table.tasks, effects, gram_pinv, noise_sd, df, table.infras)
+    if not cut.any():
+        return TokenFit(
+            table.models, table.tasks, effects, gram_pinv, noise_sd, df, table.infras, 0, left_out
+        )
+    _check_seen(table.models, table.model_index, cut, "model")
+    effects, covariance, noise_sd = _censored_fit(design, y, cut, effects, noise_sd)
+    # Maximum likelihood divides by the rows, not by the degrees of freedom. With one effect per
+    # task that makes the noise and the covariance too small; this factor makes both exact when no
+    # row is censored.
+    covariance *= x.size / df
+    noise_sd *= math.sqrt(x.size / df)
+    return TokenFit(
+        table.models,
+        table.tasks,
+        effects,
+        covariance / noise_sd**2,
+        noise_sd,
+        df,
+        table.infras,
+        int(cut.sum()),
+        left_out,
+    )
+
+
+def _censored_rows(censored: npt.ArrayLike | None, n: int) -> npt.NDArray[np.bool_]:
+    if censored is None:
+        return np.zeros(n, dtype=np.bool_)
+    cut = np.asarray(censored).ravel()
+    if cut.size != n:
+        raise ValueError("censored must have one flag per row")
+    return cut.astype(np.bool_)
+
+
+def _all_censored(tasks: Sequence[str], cut: npt.NDArray[np.bool_]) -> tuple[str, ...]:
+    """Return the tasks whose every row is censored, in order of first appearance."""
+    seen: dict[str, bool] = {}
+    for task, flag in zip(tasks, cut.tolist(), strict=True):
+        seen[task] = seen.get(task, True) and flag
+    return tuple(task for task, all_cut in seen.items() if all_cut)
+
+
+def _check_seen(
+    names: tuple[str, ...], index: npt.NDArray[np.int64], cut: npt.NDArray[np.bool_], kind: str
+) -> None:
+    """Refuse a model or task with only censored rows: its effect has no upper bound."""
+    seen = np.bincount(index[~cut], minlength=len(names))
+    blind = [names[i] for i in np.flatnonzero(seen == 0)]
+    if blind:
+        raise ValueError(
+            f"every row of {kind} {blind} hit the budget: its effect has no upper bound"
+        )
+
+
+_erfc = np.vectorize(math.erfc, otypes=[np.float64])
+_SQRT2 = math.sqrt(2.0)
+_LOG_SQRT_2PI = 0.5 * math.log(2.0 * math.pi)
+
+
+def _upper_tail(z: npt.NDArray[np.float64]) -> tuple[npt.NDArray[np.float64], ...]:
+    """Return ``log(1 - Phi(z))`` and the inverse Mills ratio ``phi(z) / (1 - Phi(z))``."""
+    q = 0.5 * _erfc(z / _SQRT2)
+    far = q < 1e-280  # noqa: PLR2004 (past this, erfc underflows; use the asymptotic series)
+    zf = np.where(far, z, 1.0)
+    series = 1.0 - 1.0 / zf**2 + 3.0 / zf**4
+    log_pdf = -0.5 * z**2 - _LOG_SQRT_2PI
+    log_q = np.where(far, log_pdf - np.log(zf) + np.log(series), np.log(np.where(far, 1.0, q)))
+    mills = np.where(far, zf / series, np.exp(log_pdf - log_q))
+    return log_q, mills
+
+
+def _censored_loglik(
+    design: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    cut: npt.NDArray[np.bool_],
+    theta: npt.NDArray[np.float64],
+) -> float:
+    sigma = math.exp(float(theta[-1]))
+    z = (y - design @ theta[:-1]) / sigma
+    log_q, _ = _upper_tail(z[cut])
+    seen = z[~cut]
+    return float(-seen.size * theta[-1] - 0.5 * seen @ seen + log_q.sum())
+
+
+def _censored_fit(
+    design: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    cut: npt.NDArray[np.bool_],
+    start: npt.NDArray[np.float64],
+    start_sd: float,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]:
+    """Return the effects, their covariance and sigma of the right-censored normal regression.
+
+    Newton steps on ``(effects, log sigma)`` with step halving. The design may be rank deficient;
+    the pseudo-inverse keeps the steps in its row space, so estimable contrasts are unique.
+    """
+    theta = np.append(start, math.log(start_sd))
+    current = _censored_loglik(design, y, cut, theta)
+    for _ in range(_NEWTON_STEPS):
+        gradient, hessian = _censored_derivatives(design, y, cut, theta)
+        step = -np.linalg.pinv(hessian) @ gradient
+        size = 1.0
+        while size > 1e-8:  # noqa: PLR2004
+            value = _censored_loglik(design, y, cut, theta + size * step)
+            if value >= current:
+                break
+            size /= 2.0
+        else:
+            break  # no step uphill: theta is the maximum to rounding
+        theta, gain, current = theta + size * step, value - current, value
+        if abs(gain) < _DECREMENT and float(np.abs(size * step).max()) < 1e-8:  # noqa: PLR2004
+            break
+    else:
+        raise ValueError("the censored fit did not converge: check the budget flags")
+    _, hessian = _censored_derivatives(design, y, cut, theta)
+    covariance = np.linalg.pinv(-hessian)
+    return theta[:-1], covariance[:-1, :-1], math.exp(float(theta[-1]))
+
+
+def _censored_derivatives(
+    design: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    cut: npt.NDArray[np.bool_],
+    theta: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the gradient and Hessian of the censored log likelihood in ``(effects, log sigma)``."""
+    sigma = math.exp(float(theta[-1]))
+    z = (y - design @ theta[:-1]) / sigma
+    _, mills = _upper_tail(z[cut])
+    zc = z[cut]
+    slope = mills * (mills - zc)  # the derivative of the inverse Mills ratio
+    # Per row: d loglik / d eta, d2 / d eta2, d2 / d eta d s, d loglik / d s, d2 / d s2.
+    g_eta = np.where(cut, 0.0, z / sigma)
+    h_eta = np.where(cut, 0.0, -1.0 / sigma**2)
+    h_eta_s = np.where(cut, 0.0, -2.0 * z / sigma)
+    g_s = np.where(cut, 0.0, z**2 - 1.0)
+    h_s = np.where(cut, 0.0, -2.0 * z**2)
+    g_eta[cut] = mills / sigma
+    h_eta[cut] = -slope / sigma**2
+    h_eta_s[cut] = -(slope * zc + mills) / sigma
+    g_s[cut] = mills * zc
+    h_s[cut] = -slope * zc**2 - mills * zc
+    p = design.shape[1]
+    gradient = np.append(design.T @ g_eta, g_s.sum())
+    hessian = np.empty((p + 1, p + 1))
+    hessian[:p, :p] = design.T @ (design * h_eta[:, None])
+    hessian[:p, p] = hessian[p, :p] = design.T @ h_eta_s
+    hessian[p, p] = h_s.sum()
+    return gradient, hessian

@@ -70,6 +70,54 @@ example \(\alpha_a - \alpha_b\)) has a Student t posterior:
 \(e^{\alpha_a - \alpha_b}\) is the ratio of the tokens of \(a\) to those of \(b\) on one task. On a complete design,
 this interval equals the paired t interval of the per-task differences.
 
+### Failed runs and runs that hit the budget
+
+Fit every run that spent tokens, failed runs included. A fit on passed runs only is selected: a
+model that fails its long tasks looks cheaper. Such a fit is valid only for the tasks that both
+models solved.
+
+A run that hit the token budget shows only that it needed at least the budget. Mark it in
+`censored`. The fit is then a censored normal regression on the log scale (Tobin 1958), by maximum
+likelihood, with Wald intervals.
+
+```python
+import math
+
+import numpy as np
+from statsx.evals import fit_tokens
+
+rng = np.random.default_rng(13)
+length = rng.normal(8.0, 0.8, 30)
+rows = [(m, f"t{t}", math.exp(length[t] + shift + rng.normal(0.0, 0.3)))
+        for m, shift in (("a", 0.0), ("b", math.log(1.5))) for t in range(30) for _ in range(2)]
+run_model, run_task, need = (list(c) for c in zip(*rows, strict=True))
+budget = math.exp(8.6)
+spent = np.minimum(need, budget)
+hit = np.asarray(need) >= budget
+fit = fit_tokens(run_model, run_task, spent, censored=hit)
+taken_as_is = fit_tokens(run_model, run_task, spent)
+print(f"{hit.mean():.0%} hit the budget, true ratio 1.5")
+for name, result in (("censored", fit), ("as is", taken_as_is)):
+    r = result.ratio("b", "a", 0.9)
+    print(f"{name:8s} 90% [{r.lower:.2f}, {r.upper:.2f}]")
+print(len(fit.left_out), "tasks left out, every run at the budget")
+```
+
+```text
+49% hit the budget, true ratio 1.5
+censored 90% [1.44, 1.78]
+as is    90% [1.19, 1.35]
+11 tasks left out, every run at the budget
+```
+
+- A task where every run hit the budget says nothing about the ratio. It is left out and named in
+  `left_out`. A model where every run hit the budget is refused.
+- The noise and the covariance are scaled by rows over degrees of freedom, so that with no
+  censored row the fit is the exact one above.
+- In 150 simulations like this one (32% of runs at the budget), the 90% interval held the true
+  ratio in 85%. Taking the capped values as they are gave a median ratio of 1.32; dropping the capped
+  runs gave 1.41.
+
 ## Hardware and infra: remove the infra effect
 
 The same model can use another number of tokens, or pass another share of the tasks, on another
@@ -295,6 +343,8 @@ Not checked: that the Rasch model fits the tasks. The list above is what the fit
   *Bayesian Data Analysis*, 3rd ed., chapters 4 and 14. CRC Press. <https://doi.org/10.1201/b16018>
 - Davison, A. C., and Hinkley, D. V. (1997). *Bootstrap Methods and their Application*, section 3.8
   (hierarchical data). Cambridge University Press. <https://doi.org/10.1017/CBO9780511802843>
+- Tobin, J. (1958). Estimation of relationships for limited dependent variables. *Econometrica*
+  26(1):24-36. <https://doi.org/10.2307/1907382>
 - Linacre, J. M. (1989). *Many-facet Rasch measurement*. MESA Press, Chicago. The Rasch model with
   facets besides model and task, here the infra.
 - Seber, G. A. F., and Lee, A. J. (2003). *Linear Regression Analysis*, 2nd ed., chapter 3 (estimable

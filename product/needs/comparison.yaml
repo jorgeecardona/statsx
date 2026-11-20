@@ -142,3 +142,17 @@ needs:
       - "test:tests/test_cost_by_task.py::test_a_resample_with_no_pass_has_no_upper_bound"
     must: false
 
+  - id: CO-12
+    text: >
+      When some runs hit the token budget, the caller can fit the token ratio of two models with
+      those runs as censored at the budget, so that a model that needs more than the budget is not
+      made to look cheaper.
+    sources:
+      - {kind: secondary, date: 2026-11-18, locator: "GitLab issue cardona-oss/statsx#13, from the compute-ml model comparison"}
+    proofs:
+      - "test:tests/test_tokens_censored.py::test_the_censored_fit_recovers_the_ratio_where_the_plain_fits_do_not"
+      - "test:tests/test_tokens_censored.py::test_without_censored_rows_the_fit_is_the_exact_one"
+      - "test:tests/test_tokens_censored.py::test_the_gradient_and_hessian_match_finite_differences"
+      - "test:tests/test_tokens_censored.py::test_a_task_where_every_run_hit_the_budget_is_left_out_and_named"
+    must: false
+
