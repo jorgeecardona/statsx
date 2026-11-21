@@ -6,7 +6,7 @@ tests look at the differences, so they ignore the spread between items.
 - ``mcnemar``: two systems that are right or wrong on the same items. Only the items where they
   disagree count. The exact test is a binomial test on those items; it is the default.
 - ``sign_test``: the share of items where A beats B, against one half. It uses the direction of
-  each difference only, so it is robust and weak.
+  each difference only, so outliers do not move it, and it has low power.
 - ``wilcoxon``: the signed-rank test. It uses direction and size of the differences, and is
   stronger than the sign test when the differences are roughly symmetric. Zero differences are
   dropped. For up to 50 non-zero differences the p-value is exact (it handles ties); above that,

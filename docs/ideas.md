@@ -23,9 +23,9 @@ Status values: `built`, `planned` (has a need), `open` (a question, no decision)
 ### Embeddings: do two sets of points come from one distribution
 
 - Status: planned (need ED-1, not built).
-- Idea: for BERT, nomic or OpenAI embeddings, compare two sets with a split into buckets, or by first
-  looking at low-dimensional projections. Intuition: m points per set can be separated in about m+1
-  dimensions, so separation in high dimension is cheap and proves little.
+- Idea: for BERT, nomic or OpenAI embeddings, compare two sets with a split into buckets, or by
+  first looking at low-dimensional projections. Intuition: m points per set can be separated in
+  about m+1 dimensions, so separation in high dimension is cheap and proves little.
 - Known: Cover (1965) separability, energy distance, MMD, held-out classifier tests, pooled PCA + KS
   (Rabanser 2019). Exact statements of Cover's theorem and Kim et al. 2021 are not yet verified.
 - Rule that follows from the entry above: a classifier that separates the sets only counts on
@@ -33,17 +33,18 @@ Status values: `built`, `planned` (has a need), `open` (a question, no decision)
 
 ### LLM judges and an arena
 
-- Status: partly built. Done: position bias per judge (CO-7), Elo scale with intervals (CO-8), online Elo
-  and Glicko-2 (CO-9). To do: do judges rank the systems differently (CO-10).
-- Idea: judges with different criteria give different results; an arena scores the systems like chess.
+- Status: built. Position bias per judge (CO-7), Elo scale with intervals (CO-8), online Elo and
+  Glicko-2 (CO-9), a test that the judges rank the systems alike (CO-10, `fit_by_judge`).
+- Idea: judges with different criteria give different results; an arena scores the systems like
+  chess.
 - Assumption to state: Bradley-Terry assumes one strength per system on one scale. If the judges
   disagree, one strength is the wrong model. CO-10 is the check of that assumption.
 
 ### From the PyMC and NumPyro research
 
-- Status: open, ranked list. Not started: CUPED (Deng 2013), PPI++ for judge scores (arXiv:2311.01453),
-  PSIS-LOO as public API, cluster-robust errors for evals, ratio-metric confidence sequences,
-  Diebold-Mariano.
+- Status: open, ranked list. Not started: CUPED (Deng 2013), PPI++ for judge scores
+  (arXiv:2311.01453), PSIS-LOO as public API, cluster-robust errors for evals, ratio-metric
+  confidence sequences, Diebold-Mariano.
 - Open decision: MCMC for non-conjugate models and install without JAX or a C compiler (BA-4, BA-6).
   They wait on whether to write NUTS in Rust.
 

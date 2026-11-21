@@ -1,26 +1,27 @@
 [project]
 name = "statsx"
-version = "0.1.62"  # static: maturin is the build backend (it cannot read __version__ from a Python file; it reads Cargo.toml or this line). Keep in sync with rust/Cargo.toml.
-description = "Statistics for Python with its own Rust core: Bayesian inference, forecasting, causal impact, tests and design, with NumPy as the only dependency."
+version = "0.1.63"  # static: maturin is the build backend (it cannot read __version__ from a Python file; it reads Cargo.toml or this line). Keep in sync with rust/Cargo.toml.
+description = "Statistics for experiments and forecasts, with a Rust extension and NumPy the only dependency"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Jorge Cardona", email = "jorgeecardona@gmail.com" }]
-keywords = []
+keywords = ["statistics", "bayesian", "forecasting", "bootstrap", "sequential-testing", "confidence-intervals", "model-evaluation"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Mathematics",
     "Typing :: Typed",
 ]
 dependencies = ["numpy>=1.26"]
 
 [project.optional-dependencies]
-# docs are an *extra* (not a uv dependency-group) so Read the Docs can install them via pip
+# docs are an extra (not a uv dependency-group): CI installs them with `uv sync --extra docs`
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
@@ -30,7 +31,6 @@ docs = [
 [project.urls]
 Homepage = "https://gitlab.com/cardona-oss/statsx"
 Repository = "https://gitlab.com/cardona-oss/statsx"
-Documentation = "https://cardona-oss.gitlab.io/statsx/"
 Changelog = "https://gitlab.com/cardona-oss/statsx/-/blob/main/CHANGELOG.md"
 Issues = "https://gitlab.com/cardona-oss/statsx/-/issues"
 
@@ -40,7 +40,8 @@ build-backend = "maturin"
 
 # Mixed layout: the Python package is src/statsx/, and the Rust extension is
 # built from rust/Cargo.toml as the statsx._accel submodule and shipped in the
-# same wheel. The pyo3 abi3-py311 feature makes it ONE wheel per platform for Python 3.11+.
+# same wheel. The pyo3 abi3-py311 feature makes it ONE wheel per platform (tag cp311-abi3);
+# requires-python limits installs to Python 3.12+.
 [tool.maturin]
 manifest-path = "rust/Cargo.toml"
 python-source = "src"

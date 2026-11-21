@@ -44,7 +44,7 @@ version-ahead: ## fail unless the version is greater than origin/main (when src/
 bump: ## bump the version -- TYPE=patch|minor|major (default patch)
 	./scripts/bump-version $(or $(TYPE),patch)
 
-docs: ## build docs strictly (as CI / Read the Docs do) -- the CI :docs task
+docs: ## build docs strictly (as the CI ci job does, for GitLab Pages) -- the CI :docs task
 	moon run :docs
 
 build: ## build sdist + wheel into dist/ -- the CI :build task

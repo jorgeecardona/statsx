@@ -1,7 +1,6 @@
 # Which method do I use?
 
-Find your situation in the first column. The last column is the page to read, or the API entry when
-the module has no page yet.
+Find your situation in the first column. The last column is the page to read.
 
 Every method assumes something about your data that the library cannot check. Read the page before
 you trust a number.

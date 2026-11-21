@@ -5,7 +5,7 @@
 # -- no per-language jobs, no hand-wired stages/needs, moon resolves the order. On the
 # default branch it runs `:release` instead: the same `:ci` checks run as deps, then it
 # publishes to PyPI via OIDC Trusted Publishing when pyproject's version isn't on PyPI
-# yet (no stored API token). See README "Releasing".
+# yet (no stored API token). See CONTRIBUTING.md "Releasing".
 
 default:
   image: debian:bookworm-slim

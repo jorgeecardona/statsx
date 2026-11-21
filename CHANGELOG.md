@@ -7,25 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.62] - 2026-11-20
+
 ### Added
 
 - `Forecast.rates` divides each count draw by the exposure of its month. The docs now say that a
   forecast at exposure 1 gives a rate as `mean` but a band of counts that is nearly all 0 (GitLab
   issue #16).
+
+## [0.1.61] - 2026-11-20
+
+### Added
+
 - `cost_at_ability` gives each model's cost per solved task at the quality of a reference model,
   counting the retries a weaker model needs (GitLab issue #14).
+
+## [0.1.60] - 2026-11-20
+
+### Added
+
 - `fit_tokens(..., censored=...)` treats runs that hit the token budget as censored, so a model
   that needs more than the budget no longer looks cheaper (GitLab issue #13).
+
+## [0.1.59] - 2026-11-20
+
+### Added
+
 - `cost_per_pass(..., tasks=...)` resamples whole tasks for its interval, so a few hard, costly
   tasks no longer make it too narrow (GitLab issue #12).
+
+## [0.1.58] - 2026-11-20
+
+### Added
+
 - `fit_trend(exposure=...)` fits the trend of a rate: the log of the exposure (population,
   person-time, trials, hours) enters the model with its coefficient fixed at 1. `forecast` then
   takes the future exposure (GitLab issue #15).
+
+## [0.1.57] - 2026-11-20
+
+### Added
+
 - `TrendFit.predictive_check()` asks the data whether the model holds. It simulates series from the
   fit and flags an outlier, a surplus of zeros, a season shape the harmonics cannot hold, and counts
-  that alternate. The docs list what it cannot see: a changing level or season is absorbed by the drift.
-- `fit_by_judge` gives each judge its own strengths and tests whether the judges rank the systems alike. The
-  test uses a covariance from resampling the items once for all judges.
+  that alternate. The docs list what it cannot see: a changing level or season is absorbed by the
+  drift.
+
+## [0.1.56] - 2026-11-19
+
+### Added
+
+- `fit_by_judge` gives each judge its own strengths and tests whether the judges rank the systems
+  alike. The test uses a covariance from resampling the items once for all judges.
+
+## [0.1.55] - 2026-11-19
+
+### Added
+
 - Methods pages for the modules that had none: causal impact, paired tests with equivalence and
   multiple testing, calibration, intervals (proportion, effect size, bootstrap), power and
   allocation, time to finish a task, backtest, agreement, priors with conjugate updates, and
@@ -36,6 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check".
 - Every python example in the README and the methods pages runs and shows its output. A block with
   no output fails the doc test.
+
+## [0.1.54] - 2026-11-19
 
 ### Fixed
 
