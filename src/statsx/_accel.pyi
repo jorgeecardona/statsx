@@ -60,6 +60,36 @@ def kmeans_fit(
 def kmeans_assign(
     data: npt.NDArray[np.float64], centroids: npt.NDArray[np.float64], threads: int
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]: ...
+def gmm_fit(
+    data: npt.NDArray[np.float64],
+    k: int,
+    cov: int,
+    max_iter: int,
+    tol: float,
+    reg: float,
+    min_count: float,
+    seed: int,
+    n_init: int,
+    threads: int,
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    float,
+    int,
+    bool,
+    list[float],
+    int,
+]: ...
+def gmm_score(
+    data: npt.NDArray[np.float64],
+    weights: npt.NDArray[np.float64],
+    means: npt.NDArray[np.float64],
+    covs: npt.NDArray[np.float64],
+    cov: int,
+    threads: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
 def beta_cdf(x: npt.NDArray[np.float64], a: float, b: float) -> list[float]: ...
 def beta_ppf(p: npt.NDArray[np.float64], a: float, b: float) -> list[float]: ...
 def sample_beta(a: float, b: float, n: int, seed: int) -> npt.NDArray[np.float64]: ...

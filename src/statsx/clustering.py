@@ -1,4 +1,4 @@
-"""Clustering: k-means, the silhouette, and the gap statistic to choose the number of clusters.
+"""Clustering: k-means, Gaussian mixtures by EM, the silhouette, and ways to choose the number.
 
 ``kmeans`` runs Lloyd's iteration from k-means++ seeds, several times, and keeps the fit with the
 lowest within-cluster sum of squares. The kernel is Rust and uses no library besides NumPy at the
@@ -10,6 +10,12 @@ are not, k-means still returns k clusters: that it returned a result is no evide
 exist. ``choose_k`` compares the data with a uniform reference, so a result of ``k = 1`` is the
 library saying it sees no structure. ``silhouette`` shows which points sit between clusters.
 
+``gaussian_mixture`` fits a mixture of Gaussians by expectation maximization. Each point gets a
+probability for each component, and each component has its own mean and covariance. The model
+assumes the components are Gaussian. ``choose_components`` picks the number of components by BIC.
+When a cluster is skewed or has heavy tails, BIC adds components to describe it: a larger number
+than the clusters you expect is a sign the Gaussian assumption fails, not a finding.
+
 References:
     Lloyd, S. P. (1982). Least squares quantization in PCM. *IEEE Transactions on Information
     Theory* 28(2):129-137. https://doi.org/10.1109/TIT.1982.1056489.
@@ -20,6 +26,22 @@ References:
     Rousseeuw, P. J. (1987). Silhouettes: a graphical aid to the interpretation and validation of
     cluster analysis. *Journal of Computational and Applied Mathematics* 20:53-65.
     https://doi.org/10.1016/0377-0427(87)90125-7.
+
+    Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). Maximum likelihood from incomplete data
+    via the EM algorithm. *Journal of the Royal Statistical Society B* 39(1):1-38.
+    https://doi.org/10.1111/j.2517-6161.1977.tb01600.x.
+
+    Schwarz, G. (1978). Estimating the dimension of a model. *The Annals of Statistics*
+    6(2):461-464. https://doi.org/10.1214/aos/1176344136.
+
+    Fraley, C., & Raftery, A. E. (2002). Model-based clustering, discriminant analysis, and
+    density estimation. *Journal of the American Statistical Association* 97(458):611-631.
+    https://doi.org/10.1198/016214502760047131.
+
+    McLachlan, G. J., & Peel, D. (2000). *Finite Mixture Models*. Wiley.
+
+    Keribin, C. (2000). Consistent estimation of the order of mixture models. *Sankhya A*
+    62(1):49-66.
 
     Tibshirani, R., Walther, G., & Hastie, T. (2001). Estimating the number of clusters in a data
     set via the gap statistic. *Journal of the Royal Statistical Society B* 63(2):411-423.
@@ -356,3 +378,321 @@ def choose_k(  # noqa: PLR0913 (settings are keyword-only)
             pick, found = ks[i], True
             break
     return GapResult(ks, gap, se, observed, pick, found, reference, n_reference)
+
+
+CovarianceKind = Literal["full", "diag", "spherical"]
+Criterion = Literal["bic", "aic"]
+
+_COVARIANCE_CODE: dict[str, int] = {"full": 0, "diag": 1, "spherical": 2}
+
+
+def _check_covariance(kind: str) -> int:
+    if kind not in _COVARIANCE_CODE:
+        raise ValueError(f"covariance must be 'full', 'diag' or 'spherical', got {kind!r}")
+    return _COVARIANCE_CODE[kind]
+
+
+def _n_parameters(k: int, d: int, kind: str) -> int:
+    """Free parameters of a mixture: weights, means and covariances."""
+    per_component = {"full": d * (d + 1) // 2, "diag": d, "spherical": 1}[kind]
+    return (k - 1) + k * d + k * per_component
+
+
+@dataclass(frozen=True, slots=True)
+class GaussianMixtureFit:
+    """A Gaussian mixture fitted by EM.
+
+    Args:
+        weights: The share of each component, shape (k,), sums to 1.
+        means: The mean of each component, shape (k, d).
+        covariances: Shape (k, d, d) for ``"full"``, (k, d) for ``"diag"`` (the variances), and
+            (k,) for ``"spherical"`` (one variance per component).
+        covariance_type: ``"full"``, ``"diag"`` or ``"spherical"``.
+        log_likelihood: The log-likelihood of the data at the fit, summed over rows.
+        n_samples: Rows the model was fitted to.
+        responsibilities: The probability of each component for each row, shape (n, k).
+        n_iter: EM iterations of the kept run.
+        converged: True when the log-likelihood changed by less than ``tol`` per row, False when
+            the run stopped at ``max_iter``.
+        trace: The log-likelihood at each iteration of the kept run. It does not decrease.
+        n_init: Runs from different starts; the kept one has the highest log-likelihood.
+        n_degenerate: Runs dropped because a component held too few points.
+    """
+
+    weights: npt.NDArray[np.float64]
+    means: npt.NDArray[np.float64]
+    covariances: npt.NDArray[np.float64]
+    covariance_type: CovarianceKind
+    log_likelihood: float
+    n_samples: int
+    responsibilities: npt.NDArray[np.float64]
+    n_iter: int
+    converged: bool
+    trace: npt.NDArray[np.float64]
+    n_init: int
+    n_degenerate: int
+
+    @property
+    def k(self) -> int:
+        """Return the number of components."""
+        return self.weights.shape[0]
+
+    @property
+    def n_parameters(self) -> int:
+        """Return the number of free parameters (weights, means and covariances)."""
+        return _n_parameters(self.k, self.means.shape[1], self.covariance_type)
+
+    @property
+    def bic(self) -> float:
+        """Return ``-2 log L + p log n`` (Schwarz 1978). Lower is better."""
+        return -2.0 * self.log_likelihood + self.n_parameters * math.log(self.n_samples)
+
+    @property
+    def aic(self) -> float:
+        """Return ``-2 log L + 2 p``. Lower is better. It adds components more readily than BIC."""
+        return -2.0 * self.log_likelihood + 2.0 * self.n_parameters
+
+    @property
+    def labels(self) -> npt.NDArray[np.int64]:
+        """Return the most probable component of each fitted row."""
+        return np.argmax(self.responsibilities, axis=1).astype(np.int64)
+
+    @property
+    def sizes(self) -> npt.NDArray[np.float64]:
+        """Return the expected number of rows in each component (the sum of its responsibilities)."""
+        return self.responsibilities.sum(axis=0)
+
+    @property
+    def uncertainty(self) -> npt.NDArray[np.float64]:
+        """Return ``1 - max responsibility`` for each fitted row: 0 is sure, near 1 is a toss."""
+        return 1.0 - self.responsibilities.max(axis=1)
+
+    def _score(
+        self, x: npt.ArrayLike, threads: int | None
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        a = np.ascontiguousarray(x, dtype=np.float64)
+        if a.ndim != _MATRIX or a.shape[1] != self.means.shape[1]:
+            raise ValueError(f"x must have {self.means.shape[1]} columns")
+        resp, log_density = _accel.gmm_score(
+            a,
+            self.weights,
+            self.means,
+            np.ascontiguousarray(self.covariances.ravel()),
+            _COVARIANCE_CODE[self.covariance_type],
+            _threads(threads),
+        )
+        return np.asarray(resp, dtype=np.float64), np.asarray(log_density, dtype=np.float64)
+
+    def predict_proba(
+        self, x: npt.ArrayLike, *, threads: int | None = None
+    ) -> npt.NDArray[np.float64]:
+        """Return the probability of each component for each row of ``x``, shape (n, k)."""
+        return self._score(x, threads)[0]
+
+    def predict(self, x: npt.ArrayLike, *, threads: int | None = None) -> npt.NDArray[np.int64]:
+        """Return the most probable component of each row of ``x``."""
+        return np.argmax(self._score(x, threads)[0], axis=1).astype(np.int64)
+
+    def score_samples(
+        self, x: npt.ArrayLike, *, threads: int | None = None
+    ) -> npt.NDArray[np.float64]:
+        """Return the log density of the mixture at each row of ``x``."""
+        return self._score(x, threads)[1]
+
+    def sample(
+        self, n: int, *, seed: int = 0
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int64]]:
+        """Return ``n`` draws from the fitted mixture and the component each came from."""
+        if n < 1:
+            raise ValueError(f"n must be at least 1, got {n}")
+        rng = np.random.default_rng(seed)
+        k, d = self.means.shape
+        labels = rng.choice(k, size=n, p=self.weights).astype(np.int64)
+        noise = rng.standard_normal((n, d))
+        out = np.empty((n, d))
+        for j in range(k):
+            rows = labels == j
+            if self.covariance_type == "full":
+                factor = np.linalg.cholesky(self.covariances[j])
+                out[rows] = self.means[j] + noise[rows] @ factor.T
+            elif self.covariance_type == "diag":
+                out[rows] = self.means[j] + noise[rows] * np.sqrt(self.covariances[j])
+            else:
+                out[rows] = self.means[j] + noise[rows] * math.sqrt(float(self.covariances[j]))
+        return out, labels
+
+
+def gaussian_mixture(  # noqa: PLR0913 (settings are keyword-only)
+    x: npt.ArrayLike,
+    k: int,
+    *,
+    covariance: CovarianceKind = "full",
+    n_init: int = 10,
+    max_iter: int = 500,
+    tol: float = 1e-6,
+    reg: float = 1e-6,
+    seed: int = 0,
+    threads: int | None = None,
+) -> GaussianMixtureFit:
+    """Return the Gaussian mixture with ``k`` components fitted to the rows of ``x`` by EM.
+
+    Each run starts from a k-means partition (k-means++ seeds, as in ``kmeans``) and alternates
+    the E-step, the probability of each component for each row, with the M-step, the weighted
+    mean and covariance of each component (Dempster, Laird & Rubin 1977). It stops when the mean
+    log-likelihood per row changes by less than ``tol``, or at ``max_iter``. The run with the
+    highest log-likelihood is kept. The same ``seed`` gives the same fit, for any ``threads``.
+    More runs make a poor local optimum less likely but cannot rule it out.
+
+    A component can collapse onto a few points, where the likelihood has no upper bound (McLachlan
+    and Peel 2000). A run is dropped when a component holds fewer than ``d + 1`` points in effect
+    (``"full"``) or 2 (``"diag"``, ``"spherical"``). ``reg`` times the mean variance of the columns
+    is added to every variance, so a covariance stays positive definite.
+
+    The model assumes each cluster is Gaussian. A log-likelihood that rose and settled is no
+    evidence of that. Skewed or heavy-tailed clusters are split into several components.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        k: Number of components, from 1 to n.
+        covariance: ``"full"`` (any ellipse, d(d+1)/2 numbers per component), ``"diag"`` (axes
+            aligned with the columns) or ``"spherical"`` (one variance per component).
+        n_init: Runs from different starts. EM stops at the optimum nearest its start, so one run
+            can be far from the best. The first run starts from a converged k-means partition and
+            the others from k-means++ seeds after 0 or 3 Lloyd steps.
+        max_iter: Most EM iterations per run.
+        tol: Stop when the mean log-likelihood per row changes by less than this.
+        reg: Ridge on the variances, as a fraction of the mean variance of the columns of ``x``.
+        seed: Seed of the generator.
+        threads: Worker threads. The default is the number of cores, at most 4. The result does
+            not depend on it.
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array with at least 2 rows, ``k`` is not in
+            [1, n], an option is out of range, or every run was dropped as degenerate.
+    """
+    a = _points(x)
+    n, d = a.shape
+    code = _check_covariance(covariance)
+    if not 1 <= k <= n:
+        raise ValueError(f"k must be between 1 and n = {n}, got {k}")
+    if n_init < 1 or max_iter < 1 or tol < 0.0 or reg < 0.0:
+        raise ValueError("n_init and max_iter must be at least 1, and tol and reg at least 0")
+    scale = float(np.mean(np.var(a, axis=0)))
+    min_count = float(d + 1) if covariance == "full" else 2.0
+    weights, means, covs, resp, log_lik, n_iter, converged, trace, dropped = _accel.gmm_fit(
+        a, k, code, max_iter, tol, reg * scale, min_count, seed, n_init, _threads(threads)
+    )
+    shape = {"full": (k, d, d), "diag": (k, d), "spherical": (k,)}[covariance]
+    return GaussianMixtureFit(
+        np.asarray(weights, dtype=np.float64),
+        np.asarray(means, dtype=np.float64),
+        np.asarray(covs, dtype=np.float64).reshape(shape),
+        covariance,
+        float(log_lik),
+        n,
+        np.asarray(resp, dtype=np.float64),
+        int(n_iter),
+        bool(converged),
+        np.asarray(trace, dtype=np.float64),
+        n_init,
+        int(dropped),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentSearch:
+    """Mixtures with 1 to ``k_max`` components, compared by BIC or AIC.
+
+    Args:
+        ks: The component counts tried, from 1.
+        bic: BIC at each k. NaN where every run was dropped as degenerate.
+        aic: AIC at each k, NaN in the same places.
+        log_likelihood: The log-likelihood at each k, NaN in the same places.
+        k: The k with the lowest value of ``criterion``.
+        criterion: ``"bic"`` or ``"aic"``.
+        covariance_type: The covariance form used for every k.
+        best: The fit at ``k``.
+    """
+
+    ks: tuple[int, ...]
+    bic: npt.NDArray[np.float64]
+    aic: npt.NDArray[np.float64]
+    log_likelihood: npt.NDArray[np.float64]
+    k: int
+    criterion: Criterion
+    covariance_type: CovarianceKind
+    best: GaussianMixtureFit
+
+
+def choose_components(  # noqa: PLR0913 (settings are keyword-only)
+    x: npt.ArrayLike,
+    k_max: int = 10,
+    *,
+    covariance: CovarianceKind = "full",
+    criterion: Criterion = "bic",
+    n_init: int = 10,
+    max_iter: int = 500,
+    tol: float = 1e-6,
+    reg: float = 1e-6,
+    seed: int = 0,
+    threads: int | None = None,
+) -> ComponentSearch:
+    """Return the BIC (or AIC) of mixtures with ``k = 1 .. k_max`` components and the k it picks.
+
+    BIC is Schwarz's criterion (1978): ``-2 log L + p log n``, where ``p`` counts weights, means
+    and covariances. Its regularity conditions do not hold for mixtures, since a smaller model sits
+    on the edge of a larger one. Keribin (2000) proves it still finds the true number when the
+    components are Gaussian. When they are not, it adds components to describe the shape: a pick
+    above the number of groups you expect points at skewed or heavy-tailed clusters.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        k_max: Largest number of components tried, at most n.
+        covariance: ``"full"``, ``"diag"`` or ``"spherical"``, as in ``gaussian_mixture``.
+        criterion: ``"bic"`` or ``"aic"``.
+        n_init: EM runs per k.
+        max_iter: Most EM iterations per run.
+        tol: Convergence bound, as in ``gaussian_mixture``.
+        reg: Ridge, as in ``gaussian_mixture``.
+        seed: Seed of the generator.
+        threads: Worker threads, as in ``kmeans``.
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array, ``k_max`` is not in [1, n], an option
+            is out of range, or no k gave a fit.
+    """
+    a = _points(x)
+    _check_covariance(covariance)
+    if not 1 <= k_max <= a.shape[0]:
+        raise ValueError(f"k_max must be between 1 and n = {a.shape[0]}, got {k_max}")
+    if criterion not in ("bic", "aic"):
+        raise ValueError(f"criterion must be 'bic' or 'aic', got {criterion!r}")
+    ks = tuple(range(1, k_max + 1))
+    fits: list[GaussianMixtureFit | None] = []
+    for k in ks:
+        try:
+            fits.append(
+                gaussian_mixture(
+                    a,
+                    k,
+                    covariance=covariance,
+                    n_init=n_init,
+                    max_iter=max_iter,
+                    tol=tol,
+                    reg=reg,
+                    seed=seed,
+                    threads=threads,
+                )
+            )
+        except ValueError:
+            fits.append(None)  # every run had a collapsed component: this k is not supported
+    bic = np.array([f.bic if f else np.nan for f in fits])
+    aic = np.array([f.aic if f else np.nan for f in fits])
+    log_lik = np.array([f.log_likelihood if f else np.nan for f in fits])
+    score = bic if criterion == "bic" else aic
+    if np.all(np.isnan(score)):
+        raise ValueError("no number of components gave a fit: the data have too few rows")
+    pick = int(np.nanargmin(score))
+    best = fits[pick]
+    assert best is not None  # noqa: S101 (np.nanargmin never lands on NaN)
+    return ComponentSearch(ks, bic, aic, log_lik, ks[pick], criterion, covariance, best)

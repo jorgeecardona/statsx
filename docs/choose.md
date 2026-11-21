@@ -46,6 +46,7 @@ you trust a number.
 | You have | You want | Use | Read |
 |---|---|---|---|
 | Points in a feature space, no labels | k-means clusters, a check of them, and how many there are | `statsx.clustering` | [Cluster points](methods/clustering.md) |
+| Points whose groups are stretched or overlap | A Gaussian mixture, a probability per point, and the number of components by BIC | `statsx.clustering` | [Cluster points](methods/clustering.md) |
 
 ## Compare models and systems
 

@@ -24,7 +24,7 @@ use crate::rng::Rng;
 /// Rows per block. Fixed, so that results do not depend on the thread count.
 const BLOCK: usize = 2048;
 
-type Fit = (Vec<i64>, Vec<f64>, f64, usize, bool);
+pub(crate) type Fit = (Vec<i64>, Vec<f64>, f64, usize, bool);
 
 fn dist2(a: &[f64], b: &[f64]) -> f64 {
     let mut s = 0.0;
@@ -180,7 +180,7 @@ fn means(x: &[f64], n: usize, dim: usize, labels: &[i64], k: usize) -> (Vec<f64>
     (sums, counts)
 }
 
-fn lloyd(
+pub(crate) fn lloyd(
     x: &[f64],
     n: usize,
     dim: usize,
@@ -248,7 +248,7 @@ fn lloyd(
     (labels_final, out, inertia, used, converged)
 }
 
-fn pool(threads: usize) -> PyResult<rayon::ThreadPool> {
+pub(crate) fn pool(threads: usize) -> PyResult<rayon::ThreadPool> {
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads.max(1))
         .build()

@@ -1713,4 +1713,36 @@ decisions:
   - P-2
   - P-3
   decided_at: '2026-11-21'
-
+- id: D-64
+  text: 'gaussian_mixture(x, k) fits a Gaussian mixture by EM (Dempster, Laird & Rubin 1977), with full,
+    diagonal or spherical covariances, in Rust f64. The E-step is a log-sum-exp over components and the
+    M-step the responsibility-weighted mean and covariance; blocks of 1024 rows have a fixed size and
+    their results are combined in block order, so the fit does not depend on the thread count. Runs
+    start from k-means++ seeds after 30, 0 or 3 Lloyd steps (by run number), n_init = 10 by default,
+    and the run with the highest log-likelihood is kept. A run is dropped when a component holds fewer
+    than d + 1 points in effect (full) or 2 (diagonal, spherical): that is the unbounded-likelihood
+    solution (McLachlan & Peel 2000), not a fit. When every run is dropped the call raises ValueError.
+    A ridge of reg = 1e-6 times the mean column variance is added to every variance. Stopping is a
+    change of the mean log-likelihood below 1e-6 per row. choose_components(x) compares k = 1..k_max by
+    BIC (Schwarz 1978), or AIC, and marks as NaN the k where every run collapsed. No library besides
+    NumPy at run time.'
+  needs:
+  - CL-2
+  alternatives:
+  - 'Start from the converged k-means partition only, as scikit-learn does by default: not used; on two
+    long flat groups it falls in the basin that cuts them across, and 10 runs from different starts
+    reached the best optimum on 10 of 10 seeds where one start reached it on 0 of 5.'
+  - 'Tied covariance (one covariance for all components): not used yet. The three forms here cover the
+    usual cases, and tied can come as its own need.'
+  - 'Variational Bayes mixtures (a Dirichlet prior on the weights, which switches off extra
+    components): not used; it needs a prior and a second paper, and BIC answers the same question with
+    a stated criterion.'
+  - 'ICL (BIC plus an entropy term, Biernacki, Celeux & Govaert 2000): not used yet; it favours
+    clusters that do not overlap and can come as its own need.'
+  - 'A goodness-of-fit test of the Gaussian shape of each component: not used yet. The docs say the
+    assumption is unchecked, and that BIC adds components to skewed clusters.'
+  consequences: 'Planted mixtures are recovered (means within 0.2, weights within 0.04). On Gaussian
+    data BIC gave the true number in at least 7 of 8 runs and gave k = 1 for one Gaussian cloud in at
+    least 5 of 6. On one lognormal cloud it gave k > 1, and the docs say so. EM stops at a local
+    optimum, so a poor start can give a poor fit; the docs say more runs make it less likely and do
+    not rule it out. A converged log-likelihood is no evidence that the clusters are Gaussian.'
