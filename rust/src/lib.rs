@@ -10,6 +10,7 @@ mod beta;
 mod bootstrap;
 mod calibrate;
 mod conjugate;
+mod density;
 mod diagnostics;
 mod eta;
 mod gamma;
@@ -52,6 +53,9 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(beta::nct_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(gamma::chi2_cdf, m)?)?;
     m.add_function(wrap_pyfunction!(gamma::chi2_sf, m)?)?;
+    m.add_function(wrap_pyfunction!(density::dbscan_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(density::hdbscan_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(density::kth_distances, m)?)?;
     m.add_function(wrap_pyfunction!(gmm::gmm_fit, m)?)?;
     m.add_function(wrap_pyfunction!(gmm::gmm_score, m)?)?;
     m.add_function(wrap_pyfunction!(kmeans::kmeans_fit, m)?)?;

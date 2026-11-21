@@ -11,12 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.clustering.dbscan`, `hdbscan` and `k_distances`: density clustering from the papers, in
+  Rust, with exact distances. Groups have any shape, points in no group are noise (-1), and no
+  number of clusters is given. HDBSCAN also finds groups of different density. No library besides
+  NumPy.
 - `statsx.clustering.gaussian_mixture`: a Gaussian mixture fitted by EM (full, diagonal or spherical
   covariance), with a probability for each point, `predict_proba`, `score_samples` and `sample`. It
   drops runs where a component collapses onto a few points. `choose_components` picks the number of
   components by BIC or AIC. No library besides NumPy.
-- `statsx.clustering`: `kmeans` (k-means++ seeds, Lloyd iteration, a Rust kernel that gives the same fit
-  for any thread count), `silhouette`, and `choose_k` by the gap statistic. No library besides NumPy.
+- `statsx.clustering`: `kmeans` (k-means++ seeds, Lloyd iteration, a Rust kernel that gives the same
+  fit for any thread count), `silhouette`, and `choose_k` by the gap statistic. No library besides
+  NumPy.
 - `Forecast.rates` divides each count draw by the exposure of its month. The docs now say that a
   forecast at exposure 1 gives a rate as `mean` but a band of counts that is nearly all 0 (GitLab
   issue #16).

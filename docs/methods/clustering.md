@@ -1,10 +1,11 @@
-# Cluster points: k-means, Gaussian mixtures and how many clusters
+# Cluster points: k-means, Gaussian mixtures, DBSCAN and HDBSCAN
 
 Use this when you have points with no labels (measurements, embeddings) and want to split them into
 groups, check the groups, and choose how many there are. The module is `statsx.clustering`.
 
 Use k-means for round groups of similar size. Use a Gaussian mixture when groups are stretched,
-differ in spread, or overlap, or when you want a probability for each point.
+differ in spread, or overlap, or when you want a probability for each point. Use DBSCAN or HDBSCAN
+when groups have any shape, you do not know how many there are, and some points belong to no group.
 
 ## k-means
 
@@ -214,6 +215,146 @@ print(choose_components(skewed, 5, seed=1).k)
 A pick above the number of groups you expect is a sign that the groups are not Gaussian. Look at the
 data before you read it as more groups.
 
+## Groups of any shape: DBSCAN
+
+`dbscan(x, eps)` follows Ester, Kriegel, Sander and Xu (1996). A point is a core point when at least
+`min_samples` points lie within distance `eps` of it, the point itself included. A cluster is a set
+of core points joined by steps of at most `eps`, plus the border points within `eps` of one of its
+core points. Every other point is noise, labelled -1. There is no number of clusters to give.
+
+A border point within `eps` of core points of two clusters joins the cluster discovered first
+(section 4.1 of the paper). Here that is the one whose lowest-index core point comes first, so the
+result does not depend on how you order the rows, apart from that choice.
+
+```python
+from statsx.clustering import dbscan, hdbscan, k_distances
+
+t = rng.uniform(0.0, np.pi, 300)
+upper = np.column_stack([np.cos(t), np.sin(t)])
+lower = np.column_stack([1.0 - np.cos(t), 0.4 - np.sin(t)])
+moons = np.vstack([upper, lower]) + 0.05 * rng.standard_normal((600, 2))
+moon_truth = np.repeat([0, 1], 300)
+
+db = dbscan(moons, 0.2, min_samples=5)
+print(db.n_clusters, db.n_noise, db.n_border, db.sizes.tolist())
+km = kmeans(moons, 2, seed=1)
+def agreement(labels):
+    share = float((labels == moon_truth).mean())
+    return round(max(share, 1.0 - share), 2)
+
+print(agreement(db.labels), agreement(km.labels))
+```
+
+```text
+2 0 0 [300, 300]
+1.0 0.8
+```
+
+The two half-circles interleave. DBSCAN follows each one. k-means cuts the plane in two with a line.
+
+### Choosing eps
+
+`eps` has no default, because it sets what counts as dense in your units. Ester et al. (section 4.2)
+sort the distance of every point to its k-th neighbour, largest first, and take `eps` at the first
+valley of that curve. `k_distances(x, k)` gives those distances. With `min_samples = k + 1`, a point
+is a core point exactly when its k-distance is at most `eps`. The paper uses `k = 4`.
+
+```python
+curve = np.sort(k_distances(moons, 4))[::-1]
+print(np.round(curve[[0, 10, 60, 300, 599]], 3).tolist())
+```
+
+```text
+[0.131, 0.108, 0.076, 0.048, 0.018]
+```
+
+## Groups of different density: HDBSCAN
+
+One `eps` cannot suit a tight group and a spread-out one. A radius small enough to split two tight
+groups leaves the spread-out one as noise. A radius large enough to hold it joins the tight groups.
+`hdbscan(x, min_cluster_size)` removes the choice. It follows Campello, Moulavi and Sander (2013)
+and Campello, Moulavi, Zimek and Sander (2015), in the notation of McInnes and Healy (2017, section
+2.2):
+
+1. The core distance of a point is its distance to its `min_samples`-th nearest point, the point
+   itself being the first.
+2. The mutual reachability distance of two points is the largest of their two core distances and
+   their distance.
+3. The single linkage hierarchy of that distance is read from a minimum spanning tree.
+4. The hierarchy is condensed. A branch with fewer than `min_cluster_size` points is dropped, and
+   its points fall out of the parent at density `lambda = 1 / distance`.
+5. The stability of a cluster is the sum, over its points, of the density they leave at minus the
+   density the cluster is born at.
+6. The result is the set of non-overlapping clusters with the largest total stability. A point in no
+   chosen cluster is noise.
+
+The tree is exact. It is built by Prim's algorithm from distances, with no neighbour index, so the
+cost is O(n^2 d) time and O(n d) memory. Edges of equal weight, which mutual reachability makes
+common, join at one level, so the result does not depend on the order of equal edges.
+
+```python
+dense = rng.standard_normal((90, 2)) * 0.2
+more = rng.standard_normal((90, 2)) * 0.2 + np.array([1.5, 0.0])
+wide = rng.standard_normal((90, 2)) * 1.6 + np.array([10.0, 8.0])
+scatter = rng.uniform(-4, 14, (25, 2))
+z = np.vstack([dense, more, wide, scatter])
+
+hd = hdbscan(z, 15)
+print(hd.n_clusters, hd.n_noise, hd.sizes.tolist())
+print(np.round(hd.stabilities, 1).tolist())
+```
+
+```text
+3 13 [102, 90, 90]
+[60.3, 389.5, 408.4]
+```
+
+Three groups are found: two tight ones 1.5 apart and one spread out. Of the 25 scattered points, 13
+are noise and 12 fall inside the spread-out group, which has 102 points. `hd.stabilities` is the
+stability of each chosen cluster. `hd.tree` is the condensed tree, and `hd.mst` is the minimum
+spanning tree with one row per edge.
+
+```python
+for eps in (0.3, 0.5, 1.0, 1.5):
+    fit = dbscan(z, eps, min_samples=15)
+    print(eps, fit.n_clusters, fit.n_noise, fit.sizes.tolist())
+```
+
+```text
+0.3 2 117 [89, 89]
+0.5 2 115 [90, 90]
+1.0 2 54 [180, 61]
+1.5 2 24 [180, 91]
+```
+
+With the same `min_samples`, no radius finds all three. At 0.3 and 0.5 DBSCAN finds the two tight
+groups and loses the spread-out one as noise. At 1.0 and 1.5 it joins the two tight groups into one
+cluster.
+
+### One group, or none
+
+The root of the tree is the whole data set. It is not a candidate unless
+`allow_single_cluster=True`. So HDBSCAN answers "which groups stand out from each other", not "is
+there a group here". This default is a choice of statsx. The papers do not state it.
+
+HDBSCAN returns clusters for data that have none, when `min_cluster_size` is small for the number of
+points. On 300 samples of one Gaussian cloud of 200 points, `min_cluster_size = 10` gave a cluster
+on 192, `min_cluster_size = 20` on 2, and `min_cluster_size = 30` on none. A result is not evidence
+of structure. Check that the clusters hold when you resample the rows and change `min_cluster_size`.
+
+```python
+cloud = np.random.default_rng(0).standard_normal((200, 2))
+print(hdbscan(cloud, 20).n_clusters, hdbscan(cloud, 20, allow_single_cluster=True).n_clusters)
+```
+
+```text
+0 1
+```
+
+`min_cluster_size` is the smallest group you accept as a cluster. `min_samples` (default
+`min_cluster_size`) sets how smooth the density estimate is: a larger value turns more points into
+noise.
+
 ## What it assumes
 
 - k-means assumes round clusters of similar spread and size. It minimizes a sum of squares, which is
@@ -221,6 +362,9 @@ data before you read it as more groups.
 - A Gaussian mixture assumes each group is Gaussian. A group that is skewed or has heavy tails is
   split into several components, and BIC supports the split. Its density can look fine while the
   groups are not real.
+- DBSCAN and HDBSCAN assume that closeness in your space means similarity, and that a group is a
+  region where points are denser than around it. A group with a gradual edge has no clear border:
+  the result changes with `eps` or `min_samples`.
 - Distances mean something in your space. Euclidean distance on unscaled columns is dominated by the
   column with the largest range. For text embeddings, divide each row by its norm first.
 - The gap statistic assumes the null model "uniform over the range of the data". Data that are not
@@ -232,6 +376,10 @@ Checked: the points are a finite (n, d) array with at least 2 rows, `k` is from 
 counts and tolerances are in range. A fit reports `converged`, and says False when a run reached
 `max_iter`. A mixture run that ends with a collapsed component is dropped and counted in
 `n_degenerate`.
+
+Not checked: that a noise label means an outlier. It says the point is not in a dense enough
+region at these settings. Change `min_samples` or `min_cluster_size` and the same point can join a
+cluster.
 
 Not checked: that the groups are Gaussian. A mixture that converged says the likelihood stopped
 rising, not that the data came from Gaussians.
@@ -245,18 +393,44 @@ proves that the clusters are real: they say how well separated the partition is.
 - The fit reaches the best partition, found by trying all assignments, on 10 points with 3 clusters.
 - The result is identical with 1 and with 4 threads, bit for bit.
 - The silhouette equals its definition computed by hand on random data.
-- Three planted blobs gave `k = 3` in 40 of 40 runs of `choose_k`. Uniform data gave `k = 1` in 38 of
-  40 runs, and `k = 2` in the others.
+- Three planted blobs gave `k = 3` in 40 of 40 runs of `choose_k`. Uniform data gave `k = 1` in 38
+  of 40 runs, and `k = 2` in the others.
 - The mixture log-likelihood never decreases, for full, diagonal and spherical covariances.
 - The log-likelihood equals the log of the mixture density summed over the points, computed by hand.
 - A mixture with one component equals the sample mean and covariance.
 - On Gaussian data BIC gave the true number of components in 7 or more of 8 runs. On one skewed
   cloud it gave more than 1.
 - The fit is identical with 1 and with 4 threads, bit for bit.
+- DBSCAN equals the sequential algorithm of Ester et al. (1996), written out in the test, label for
+  label, on random data, on an integer grid where points sit exactly at `eps`, on points far from
+  the origin, and in 30 dimensions.
+- The core distances and the tree weight of HDBSCAN equal the definitions, computed on the full
+  distance matrix. The clusters and their stabilities equal a second implementation that reads the
+  hierarchy from the top, by removing the heaviest edges, on 6 random data sets and 3 settings.
+- Two interleaved half-circles are separated by DBSCAN and not by k-means. On data with two tight
+  groups and one spread-out group, HDBSCAN found all three on 3 of 3 seeds and no `eps` found more
+  than two.
+- On 300 samples of one Gaussian cloud of 200 points, HDBSCAN gave a cluster on 192 with
+  `min_cluster_size = 10`, on 2 with 20, and on none with 30.
+- DBSCAN and HDBSCAN are identical with 1 and with 4 threads, bit for bit.
+- 100,000 points in 8 dimensions took about 42 s for HDBSCAN and 27 s for DBSCAN on 4 threads, on a
+  machine in use.
 - 200,000 points in 32 dimensions with `k = 20` took 4.8 s for 300 iterations on 4 threads.
 
 ## References
 
+- Ester, M., Kriegel, H.-P., Sander, J., and Xu, X. (1996). A density-based algorithm for
+  discovering clusters in large spatial databases with noise. *Proceedings of the 2nd International
+  Conference on Knowledge Discovery and Data Mining (KDD-96)*, pp. 226-231.
+- Campello, R. J. G. B., Moulavi, D., and Sander, J. (2013). Density-based clustering based on
+  hierarchical density estimates. *Advances in Knowledge Discovery and Data Mining (PAKDD 2013)*,
+  LNCS 7819, pp. 160-172. <https://doi.org/10.1007/978-3-642-37456-2_14>
+- Campello, R. J. G. B., Moulavi, D., Zimek, A., and Sander, J. (2015). Hierarchical density
+  estimates for data clustering, visualization, and outlier detection. *ACM Transactions on
+  Knowledge Discovery from Data* 10(1), article 5. <https://doi.org/10.1145/2733381>
+- McInnes, L., and Healy, J. (2017). Accelerated hierarchical density based clustering. *2017 IEEE
+  International Conference on Data Mining Workshops (ICDMW)*, pp. 33-42.
+  <https://doi.org/10.1109/ICDMW.2017.12>
 - Dempster, A. P., Laird, N. M., and Rubin, D. B. (1977). Maximum likelihood from incomplete data
   via the EM algorithm. *Journal of the Royal Statistical Society B* 39(1):1-38.
   <https://doi.org/10.1111/j.2517-6161.1977.tb01600.x>
@@ -275,6 +449,6 @@ proves that the clusters are real: they say how well separated the partition is.
 - Rousseeuw, P. J. (1987). Silhouettes: a graphical aid to the interpretation and validation of
   cluster analysis. *Journal of Computational and Applied Mathematics* 20:53-65.
   <https://doi.org/10.1016/0377-0427(87)90125-7>
-- Tibshirani, R., Walther, G., and Hastie, T. (2001). Estimating the number of clusters in a data set
-  via the gap statistic. *Journal of the Royal Statistical Society B* 63(2):411-423.
+- Tibshirani, R., Walther, G., and Hastie, T. (2001). Estimating the number of clusters in a data
+  set via the gap statistic. *Journal of the Royal Statistical Society B* 63(2):411-423.
   <https://doi.org/10.1111/1467-9868.00293>

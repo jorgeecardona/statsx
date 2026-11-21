@@ -1746,3 +1746,43 @@ decisions:
     least 5 of 6. On one lognormal cloud it gave k > 1, and the docs say so. EM stops at a local
     optimum, so a poor start can give a poor fit; the docs say more runs make it less likely and do
     not rule it out. A converged log-likelihood is no evidence that the clusters are Gaussian.'
+- id: D-65
+  text: 'dbscan(x, eps) is DBSCAN as Ester, Kriegel, Sander & Xu (1996) define it: the neighbourhood holds
+    the point, a core point has at least min_samples points within eps, clusters are density-connected
+    core points plus their border points, and a border point that two clusters reach goes to the one
+    discovered first, here the one with the lowest-index core point. hdbscan(x, min_cluster_size) is
+    HDBSCAN* as Campello, Moulavi & Sander (2013) and Campello, Moulavi, Zimek & Sander (2015) define
+    it, in the notation of McInnes & Healy (2017, section 2.2): core distance is the distance to the
+    min_samples-th nearest point (the point is the first), mutual reachability is the largest of the two
+    core distances and the distance, the hierarchy is read from the minimum spanning tree, condensed
+    with min_cluster_size in lambda = 1 / distance, and the clusters of largest total stability are kept
+    (stability = sum over points of lambda_max - lambda_min). Both are written in Rust from the papers,
+    with exact distances and no neighbour index: blocked matrix products for DBSCAN (squared distances
+    within a small relative band of eps are recomputed by differences) and Prim''s algorithm on the fly
+    for the tree, O(n^2 d) time and O(n d) memory. Merges of equal weight are taken at one level, so
+    the result does not depend on the order of equal edges. Distances below 1e-100 count as 1e-100 so
+    that lambda stays finite for coinciding points. The root of the condensed tree is not a candidate
+    unless allow_single_cluster is True; that default is a statsx choice, the papers do not state it.
+    No library besides NumPy at run time, and no code taken from SciPy or scikit-learn.'
+  needs:
+  - CL-3
+  alternatives:
+  - 'A neighbour-graph approximation of the tree, as fastumap does: not used; it can split a cluster whose
+    points are all farther apart than their n_neighbors-th neighbour, and it needs a neighbour index.
+    The exact tree costs O(n^2 d); a dual-tree Boruvka algorithm (McInnes & Healy 2017) is sub-quadratic
+    and can come as its own need.'
+  - 'Default eps for DBSCAN from the median k-distance: not used; the paper reads eps by eye at the first
+    valley of the sorted k-dist graph, and a median is not that. eps is required, and k_distances gives
+    the curve.'
+  - 'Membership probabilities and GLOSH outlier scores (Campello et al. 2015): not used yet; the paper
+    text was not available to check the definitions, so they wait for it.'
+  - 'Leaf selection instead of the excess of mass, a minimum selection distance, prediction for new
+    points: not used yet; each can come as its own need.'
+  consequences: 'DBSCAN equals the sequential algorithm of the paper, written out in the test, label for
+    label. HDBSCAN equals a second implementation that reads the hierarchy from the top, on 6 data sets
+    and 3 settings, in clusters and stabilities. On two tight groups and one spread-out group HDBSCAN
+    found all three on 3 of 3 seeds and no eps found more than two. HDBSCAN is not evidence of
+    structure: on 300 samples of one Gaussian cloud of 200 points it gave a cluster on 192 with
+    min_cluster_size 10, on 2 with 20 and on none with 30; the docs say so. Equal-weight merges are
+    common in mutual reachability, and a binary tie order gave a different stability in a first draft,
+    which is why they are merged at one level.'

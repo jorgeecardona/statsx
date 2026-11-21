@@ -38,3 +38,23 @@ needs:
       - "test:tests/test_gaussian_mixture.py::test_bic_finds_three_components_in_gaussian_data"
       - "test:tests/test_gaussian_mixture.py::test_bic_adds_components_to_a_skewed_cluster"
     must: false
+
+  - id: CL-3
+    text: >
+      When the caller has unlabelled points whose groups have any shape or different densities,
+      and some points belong to no group, they can cluster them by DBSCAN or HDBSCAN with no
+      number of clusters, with algorithms written from the papers, exact distances, no library
+      besides NumPy, and a fit that does not change with the thread count.
+    sources:
+      - {kind: primary, date: 2026-11-21, who: maintainer, quote: "kmeans is obviously stats so it should be in statsx and then emeans aswell and then by extension hdbscan and so on no?"}
+      - {kind: primary, date: 2026-11-21, who: maintainer, quote: "so, remember we are reimplementing this in rust from scratch!!! dont reuse scipy for anything. go to the papers preferable. and cite the papers in the documentation!!"}
+    proofs:
+      - "test:tests/test_density_clustering.py::test_dbscan_equals_the_algorithm_of_the_paper"
+      - "test:tests/test_density_clustering.py::test_dbscan_counts_a_neighbour_exactly_at_eps_on_a_grid"
+      - "test:tests/test_density_clustering.py::test_dbscan_follows_the_shape_of_two_moons_where_kmeans_cannot"
+      - "test:tests/test_density_clustering.py::test_core_distances_and_the_tree_weight_equal_the_definitions"
+      - "test:tests/test_density_clustering.py::test_hdbscan_equals_the_hierarchy_read_from_the_definitions"
+      - "test:tests/test_density_clustering.py::test_hdbscan_finds_groups_of_different_density_that_no_single_eps_finds"
+      - "test:tests/test_density_clustering.py::test_density_results_do_not_depend_on_the_number_of_threads"
+      - "test:tests/test_density_clustering.py::test_a_small_min_cluster_size_finds_clusters_in_one_gaussian_cloud"
+    must: false

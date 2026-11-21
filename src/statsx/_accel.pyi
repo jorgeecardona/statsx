@@ -60,6 +60,29 @@ def kmeans_fit(
 def kmeans_assign(
     data: npt.NDArray[np.float64], centroids: npt.NDArray[np.float64], threads: int
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]: ...
+def dbscan_fit(
+    data: npt.NDArray[np.float64], eps: float, min_samples: int, threads: int
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.bool_]]: ...
+def kth_distances(
+    data: npt.NDArray[np.float64], k: int, threads: int
+) -> npt.NDArray[np.float64]: ...
+def hdbscan_fit(
+    data: npt.NDArray[np.float64],
+    min_samples: int,
+    min_cluster_size: int,
+    allow_single_cluster: bool,
+    threads: int,
+) -> tuple[
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.int64],
+]: ...
 def gmm_fit(
     data: npt.NDArray[np.float64],
     k: int,

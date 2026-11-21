@@ -1,4 +1,4 @@
-"""Clustering: k-means, Gaussian mixtures by EM, the silhouette, and ways to choose the number.
+"""Clustering: k-means, Gaussian mixtures, DBSCAN and HDBSCAN, and ways to choose the number.
 
 ``kmeans`` runs Lloyd's iteration from k-means++ seeds, several times, and keeps the fit with the
 lowest within-cluster sum of squares. The kernel is Rust and uses no library besides NumPy at the
@@ -16,6 +16,13 @@ assumes the components are Gaussian. ``choose_components`` picks the number of c
 When a cluster is skewed or has heavy tails, BIC adds components to describe it: a larger number
 than the clusters you expect is a sign the Gaussian assumption fails, not a finding.
 
+``dbscan`` and ``hdbscan`` find groups of any shape from the density of the points, label the
+points that belong to no group as noise (-1), and need no number of clusters. ``dbscan`` cuts the
+density at one distance ``eps``. ``hdbscan`` keeps the groups that persist over all distances, so
+groups of different density are found together. Distances are exact, with no neighbour index; the
+cost is O(n^2 d) time. Both assume that distance in your space measures similarity. A result of
+all noise is the library saying it sees no group at those settings.
+
 References:
     Lloyd, S. P. (1982). Least squares quantization in PCM. *IEEE Transactions on Information
     Theory* 28(2):129-137. https://doi.org/10.1109/TIT.1982.1056489.
@@ -26,6 +33,22 @@ References:
     Rousseeuw, P. J. (1987). Silhouettes: a graphical aid to the interpretation and validation of
     cluster analysis. *Journal of Computational and Applied Mathematics* 20:53-65.
     https://doi.org/10.1016/0377-0427(87)90125-7.
+
+    Ester, M., Kriegel, H.-P., Sander, J., & Xu, X. (1996). A density-based algorithm for
+    discovering clusters in large spatial databases with noise. *Proceedings of the 2nd
+    International Conference on Knowledge Discovery and Data Mining (KDD-96)*, pp. 226-231.
+
+    Campello, R. J. G. B., Moulavi, D., & Sander, J. (2013). Density-based clustering based on
+    hierarchical density estimates. *Advances in Knowledge Discovery and Data Mining (PAKDD
+    2013)*, LNCS 7819, pp. 160-172. https://doi.org/10.1007/978-3-642-37456-2_14.
+
+    Campello, R. J. G. B., Moulavi, D., Zimek, A., & Sander, J. (2015). Hierarchical density
+    estimates for data clustering, visualization, and outlier detection. *ACM Transactions on
+    Knowledge Discovery from Data* 10(1), article 5. https://doi.org/10.1145/2733381.
+
+    McInnes, L., & Healy, J. (2017). Accelerated hierarchical density based clustering. *2017 IEEE
+    International Conference on Data Mining Workshops (ICDMW)*, pp. 33-42.
+    https://doi.org/10.1109/ICDMW.2017.12.
 
     Dempster, A. P., Laird, N. M., & Rubin, D. B. (1977). Maximum likelihood from incomplete data
     via the EM algorithm. *Journal of the Royal Statistical Society B* 39(1):1-38.
@@ -696,3 +719,250 @@ def choose_components(  # noqa: PLR0913 (settings are keyword-only)
     best = fits[pick]
     assert best is not None  # noqa: S101 (np.nanargmin never lands on NaN)
     return ComponentSearch(ks, bic, aic, log_lik, ks[pick], criterion, covariance, best)
+
+
+@dataclass(frozen=True, slots=True)
+class DBSCANFit:
+    """A DBSCAN clustering (Ester, Kriegel, Sander & Xu 1996).
+
+    A point is a core point when at least ``min_samples`` points, itself included, lie within
+    ``eps`` of it. A cluster is a set of core points joined through steps of at most ``eps``,
+    plus the border points within ``eps`` of one of its core points. A border point within
+    ``eps`` of core points of several clusters joins the cluster discovered first, the one with
+    the lowest-index core point. Every other point is noise.
+
+    Args:
+        labels: The cluster of each point, from 0, or -1 for noise.
+        core_mask: True for the core points.
+        eps: The radius used.
+        min_samples: The neighbourhood size used.
+    """
+
+    labels: npt.NDArray[np.int64]
+    core_mask: npt.NDArray[np.bool_]
+    eps: float
+    min_samples: int
+
+    @property
+    def n_clusters(self) -> int:
+        """Return the number of clusters, not counting noise."""
+        return int(self.labels.max()) + 1 if self.labels.size else 0
+
+    @property
+    def n_noise(self) -> int:
+        """Return the number of noise points."""
+        return int(np.count_nonzero(self.labels < 0))
+
+    @property
+    def n_border(self) -> int:
+        """Return the number of border points: in a cluster, but not core points."""
+        return int(np.count_nonzero((self.labels >= 0) & ~self.core_mask))
+
+    @property
+    def sizes(self) -> npt.NDArray[np.int64]:
+        """Return the number of points in each cluster, noise left out."""
+        return np.bincount(self.labels[self.labels >= 0], minlength=self.n_clusters).astype(
+            np.int64
+        )
+
+
+def dbscan(
+    x: npt.ArrayLike, eps: float, *, min_samples: int = 5, threads: int | None = None
+) -> DBSCANFit:
+    """Return the DBSCAN clustering of the rows of ``x`` for radius ``eps``.
+
+    Distances are Euclidean and exact. The cost is O(n^2 d) time and O(n d) memory. The result
+    does not depend on the order of the rows (except that a border point shared by two clusters
+    goes to the one with the lowest-index core point) or on ``threads``.
+
+    ``eps`` has no default: it sets the scale of what counts as dense. ``k_distances`` shows
+    the distance to the k-th neighbour of each point, from which Ester et al. read ``eps`` at the
+    first valley of the sorted curve.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        eps: The radius, positive.
+        min_samples: Points within ``eps``, the point itself included, that make a core point.
+        threads: Worker threads, as in ``kmeans``.
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array, ``eps`` is not positive and finite, or
+            ``min_samples`` is below 1.
+    """
+    a = _points(x)
+    if not (math.isfinite(eps) and eps > 0.0):
+        raise ValueError(f"eps must be positive and finite, got {eps}")
+    if min_samples < 1:
+        raise ValueError(f"min_samples must be at least 1, got {min_samples}")
+    labels, core = _accel.dbscan_fit(a, float(eps), min_samples, _threads(threads))
+    return DBSCANFit(
+        np.asarray(labels, dtype=np.int64),
+        np.asarray(core, dtype=np.bool_),
+        float(eps),
+        min_samples,
+    )
+
+
+def k_distances(x: npt.ArrayLike, k: int, *, threads: int | None = None) -> npt.NDArray[np.float64]:
+    """Return the distance from each row of ``x`` to its ``k``-th nearest other row.
+
+    The sorted curve of these values is the sorted k-dist graph of Ester et al. (1996, section
+    4.2). With ``min_samples = k + 1`` in ``dbscan`` (its count includes the point itself), a
+    point is a core point exactly when its k-distance is at most ``eps``.
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array, or ``k`` is not in [1, n - 1].
+    """
+    a = _points(x)
+    if not 1 <= k < a.shape[0]:
+        raise ValueError(f"k must be between 1 and n - 1 = {a.shape[0] - 1}, got {k}")
+    return np.asarray(_accel.kth_distances(a, k + 1, _threads(threads)), dtype=np.float64)
+
+
+@dataclass(frozen=True, slots=True)
+class CondensedTree:
+    """The condensed cluster tree of HDBSCAN (Campello, Moulavi & Sander 2013).
+
+    Clusters are numbered from 0, the root, and a parent has a lower number than its children.
+    Each row says that ``child`` left cluster ``parent`` at density ``lambda_value`` (the inverse
+    of the distance). A ``child`` below ``n_points`` is a point. A ``child`` of ``n_points + c``
+    is the cluster ``c``, which split off from the parent there.
+
+    Args:
+        n_points: Number of points.
+        parent: The cluster each row leaves.
+        child: A point, or ``n_points`` plus a cluster number.
+        lambda_value: The density at which the child leaves the parent.
+        child_size: Points in the child (1 for a point).
+        stability: The stability of each cluster: the sum over its points of ``lambda_max -
+            lambda_min``, the density the point leaves at minus the density the cluster is born at.
+        label: The label of each cluster if it was chosen, else -1.
+    """
+
+    n_points: int
+    parent: npt.NDArray[np.int64]
+    child: npt.NDArray[np.int64]
+    lambda_value: npt.NDArray[np.float64]
+    child_size: npt.NDArray[np.int64]
+    stability: npt.NDArray[np.float64]
+    label: npt.NDArray[np.int64]
+
+
+@dataclass(frozen=True, slots=True)
+class HDBSCANFit:
+    """An HDBSCAN* clustering (Campello, Moulavi & Sander 2013; Campello et al. 2015).
+
+    Args:
+        labels: The cluster of each point, from 0, or -1 for noise.
+        core_distances: The distance of each point to its ``min_samples``-th nearest point, the
+            point itself being the first.
+        mst: The minimum spanning tree of the mutual reachability distance, shape (n - 1, 3):
+            the two points of each edge and its weight.
+        tree: The condensed tree.
+        min_cluster_size: The smallest group that counts as a cluster.
+        min_samples: The neighbourhood size of the core distance.
+        allow_single_cluster: Whether the whole data set could be returned as one cluster.
+    """
+
+    labels: npt.NDArray[np.int64]
+    core_distances: npt.NDArray[np.float64]
+    mst: npt.NDArray[np.float64]
+    tree: CondensedTree
+    min_cluster_size: int
+    min_samples: int
+    allow_single_cluster: bool
+
+    @property
+    def n_clusters(self) -> int:
+        """Return the number of clusters, not counting noise."""
+        return int(self.labels.max()) + 1 if self.labels.size else 0
+
+    @property
+    def n_noise(self) -> int:
+        """Return the number of noise points."""
+        return int(np.count_nonzero(self.labels < 0))
+
+    @property
+    def sizes(self) -> npt.NDArray[np.int64]:
+        """Return the number of points in each cluster, noise left out."""
+        return np.bincount(self.labels[self.labels >= 0], minlength=self.n_clusters).astype(
+            np.int64
+        )
+
+    @property
+    def stabilities(self) -> npt.NDArray[np.float64]:
+        """Return the stability of each chosen cluster, indexed by label."""
+        chosen = self.tree.label >= 0
+        out = np.zeros(self.n_clusters)
+        out[self.tree.label[chosen]] = self.tree.stability[chosen]
+        return out
+
+
+def hdbscan(
+    x: npt.ArrayLike,
+    min_cluster_size: int = 5,
+    *,
+    min_samples: int | None = None,
+    allow_single_cluster: bool = False,
+    threads: int | None = None,
+) -> HDBSCANFit:
+    """Return the HDBSCAN* clustering of the rows of ``x``.
+
+    The steps follow Campello, Moulavi and Sander (2013), with the notation of McInnes and Healy
+    (2017, section 2.2). The core distance of a point is its distance to its ``min_samples``-th
+    nearest point (the point itself is the first). The mutual reachability distance of two points
+    is the largest of their core distances and their distance. The single linkage hierarchy of
+    that distance is read from a minimum spanning tree, which is exact here. The hierarchy is
+    condensed: a branch with fewer than ``min_cluster_size`` points is dropped, its points
+    "falling out" of the parent at ``lambda = 1 / distance``. The stability of a cluster is the sum,
+    over its points, of the density they leave at minus the density it was born at. The result is
+    the set of non-overlapping clusters with the largest total stability. Points in no chosen
+    cluster are noise (-1).
+
+    The root of the tree is the whole data set. It is not a candidate unless
+    ``allow_single_cluster`` is True. With the default, data with one dense group and nothing
+    else comes back as noise: HDBSCAN then answers "which groups stand out from each other", not
+    "is there a group here". This default is a choice of statsx (D-65), not a rule of the papers.
+
+    The cost is O(n^2 d) time and O(n d) memory. The result does not depend on ``threads``.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        min_cluster_size: The smallest group that counts as a cluster, at least 2.
+        min_samples: Neighbourhood size of the core distance. The default is
+            ``min_cluster_size``. A larger value gives smoother density and more noise.
+        allow_single_cluster: Let the root be chosen, so that the whole set can be one cluster.
+        threads: Worker threads, as in ``kmeans``.
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array, ``min_cluster_size`` is below 2, or
+            ``min_samples`` is not in [1, n].
+    """
+    a = _points(x)
+    n = a.shape[0]
+    if min_cluster_size < 2:  # noqa: PLR2004
+        raise ValueError(f"min_cluster_size must be at least 2, got {min_cluster_size}")
+    samples = min_cluster_size if min_samples is None else min_samples
+    if not 1 <= samples <= n:
+        raise ValueError(f"min_samples must be between 1 and n = {n}, got {samples}")
+    point, core, mst, parent, child, lam, size, stability, label = _accel.hdbscan_fit(
+        a, samples, min_cluster_size, allow_single_cluster, _threads(threads)
+    )
+    tree = CondensedTree(
+        n,
+        np.asarray(parent, dtype=np.int64),
+        np.asarray(child, dtype=np.int64),
+        np.asarray(lam, dtype=np.float64),
+        np.asarray(size, dtype=np.int64),
+        np.asarray(stability, dtype=np.float64),
+        np.asarray(label, dtype=np.int64),
+    )
+    return HDBSCANFit(
+        np.asarray(point, dtype=np.int64),
+        np.asarray(core, dtype=np.float64),
+        np.asarray(mst, dtype=np.float64),
+        tree,
+        min_cluster_size,
+        samples,
+        allow_single_cluster,
+    )
