@@ -1681,3 +1681,36 @@ decisions:
   - P-3
   decided_at: '2026-11-20'
 
+- id: D-63
+  text: 'kmeans(x, k) is Lloyd''s iteration (Lloyd 1982) from k-means++ seeds (Arthur & Vassilvitskii 2007),
+    run n_init times, keeping the lowest inertia. The kernel is Rust in f64, with a matrix product per
+    block of 2048 rows for the assignment. The blocks have a fixed size and their results are combined
+    in block order, so the fit does not depend on the thread count. An empty cluster moves onto the
+    points worst served by their centroid. silhouette(x, labels) is Rousseeuw (1987), exact, in blocks
+    of 512 rows. choose_k(x) is the gap statistic of Tibshirani, Walther & Hastie (2001) with a uniform
+    reference aligned to the principal axes, and the smallest k with gap(k) >= gap(k+1) - se(k+1). No
+    library besides NumPy at run time; the Rust crates rayon and matrixmultiply are compiled in.'
+  needs:
+  - CL-1
+  alternatives:
+  - 'Greedy k-means++ (several candidates per seed, as scikit-learn does): not used; the paper''s plain
+    D^2 sampling plus n_init restarts reaches the same optimum on the test data, and the plain form is
+    the one with a proof (an O(log k) approximation in expectation).'
+  - 'Mini-batch k-means (Sculley 2010) for large n: not used yet; full Lloyd runs 200,000 x 32 at k=20
+    in about 5 s for 300 iterations on 4 threads. It can come as its own need.'
+  - 'The elbow of the inertia curve to choose k: not used; it has no null model and no rule that says
+    "no clusters". The gap statistic can answer k = 1.'
+  - 'Float32 for speed, as fastumap does: not used; the labels then differ from the nearest float64
+    centroid and need a repair pass. f64 costs about twice the time and removes the repair.'
+  consequences: 'Three planted blobs gave k = 3 in 40 of 40 runs. Uniform data gave k = 1 in 38 of 40,
+    and 2 in the others. The gap statistic assumes the null model is uniform over the range of the
+    data; clusters that touch, or that differ much in spread, may not be found. k-means returns k
+    clusters whether or not they exist, so the docs and the module docstring say that a result is no
+    evidence of structure, and point to silhouette and the gap. Gaussian mixtures by EM, DBSCAN,
+    HDBSCAN and UMAP follow as separate needs.'
+  principles:
+  - P-1
+  - P-2
+  - P-3
+  decided_at: '2026-11-21'
+

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.clustering`: `kmeans` (k-means++ seeds, Lloyd iteration, a Rust kernel that gives the same fit
+  for any thread count), `silhouette`, and `choose_k` by the gap statistic. No library besides NumPy.
 - `Forecast.rates` divides each count draw by the exposure of its month. The docs now say that a
   forecast at exposure 1 gives a rate as `mean` but a band of counts that is nearly all 0 (GitLab
   issue #16).

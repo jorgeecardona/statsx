@@ -6,7 +6,7 @@
 # Build wheels:  maturin build --release
 [package]
 name = "statsx"
-version = "0.1.63"
+version = "0.1.64"
 edition = "2021"
 description = "Native accelerator for statsx (built into the package)."
 license = "MIT"
@@ -24,6 +24,10 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py311"] }
 # NumPy arrays across the boundary without copying through Python lists.
 numpy = "0.22"
+# Data-parallel assignment of the k-means kernel. A pure-Rust crate compiled into the wheel.
+rayon = "1"
+# A pure-Rust matrix product (no external BLAS) for the same step.
+matrixmultiply = "0.3"
 
 [profile.release]
 opt-level = 3

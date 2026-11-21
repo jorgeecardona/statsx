@@ -1,0 +1,20 @@
+who: caller with points in a feature space (embeddings, measurements) and no labels
+
+needs:
+
+  - id: CL-1
+    text: >
+      When the caller has unlabelled points, they can split them into k clusters by k-means, choose
+      k with a stated criterion, and see which points sit between clusters, with no library besides
+      NumPy and a fit that does not change with the thread count.
+    sources:
+      - {kind: primary, date: 2026-11-21, who: maintainer, quote: "kmeans is obviously stats so it should be in statsx and then emeans aswell and then by extension hdbscan and so on no?"}
+      - {kind: primary, date: 2026-11-21, who: maintainer, quote: "the umap implementations and kmeans emeans and so on can be implemented completeetly in statx without external needs and without extra installation required"}
+    proofs:
+      - "test:tests/test_clustering.py::test_planted_clusters_are_found_and_the_fit_is_consistent"
+      - "test:tests/test_clustering.py::test_the_fit_reaches_the_best_partition_on_a_small_set"
+      - "test:tests/test_clustering.py::test_the_result_does_not_depend_on_the_number_of_threads"
+      - "test:tests/test_clustering.py::test_the_silhouette_equals_the_definition"
+      - "test:tests/test_clustering.py::test_the_gap_statistic_finds_three_clusters"
+      - "test:tests/test_clustering.py::test_the_gap_statistic_says_one_for_uniform_data_most_of_the_time"
+    must: false

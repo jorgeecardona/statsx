@@ -41,6 +41,12 @@ you trust a number.
 | An expected effect and a variance | Power, sample size, minimum detectable effect | `statsx.design` | [Plan a run](methods/design.md) |
 | An evaluation set with strata | How many items per stratum | `statsx.allocation` | [Plan a run](methods/design.md) |
 
+## Group points with no labels
+
+| You have | You want | Use | Read |
+|---|---|---|---|
+| Points in a feature space, no labels | k-means clusters, a check of them, and how many there are | `statsx.clustering` | [Cluster points](methods/clustering.md) |
+
 ## Compare models and systems
 
 | You have | You want | Use | Read |
