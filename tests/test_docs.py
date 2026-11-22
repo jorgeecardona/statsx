@@ -27,7 +27,7 @@ def test_the_blocks_of_one_page_share_one_namespace() -> None:
     assert (first, second) == ("2\n", "3\n")
 
 
-_NOT_A_METHOD = {"__init__", "_ranks", "errors", "result"}
+_NOT_A_METHOD = {"__init__", "_arrays", "_ranks", "errors", "result"}
 _SRC = Path(__file__).resolve().parent.parent / "src" / "statsx"
 
 

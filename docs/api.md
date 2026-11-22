@@ -176,6 +176,12 @@ Every public function and class, with its docstring.
     options:
       heading_level: 3
 
+## statsx.embedding
+
+::: statsx.embedding
+    options:
+      heading_level: 3
+
 ## statsx.drift
 
 ::: statsx.drift

@@ -58,3 +58,24 @@ needs:
       - "test:tests/test_density_clustering.py::test_density_results_do_not_depend_on_the_number_of_threads"
       - "test:tests/test_density_clustering.py::test_a_small_min_cluster_size_finds_clusters_in_one_gaussian_cloud"
     must: false
+
+  - id: CL-4
+    text: >
+      When the caller has many measurements per point, they can map the points to 2 or 3
+      dimensions with UMAP, check how many neighbours the map keeps, and see the objective that the
+      layout lowers, with an algorithm written in Rust from the paper, exact neighbours, no
+      library besides NumPy, and a map that does not change with the thread count.
+    sources:
+      - {kind: primary, date: 2026-11-21, who: maintainer, quote: "no, but the umap implementations and kmeans emeans and so on can be implemented completeetly in statx without external needs and without extra installation required"}
+      - {kind: primary, date: 2026-11-21, who: maintainer, quote: "so, remember we are reimplementing this in rust from scratch!!! dont reuse scipy for anything. go to the papers preferable. and cite the papers in the documentation!!"}
+    proofs:
+      - "test:tests/test_umap.py::test_the_curve_fit_is_a_least_squares_minimum_and_matches_the_known_constants"
+      - "test:tests/test_umap.py::test_the_neighbours_are_the_exact_nearest_points"
+      - "test:tests/test_umap.py::test_rho_sigma_and_the_graph_follow_section_3_1"
+      - "test:tests/test_umap.py::test_the_spectral_vectors_equal_a_dense_eigendecomposition"
+      - "test:tests/test_umap.py::test_the_cross_entropy_equals_definition_10"
+      - "test:tests/test_umap.py::test_the_layout_reaches_the_cross_entropy_of_the_sequential_algorithm"
+      - "test:tests/test_umap.py::test_the_layout_lowers_the_cross_entropy_and_keeps_the_neighbours_of_a_swiss_roll"
+      - "test:tests/test_umap.py::test_the_map_does_not_depend_on_the_number_of_threads"
+      - "test:tests/test_umap.py::test_pure_noise_gets_clusters_on_the_map_that_the_data_does_not_have"
+    must: false

@@ -47,6 +47,7 @@ you trust a number.
 |---|---|---|---|
 | Points in a feature space, no labels | k-means clusters, a check of them, and how many there are | `statsx.clustering` | [Cluster points](methods/clustering.md) |
 | Points whose groups are stretched or overlap | A Gaussian mixture, a probability per point, and the number of components by BIC | `statsx.clustering` | [Cluster points](methods/clustering.md) |
+| Many measurements per point, and you want a map to look at | A 2 or 3 dimensional map that keeps each point's neighbours, and a check of how many it kept | `statsx.embedding` | [Map points](methods/embedding.md) |
 
 ## Compare models and systems
 

@@ -113,6 +113,52 @@ def gmm_score(
     cov: int,
     threads: int,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
+def umap_knn(
+    data: npt.NDArray[np.float64], k: int, threads: int
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]: ...
+def umap_fuzzy(
+    idx: npt.NDArray[np.int64], dist: npt.NDArray[np.float64]
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.float64],
+]: ...
+def umap_components(
+    indptr: npt.NDArray[np.int64], indices: npt.NDArray[np.int64]
+) -> npt.NDArray[np.int64]: ...
+def umap_spectral(
+    indptr: npt.NDArray[np.int64],
+    indices: npt.NDArray[np.int64],
+    data: npt.NDArray[np.float64],
+    dim: int,
+    max_iter: int,
+    tol: float,
+    seed: int,
+    threads: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], bool, int] | None: ...
+def umap_layout(
+    y0: npt.NDArray[np.float64],
+    indptr: npt.NDArray[np.int64],
+    indices: npt.NDArray[np.int64],
+    data: npt.NDArray[np.float64],
+    a: float,
+    b: float,
+    n_epochs: int,
+    n_neg: int,
+    seed: int,
+    threads: int,
+) -> npt.NDArray[np.float64]: ...
+def umap_cross_entropy(
+    y: npt.NDArray[np.float64],
+    indptr: npt.NDArray[np.int64],
+    indices: npt.NDArray[np.int64],
+    data: npt.NDArray[np.float64],
+    a: float,
+    b: float,
+    threads: int,
+) -> float: ...
 def beta_cdf(x: npt.NDArray[np.float64], a: float, b: float) -> list[float]: ...
 def beta_ppf(p: npt.NDArray[np.float64], a: float, b: float) -> list[float]: ...
 def sample_beta(a: float, b: float, n: int, seed: int) -> npt.NDArray[np.float64]: ...

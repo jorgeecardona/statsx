@@ -25,6 +25,7 @@ mod rng;
 mod sample;
 mod special;
 mod structural;
+mod umap;
 
 #[pyfunction]
 fn version() -> &'static str {
@@ -58,6 +59,12 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(density::kth_distances, m)?)?;
     m.add_function(wrap_pyfunction!(gmm::gmm_fit, m)?)?;
     m.add_function(wrap_pyfunction!(gmm::gmm_score, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_knn, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_fuzzy, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_components, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_spectral, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_layout, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_cross_entropy, m)?)?;
     m.add_function(wrap_pyfunction!(kmeans::kmeans_fit, m)?)?;
     m.add_function(wrap_pyfunction!(kmeans::kmeans_assign, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_beta, m)?)?;

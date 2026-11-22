@@ -35,8 +35,8 @@ use rayon::prelude::*;
 use crate::kmeans::pool;
 
 /// Rows per block and columns per tile of the distance matrix. Fixed.
-const ROWS: usize = 128;
-const COLS: usize = 2048;
+pub(crate) const ROWS: usize = 128;
+pub(crate) const COLS: usize = 2048;
 /// Vertices per chunk in Prim's algorithm. Fixed.
 const CHUNK: usize = 2048;
 /// Distances below this count as this, so that `lambda = 1 / distance` stays finite when two
@@ -45,17 +45,17 @@ const MIN_DISTANCE: f64 = 1e-100;
 /// A squared distance this close to the threshold, relative to the norms, is recomputed exactly.
 const BAND: f64 = 1e-9;
 
-struct Points {
-    x: Vec<f64>,
-    sq: Vec<f64>,
-    n: usize,
-    dim: usize,
+pub(crate) struct Points {
+    pub(crate) x: Vec<f64>,
+    pub(crate) sq: Vec<f64>,
+    pub(crate) n: usize,
+    pub(crate) dim: usize,
 }
 
 impl Points {
     /// Centre the data first: it does not change a distance, and it makes the expansion
     /// `|a|^2 + |b|^2 - 2 a.b` lose fewer digits when the points are far from the origin.
-    fn new(data: &[f64], n: usize, dim: usize) -> Points {
+    pub(crate) fn new(data: &[f64], n: usize, dim: usize) -> Points {
         let mut mean = vec![0.0; dim];
         for i in 0..n {
             for d in 0..dim {
@@ -75,11 +75,11 @@ impl Points {
         Points { x, sq, n, dim }
     }
 
-    fn row(&self, i: usize) -> &[f64] {
+    pub(crate) fn row(&self, i: usize) -> &[f64] {
         &self.x[i * self.dim..(i + 1) * self.dim]
     }
 
-    fn exact_d2(&self, i: usize, j: usize) -> f64 {
+    pub(crate) fn exact_d2(&self, i: usize, j: usize) -> f64 {
         let (a, b) = (self.row(i), self.row(j));
         let mut s = 0.0;
         for d in 0..self.dim {
@@ -90,7 +90,7 @@ impl Points {
     }
 
     /// Inner products of `rows` rows from `r0` with `cols` rows from `c0`, into `out`.
-    fn gram(&self, r0: usize, rows: usize, c0: usize, cols: usize, out: &mut [f64]) {
+    pub(crate) fn gram(&self, r0: usize, rows: usize, c0: usize, cols: usize, out: &mut [f64]) {
         // SAFETY: both operands are contiguous row-major blocks of `x` inside its bounds, and
         // `out` holds rows * cols values.
         unsafe {
@@ -114,7 +114,7 @@ impl Points {
     }
 
     /// Squared distance of `i` and `j` given their inner product `g`.
-    fn d2(&self, i: usize, j: usize, g: f64) -> f64 {
+    pub(crate) fn d2(&self, i: usize, j: usize, g: f64) -> f64 {
         (self.sq[i] + self.sq[j] - 2.0 * g).max(0.0)
     }
 
@@ -129,7 +129,7 @@ impl Points {
     }
 }
 
-fn blocks(n: usize) -> usize {
+pub(crate) fn blocks(n: usize) -> usize {
     n.div_ceil(ROWS)
 }
 

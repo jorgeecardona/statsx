@@ -74,7 +74,6 @@ References:
 from __future__ import annotations
 
 import math
-import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -82,33 +81,10 @@ import numpy as np
 import numpy.typing as npt
 
 from statsx import _accel
-
-_MAX_THREADS = 4
-"""Threads used when ``threads`` is not given: a laptop shared with other work should not be
-saturated by one call. The result does not depend on this number."""
+from statsx._arrays import MATRIX, as_points, resolve_threads
 
 _BLOCK = 512
 """Rows per block of the silhouette distance matrix."""
-
-_MATRIX = 2
-"""Dimensions of an array of points."""
-
-
-def _threads(threads: int | None) -> int:
-    if threads is None:
-        return max(1, min(_MAX_THREADS, os.cpu_count() or 1))
-    if threads < 1:
-        raise ValueError(f"threads must be at least 1, got {threads}")
-    return threads
-
-
-def _points(x: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    a = np.ascontiguousarray(x, dtype=np.float64)
-    if a.ndim != _MATRIX or a.shape[0] < _MATRIX or a.shape[1] < 1:
-        raise ValueError("x must have shape (n, d) with at least 2 rows and 1 column")
-    if not np.all(np.isfinite(a)):
-        raise ValueError("x must be finite")
-    return a
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,9 +132,9 @@ class KMeansFit:
     ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]:
         """Return the nearest centroid of each row of ``x`` and the squared distance to it."""
         a = np.ascontiguousarray(x, dtype=np.float64)
-        if a.ndim != _MATRIX or a.shape[1] != self.centroids.shape[1]:
+        if a.ndim != MATRIX or a.shape[1] != self.centroids.shape[1]:
             raise ValueError(f"x must have {self.centroids.shape[1]} columns")
-        labels, dist = _accel.kmeans_assign(a, self.centroids, _threads(threads))
+        labels, dist = _accel.kmeans_assign(a, self.centroids, resolve_threads(threads))
         return np.asarray(labels, dtype=np.int64), np.asarray(dist, dtype=np.float64)
 
 
@@ -195,7 +171,7 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
         ValueError: If ``x`` is not a finite (n, d) array with at least 2 rows, ``k`` is not in
             [1, n], or ``n_init``, ``max_iter`` or ``tol`` are out of range.
     """
-    a = _points(x)
+    a = as_points(x)
     n = a.shape[0]
     if not 1 <= k <= n:
         raise ValueError(f"k must be between 1 and n = {n}, got {k}")
@@ -203,7 +179,7 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
         raise ValueError("n_init and max_iter must be at least 1, and tol at least 0")
     scale = float(np.mean(np.var(a, axis=0)))
     labels, centroids, inertia, n_iter, converged = _accel.kmeans_fit(
-        a, k, max_iter, tol * scale, seed, n_init, _threads(threads)
+        a, k, max_iter, tol * scale, seed, n_init, resolve_threads(threads)
     )
     return KMeansFit(
         np.asarray(centroids, dtype=np.float64),
@@ -260,7 +236,7 @@ def silhouette(x: npt.ArrayLike, labels: npt.ArrayLike) -> Silhouette:
         ValueError: If ``x`` is not a finite (n, d) array, the labels do not match its rows, or
             there are fewer than 2 clusters.
     """
-    a = _points(x)
+    a = as_points(x)
     lab = np.asarray(labels).ravel()
     if lab.size != a.shape[0] or not np.issubdtype(lab.dtype, np.integer) or lab.min() < 0:
         raise ValueError("labels must be one non-negative integer per row of x")
@@ -374,7 +350,7 @@ def choose_k(  # noqa: PLR0913 (settings are keyword-only)
         ValueError: If ``x`` is not a finite (n, d) array, ``k_max`` is not in [1, n],
             ``n_reference`` is below 2, or ``reference`` is unknown.
     """
-    a = _points(x)
+    a = as_points(x)
     if not 1 <= k_max <= a.shape[0]:
         raise ValueError(f"k_max must be between 1 and n = {a.shape[0]}, got {k_max}")
     if n_reference < 2:  # noqa: PLR2004
@@ -494,7 +470,7 @@ class GaussianMixtureFit:
         self, x: npt.ArrayLike, threads: int | None
     ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         a = np.ascontiguousarray(x, dtype=np.float64)
-        if a.ndim != _MATRIX or a.shape[1] != self.means.shape[1]:
+        if a.ndim != MATRIX or a.shape[1] != self.means.shape[1]:
             raise ValueError(f"x must have {self.means.shape[1]} columns")
         resp, log_density = _accel.gmm_score(
             a,
@@ -502,7 +478,7 @@ class GaussianMixtureFit:
             self.means,
             np.ascontiguousarray(self.covariances.ravel()),
             _COVARIANCE_CODE[self.covariance_type],
-            _threads(threads),
+            resolve_threads(threads),
         )
         return np.asarray(resp, dtype=np.float64), np.asarray(log_density, dtype=np.float64)
 
@@ -593,7 +569,7 @@ def gaussian_mixture(  # noqa: PLR0913 (settings are keyword-only)
         ValueError: If ``x`` is not a finite (n, d) array with at least 2 rows, ``k`` is not in
             [1, n], an option is out of range, or every run was dropped as degenerate.
     """
-    a = _points(x)
+    a = as_points(x)
     n, d = a.shape
     code = _check_covariance(covariance)
     if not 1 <= k <= n:
@@ -603,7 +579,7 @@ def gaussian_mixture(  # noqa: PLR0913 (settings are keyword-only)
     scale = float(np.mean(np.var(a, axis=0)))
     min_count = float(d + 1) if covariance == "full" else 2.0
     weights, means, covs, resp, log_lik, n_iter, converged, trace, dropped = _accel.gmm_fit(
-        a, k, code, max_iter, tol, reg * scale, min_count, seed, n_init, _threads(threads)
+        a, k, code, max_iter, tol, reg * scale, min_count, seed, n_init, resolve_threads(threads)
     )
     shape = {"full": (k, d, d), "diag": (k, d), "spherical": (k,)}[covariance]
     return GaussianMixtureFit(
@@ -684,7 +660,7 @@ def choose_components(  # noqa: PLR0913 (settings are keyword-only)
         ValueError: If ``x`` is not a finite (n, d) array, ``k_max`` is not in [1, n], an option
             is out of range, or no k gave a fit.
     """
-    a = _points(x)
+    a = as_points(x)
     _check_covariance(covariance)
     if not 1 <= k_max <= a.shape[0]:
         raise ValueError(f"k_max must be between 1 and n = {a.shape[0]}, got {k_max}")
@@ -789,12 +765,12 @@ def dbscan(
         ValueError: If ``x`` is not a finite (n, d) array, ``eps`` is not positive and finite, or
             ``min_samples`` is below 1.
     """
-    a = _points(x)
+    a = as_points(x)
     if not (math.isfinite(eps) and eps > 0.0):
         raise ValueError(f"eps must be positive and finite, got {eps}")
     if min_samples < 1:
         raise ValueError(f"min_samples must be at least 1, got {min_samples}")
-    labels, core = _accel.dbscan_fit(a, float(eps), min_samples, _threads(threads))
+    labels, core = _accel.dbscan_fit(a, float(eps), min_samples, resolve_threads(threads))
     return DBSCANFit(
         np.asarray(labels, dtype=np.int64),
         np.asarray(core, dtype=np.bool_),
@@ -813,10 +789,10 @@ def k_distances(x: npt.ArrayLike, k: int, *, threads: int | None = None) -> npt.
     Raises:
         ValueError: If ``x`` is not a finite (n, d) array, or ``k`` is not in [1, n - 1].
     """
-    a = _points(x)
+    a = as_points(x)
     if not 1 <= k < a.shape[0]:
         raise ValueError(f"k must be between 1 and n - 1 = {a.shape[0] - 1}, got {k}")
-    return np.asarray(_accel.kth_distances(a, k + 1, _threads(threads)), dtype=np.float64)
+    return np.asarray(_accel.kth_distances(a, k + 1, resolve_threads(threads)), dtype=np.float64)
 
 
 @dataclass(frozen=True, slots=True)
@@ -938,7 +914,7 @@ def hdbscan(
         ValueError: If ``x`` is not a finite (n, d) array, ``min_cluster_size`` is below 2, or
             ``min_samples`` is not in [1, n].
     """
-    a = _points(x)
+    a = as_points(x)
     n = a.shape[0]
     if min_cluster_size < 2:  # noqa: PLR2004
         raise ValueError(f"min_cluster_size must be at least 2, got {min_cluster_size}")
@@ -946,7 +922,7 @@ def hdbscan(
     if not 1 <= samples <= n:
         raise ValueError(f"min_samples must be between 1 and n = {n}, got {samples}")
     point, core, mst, parent, child, lam, size, stability, label = _accel.hdbscan_fit(
-        a, samples, min_cluster_size, allow_single_cluster, _threads(threads)
+        a, samples, min_cluster_size, allow_single_cluster, resolve_threads(threads)
     )
     tree = CondensedTree(
         n,

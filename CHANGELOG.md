@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.embedding.umap`: UMAP from the paper, in Rust. It builds the weighted neighbour graph,
+  starts from the eigenvectors of its Laplacian, and lays it out by sampled gradient descent. The
+  neighbours are exact. The map is the same for any thread count. `neighbor_preservation` says how
+  many neighbours a map keeps, and `UMAPFit.cross_entropy` gives the objective. No library besides
+  NumPy.
 - `statsx.clustering.dbscan`, `hdbscan` and `k_distances`: density clustering from the papers, in
   Rust, with exact distances. Groups have any shape, points in no group are noise (-1), and no
   number of clusters is given. HDBSCAN also finds groups of different density. No library besides

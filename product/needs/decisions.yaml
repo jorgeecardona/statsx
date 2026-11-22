@@ -1786,3 +1786,45 @@ decisions:
     min_cluster_size 10, on 2 with 20 and on none with 30; the docs say so. Equal-weight merges are
     common in mutual reachability, and a binary tie order gave a different stability in a first draft,
     which is why they are merged at one level.'
+
+- id: D-66
+  text: 'umap(x) is UMAP as McInnes, Healy & Melville (2018) define it, written in Rust from the paper with
+    no code from SciPy, scikit-learn or umap-learn. The graph is section 3.1: rho is the smallest
+    positive neighbour distance, sigma solves the sum of exp(-max(0, d - rho) / sigma) = log2(k) by
+    bisection, and the two directions of an edge merge as a + b - a b. The start is Algorithm 4: the
+    eigenvectors of the symmetric normalised Laplacian after the trivial one, found by LOBPCG (Knyazev
+    2001) with the basis made orthonormal at each iteration. The layout is Algorithm 5 with the forces of
+    section 3.2: an edge is sampled with probability equal to its weight, the point moves along the
+    gradient of log Phi, then along the gradient of log(1 - Phi) for negative_sample_rate random points,
+    with a learning rate 1 - e / n_epochs. a and b are fitted to the curve of Definition 11 by
+    Levenberg-Marquardt on log a and log b, on 300 evenly spaced distances in (0, 3]. Neighbours are exact
+    (blocked matrix products), not nearest-neighbour descent. Choices that the paper does not state,
+    which are statsx choices: a step is limited to 4 per coordinate (needed because the repulsive force
+    grows as 1 / (eps + r^2)); every point is updated from the positions at the start of the epoch and
+    from its own random stream seeded by (seed, epoch, point), updating only the point at the head of an
+    edge, so that threads never write the same value and the map does not depend on their number;
+    the default n_epochs is 500 up to 10,000 points and 200 above; negative_sample_rate is 5, the value
+    of LargeVis (Tang et al. 2016); the start is scaled to a box of half-width 10 with noise of standard
+    deviation 1e-4; a graph in pieces gets one start per piece, laid on a grid, and a piece with fewer
+    than dimensions + 2 points starts at random. The paper does not say how a and b are fitted, how the
+    eigenvectors are found, or what to do with a graph in pieces (it only warns, section 4.3).'
+  needs:
+  - CL-4
+  alternatives:
+  - 'Mapping new points (transform): not used; the paper lists it as future work (section 7), so there is
+    no published algorithm to write from. It can come as its own need when there is one.'
+  - 'Approximate neighbours by nearest-neighbour descent (Dong, Charikar & Li 2011), as the paper prefers:
+    not used; exact neighbours cost O(n^2 d) but need no index and give the same map for any thread count.
+    It can come as its own need for large n.'
+  - 'Sequential stochastic gradient descent, as the reference implementation runs it with unsynchronised
+    threads: not used; it depends on thread timing. The layout here reads the other end of an edge at its
+    position at the start of the epoch. On a small graph it reaches the same cross entropy as the
+    sequential algorithm of the paper within 15%.'
+  - 'A UMAP step before clustering: not offered; on uniform noise in 10 dimensions HDBSCAN found no group
+    in the data and 2 to 5 groups in the map, so the docs say to cluster the data and use the map to look.'
+  consequences: 'The curve constants for min_dist 0.1 are a = 1.577 and b = 0.895, which match the values
+    that uwot lists (1.58, 0.90). The spectral start equals a dense eigendecomposition to 1e-9. The forces
+    equal the gradients of log Phi and log(1 - Phi) by central differences. On a swiss roll of 1000 points
+    the map keeps 77% of the 15 nearest neighbours and the two main axes 39%. The map is identical with 1
+    and with 3 threads. UMAP keeps neighbours and not distances or densities, and it finds groups in
+    noise; the docs say so (paper section 6).'
