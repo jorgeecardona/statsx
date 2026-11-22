@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `umap(x, metric="cosine")` maps rows by the angle between them, for embeddings whose length
+  means nothing. `neighbor_preservation` takes the same `metric`.
 - `statsx.embedding.umap`: UMAP from the paper, in Rust. It builds the weighted neighbour graph,
   starts from the eigenvectors of its Laplacian, and lays it out by sampled gradient descent. The
   neighbours are exact. The map is the same for any thread count. `neighbor_preservation` says how

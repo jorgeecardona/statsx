@@ -1828,3 +1828,24 @@ decisions:
     the map keeps 77% of the 15 nearest neighbours and the two main axes 39%. The map is identical with 1
     and with 3 threads. UMAP keeps neighbours and not distances or densities, and it finds groups in
     noise; the docs say so (paper section 6).'
+
+- id: D-67
+  text: 'umap(x, metric="cosine") builds the graph of section 3.1 from the distance 1 - cos. The rows are
+    scaled to length 1 (first by the largest absolute value, so that nothing overflows), the exact
+    Euclidean neighbours of the unit rows are taken, and each Euclidean distance e becomes e^2 / 2, which
+    is 1 - cos for unit rows. The nearest points are the same for both distances and the values are what
+    rho and sigma need. A row of zeros has no direction and is refused. Unit rows at distance up to 1e-14
+    are the same direction: that is rounding of the normalised coordinates, and the distance is set to 0
+    so that rho is the smallest distance above zero, as the paper says, and not 1e-32. The map is always
+    Euclidean. The paper builds the graph from neighbour distances only (section 3.1), so any
+    dissimilarity can feed it; 1 - cos is not a metric and the paper states its theory for metric spaces,
+    which the docs say.'
+  needs:
+  - CL-5
+  alternatives:
+  - 'The angular distance arccos(cos), which is a metric: not used; fastumap and umap-learn use 1 - cos,
+    and replacing fastumap needs the same values.'
+  - 'Leave a zero row as zero distance to everything: not used; the angle of a zero vector is undefined,
+    and a computation that runs is not evidence that its assumption holds.'
+  consequences: 'The neighbours and distances equal the exact 1 - cos from the full matrix to 1e-12. Scaling
+    a row changes nothing. Other distances (Manhattan, Hamming) are not offered.'

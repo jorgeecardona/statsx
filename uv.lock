@@ -807,7 +807,7 @@ wheels = [
 
 [[package]]
 name = "statsx"
-version = "0.1.67"
+version = "0.1.68"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },

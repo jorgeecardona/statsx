@@ -10,7 +10,7 @@ import pytest
 
 from statsx import _accel
 from statsx.clustering import hdbscan
-from statsx.embedding import FuzzyGraph, fit_curve, neighbor_preservation, umap
+from statsx.embedding import FuzzyGraph, Metric, fit_curve, neighbor_preservation, umap
 
 F64 = npt.NDArray[np.float64]
 
@@ -310,3 +310,101 @@ def test_bad_points_are_refused() -> None:
         neighbor_preservation(np.zeros((5, 2)), np.zeros((4, 2)), 2)
     with pytest.raises(ValueError, match="k must"):
         neighbor_preservation(np.zeros((5, 2)), np.zeros((5, 2)), 5)
+
+
+def _cosine_distances(x: F64) -> F64:
+    """1 - cos for every pair, from the definition."""
+    norms = np.sqrt((x * x).sum(axis=1))
+    return 1.0 - (x @ x.T) / (norms[:, None] * norms[None, :])
+
+
+def _scaled_points(n: int = 80, dim: int = 10, seed: int = 3) -> tuple[F64, F64]:
+    """Random directions with lengths from 0.1 to 100, and the same points at length 1."""
+    rng = np.random.default_rng(seed)
+    direction = rng.normal(size=(n, dim))
+    lengths = rng.uniform(0.1, 100.0, size=(n, 1))
+    return direction * lengths, direction
+
+
+def test_the_cosine_neighbours_and_distances_equal_the_exact_ones() -> None:
+    x, _ = _scaled_points()
+    fit = umap(x, n_neighbors=10, metric="cosine", n_epochs=1)
+    full = _cosine_distances(x)
+    np.fill_diagonal(full, np.inf)
+    order = np.argsort(full, axis=1)[:, :10]
+    assert fit.metric == "cosine"
+    assert np.array_equal(np.sort(fit.neighbors, axis=1), np.sort(order, axis=1))
+    expected = np.take_along_axis(full, order, axis=1)
+    assert np.allclose(fit.distances, expected, rtol=0.0, atol=1e-12)
+
+
+def test_the_cosine_map_ignores_the_length_of_a_row() -> None:
+    x, direction = _scaled_points()
+    long = umap(x, n_neighbors=10, metric="cosine", n_epochs=1)
+    unit = umap(direction, n_neighbors=10, metric="cosine", n_epochs=1)
+    assert np.array_equal(long.neighbors, unit.neighbors)
+    assert np.allclose(long.distances, unit.distances, rtol=0.0, atol=1e-12)
+    assert np.allclose(long.rho, unit.rho, rtol=0.0, atol=1e-12)
+
+
+def test_a_scaled_copy_of_a_row_is_at_cosine_distance_zero() -> None:
+    rng = np.random.default_rng(5)
+    x = rng.normal(size=(40, 8))
+    x = np.vstack([x, 3.0 * x[0]])
+    fit = umap(x, n_neighbors=8, metric="cosine", n_epochs=1)
+    assert fit.neighbors[0, 0] == 40
+    assert fit.distances[0, 0] == 0.0
+    full = _cosine_distances(x)
+    others = np.sort(full[0, 1:40])
+    # rho is the smallest distance above zero, not the zero of the copy (section 3.1)
+    assert fit.rho[0] == pytest.approx(others[0], abs=1e-12)
+
+
+def test_the_cosine_distance_keeps_groups_by_direction_when_lengths_differ_a_lot() -> None:
+    rng = np.random.default_rng(0)
+    a = rng.normal(size=10)
+    a /= np.sqrt(a @ a)
+    b = rng.normal(size=10)
+    b -= (b @ a) * a
+    b /= np.sqrt(b @ b)
+    angle = 0.4  # radians between the two directions
+    axes = np.stack([a, np.cos(angle) * a + np.sin(angle) * b])
+    group = np.repeat([0, 1], 100)
+    direction = axes[group] + rng.normal(0.0, 0.05, size=(200, 10))
+    x = direction * np.exp(rng.uniform(0.0, np.log(100.0), size=(200, 1)))
+
+    def purity(metric: Metric) -> float:
+        fit = umap(x, n_neighbors=10, metric=metric, n_epochs=1)
+        return float((group[fit.neighbors] == group[:, None]).mean())
+
+    # a point close to the origin is near the other group in length-driven distance
+    assert purity("cosine") > 0.995
+    assert purity("euclidean") < 0.985
+
+
+def test_neighbor_preservation_with_the_cosine_distance_equals_its_definition() -> None:
+    x, _ = _scaled_points(n=60)
+    rng = np.random.default_rng(1)
+    y = rng.normal(size=(60, 2))
+    full_x = _cosine_distances(x)
+    full_y = _pairwise(y)
+    np.fill_diagonal(full_x, np.inf)
+    np.fill_diagonal(full_y, np.inf)
+    k = 7
+    shares = [
+        len(set(np.argsort(full_x[i])[:k]) & set(np.argsort(full_y[i])[:k])) / k for i in range(60)
+    ]
+    assert neighbor_preservation(x, y, k, metric="cosine") == pytest.approx(float(np.mean(shares)))
+
+
+def test_the_cosine_distance_refuses_a_row_of_zeros_and_an_unknown_metric_is_refused() -> None:
+    x, _ = _scaled_points(n=20)
+    x[4] = 0.0
+    with pytest.raises(ValueError, match="row of zeros"):
+        umap(x, n_neighbors=5, metric="cosine")
+    # the Euclidean distance has no such problem
+    assert umap(x, n_neighbors=5, n_epochs=1).n_points == 20
+    with pytest.raises(ValueError, match="metric must be one of"):
+        umap(x, n_neighbors=5, metric="manhattan")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="metric must be one of"):
+        neighbor_preservation(x, x[:, :2], 5, metric="manhattan")  # type: ignore[arg-type]

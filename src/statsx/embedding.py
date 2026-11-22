@@ -21,8 +21,14 @@ manifold structure within the noise of a dataset" (section 6), most of all with 
 ``UMAPFit.cross_entropy`` is the value of the objective that the layout lowers. Cluster the data,
 not the map, when the groups matter.
 
+The distance can be the Euclidean one or the cosine one, ``1 - cos``. The paper builds the graph
+from the distances to the neighbours of each point and nothing else (section 3.1), so any
+dissimilarity can feed it. The cosine distance is not a metric (it breaks the triangle
+inequality), and the paper states its theory for metric spaces, so the cosine map is a use of the
+construction beyond what the paper proves.
+
 Not in the paper, so not here: mapping new points into an existing map (the paper lists it as
-future work, section 7), other distances than the Euclidean one, and supervised maps.
+future work, section 7), and supervised maps.
 
 References:
     McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and
@@ -51,12 +57,21 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
 
 from statsx import _accel
 from statsx._arrays import as_points, resolve_threads
+
+Metric = Literal["euclidean", "cosine"]
+"""The distances ``umap`` accepts for the points."""
+
+_METRICS = ("euclidean", "cosine")
+
+_SAME_DIRECTION = 1e-14
+"""Unit rows closer than this are one direction: it is rounding of the normalised coordinates."""
 
 _CURVE_END = 3.0
 """The curve of the paper is fitted on distances in (0, 3]: ``Psi`` has fallen to ``exp(-3)``."""
@@ -137,7 +152,8 @@ class UMAPFit:
         graph: The weighted graph of the points.
         neighbors: The ``n_neighbors`` nearest other points of each point, shape (n, k), nearest
             first.
-        distances: The distance to each of those, shape (n, k).
+        distances: The distance to each of those in ``metric``, shape (n, k).
+        metric: ``"euclidean"``, or ``"cosine"`` for ``1 - cos`` of the angle between two rows.
         rho: The distance from each point to its nearest neighbour with a distance above zero.
         sigma: The scale of each point, solved so that the weights of its neighbours sum to
             ``log2(n_neighbors)``.
@@ -159,6 +175,7 @@ class UMAPFit:
     graph: FuzzyGraph
     neighbors: npt.NDArray[np.int64]
     distances: npt.NDArray[np.float64]
+    metric: Metric
     rho: npt.NDArray[np.float64]
     sigma: npt.NDArray[np.float64]
     a: float
@@ -322,11 +339,41 @@ def _start(
     return start, n_components, random_points, converged
 
 
+def _unit_rows(a: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Return ``a`` with each row scaled to length 1, and refuse a row of zeros."""
+    scale = np.abs(a).max(axis=1)
+    if np.any(scale == 0.0):
+        raise ValueError("the cosine distance is undefined for a row of zeros")
+    scaled = a / scale[:, None]
+    return np.ascontiguousarray(scaled / np.sqrt(np.einsum("ij,ij->i", scaled, scaled))[:, None])
+
+
+def _check_metric(metric: str) -> None:
+    if metric not in _METRICS:
+        raise ValueError(f"metric must be one of {_METRICS}, got {metric!r}")
+
+
+def _neighbors(
+    a: npt.NDArray[np.float64], k: int, metric: Metric, workers: int
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]:
+    """Return the ``k`` nearest other rows of each row and their distances in ``metric``.
+
+    Two unit rows at Euclidean distance ``e`` have cosine distance ``e^2 / 2``, so the nearest
+    points are the same for both. The distances are not: ``e^2 / 2`` is what the graph needs.
+    Rows that are the same direction up to rounding get distance 0 exactly.
+    """
+    if metric == "euclidean":
+        return _accel.umap_knn(a, k, workers)
+    idx, euclid = _accel.umap_knn(_unit_rows(a), k, workers)
+    return idx, np.where(euclid <= _SAME_DIRECTION, 0.0, euclid * euclid / 2.0)
+
+
 def umap(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     *,
     n_neighbors: int = 15,
     dimensions: int = 2,
+    metric: Metric = "euclidean",
     min_dist: float = 0.1,
     n_epochs: int | None = None,
     negative_sample_rate: int = 5,
@@ -349,6 +396,9 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
             can split the graph into pieces; large values keep the large-scale shape (section
             4.3 of the paper).
         dimensions: The dimension of the map.
+        metric: The distance between rows of ``x``. ``"cosine"`` is ``1 - cos`` of the angle, in
+            [0, 2]: it ignores the length of a row and is the usual choice for embeddings whose
+            direction carries the meaning. The map itself is always Euclidean.
         min_dist: How close two points may sit in the map, in [0, 1]. It changes the look of the
             map, not the graph (section 4.3 of the paper).
         n_epochs: Passes over the edges.
@@ -357,8 +407,10 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         threads: Worker threads. Defaults to the CPU count, at most 4.
 
     Raises:
-        ValueError: If ``n_neighbors`` is not in [2, n - 1], or a setting is out of range.
+        ValueError: If ``n_neighbors`` is not in [2, n - 1], a setting is out of range, or
+            ``metric`` is ``"cosine"`` and a row is all zeros.
     """
+    _check_metric(metric)
     a = as_points(x)
     n = a.shape[0]
     if not _MIN_NEIGHBORS <= n_neighbors <= n - 1:
@@ -373,7 +425,7 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     curve_a, curve_b = fit_curve(min_dist)
     workers = resolve_threads(threads)
 
-    idx, dist = _accel.umap_knn(a, n_neighbors, workers)
+    idx, dist = _neighbors(a, n_neighbors, metric, workers)
     rho, sigma, indptr, indices, weights = _accel.umap_fuzzy(idx, dist)
     graph = FuzzyGraph(indptr, indices, weights)
     start, n_components, n_random, converged = _start(graph, dimensions, seed, workers)
@@ -394,6 +446,7 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         graph=graph,
         neighbors=idx,
         distances=dist,
+        metric=metric,
         rho=rho,
         sigma=sigma,
         a=curve_a,
@@ -409,7 +462,12 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
 
 
 def neighbor_preservation(
-    x: npt.ArrayLike, embedding: npt.ArrayLike, k: int = 15, *, threads: int | None = None
+    x: npt.ArrayLike,
+    embedding: npt.ArrayLike,
+    k: int = 15,
+    *,
+    metric: Metric = "euclidean",
+    threads: int | None = None,
 ) -> float:
     """Return the share of nearest neighbours that the map keeps.
 
@@ -423,8 +481,10 @@ def neighbor_preservation(
         x: The original points, shape (n, d).
         embedding: Their positions in the map, shape (n, m).
         k: Neighbours per point, from 1 to n - 1.
+        metric: The distance between rows of ``x``. The embedding always uses the Euclidean one.
         threads: Worker threads. The value does not depend on it.
     """
+    _check_metric(metric)
     original = as_points(x)
     mapped = as_points(embedding)
     n = original.shape[0]
@@ -433,7 +493,7 @@ def neighbor_preservation(
     if not 1 <= k <= n - 1:
         raise ValueError(f"k must be in [1, n - 1] = [1, {n - 1}], got {k}")
     workers = resolve_threads(threads)
-    near_x, _ = _accel.umap_knn(original, k, workers)
+    near_x, _ = _neighbors(original, k, metric, workers)
     near_y, _ = _accel.umap_knn(mapped, k, workers)
     shared = (near_x[:, :, None] == near_y[:, None, :]).any(axis=2).sum(axis=1)
     return float(shared.mean()) / k

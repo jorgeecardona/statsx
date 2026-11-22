@@ -79,3 +79,19 @@ needs:
       - "test:tests/test_umap.py::test_the_map_does_not_depend_on_the_number_of_threads"
       - "test:tests/test_umap.py::test_pure_noise_gets_clusters_on_the_map_that_the_data_does_not_have"
     must: false
+
+  - id: CL-5
+    text: >
+      When the caller has rows whose direction carries the meaning, such as text embeddings, they
+      can map them with UMAP by the cosine distance, so that the length of a row changes nothing.
+      It is the first step of replacing fastumap with statsx: no SciPy, each step from a paper.
+    sources:
+      - {kind: primary, date: 2026-11-22, who: maintainer, quote: "so, can we start replacing fastumap with statsx?"}
+    proofs:
+      - "test:tests/test_umap.py::test_the_cosine_neighbours_and_distances_equal_the_exact_ones"
+      - "test:tests/test_umap.py::test_the_cosine_map_ignores_the_length_of_a_row"
+      - "test:tests/test_umap.py::test_a_scaled_copy_of_a_row_is_at_cosine_distance_zero"
+      - "test:tests/test_umap.py::test_the_cosine_distance_keeps_groups_by_direction_when_lengths_differ_a_lot"
+      - "test:tests/test_umap.py::test_neighbor_preservation_with_the_cosine_distance_equals_its_definition"
+      - "test:tests/test_umap.py::test_the_cosine_distance_refuses_a_row_of_zeros_and_an_unknown_metric_is_refused"
+    must: false

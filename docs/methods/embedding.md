@@ -65,11 +65,43 @@ depend on `threads`.
 because the layout is chaotic and the last digits of a distance differ. Check that what you read
 from a map holds for two or three seeds.
 
+## Use the cosine distance
+
+Use `metric="cosine"` when the direction of a row carries the meaning and its length does not, as
+with text embeddings. The distance is `1 - cos` of the angle between two rows, so scaling a row
+changes nothing. The map itself is still Euclidean.
+
+```python
+lengths = np.exp(rng.uniform(0.0, np.log(100.0), size=(200, 1)))
+rays = np.vstack([np.ones(10), np.r_[np.ones(5), -np.ones(5)]])
+data = (rays[np.repeat([0, 1], 100)] + rng.normal(0.0, 0.2, size=(200, 10))) * lengths
+fit = umap(data, metric="cosine")
+same = np.repeat([0, 1], 100)[fit.neighbors] == np.repeat([0, 1], 100)[:, None]
+print(fit.metric, same.mean() > 0.99, fit.distances.max() <= 2.0)
+```
+
+```text
+cosine True True
+```
+
+Each point's 15 neighbours come from its own ray, whatever the length. `fit.distances` holds the
+cosine distances, in [0, 2]. A row of zeros has no direction, so the function refuses it.
+
+Two rows in the same direction are at distance 0, and the graph then treats them as the paper treats
+duplicates: `rho` is the smallest distance above zero. The function counts rows as one direction
+when their unit vectors are within 1e-14, which is rounding.
+
+The cosine distance is not a metric: it breaks the triangle inequality. The paper builds the graph
+from the distances to the neighbours of each point and nothing else (section 3.1), so any
+dissimilarity can feed it. The paper states its theory for metric spaces, so a cosine map goes
+beyond what the paper proves.
+
 ## Check a map
 
 `neighbor_preservation(x, embedding, k)` is the share of each point's `k` nearest neighbours in `x`
-that are still among its `k` nearest in the map. It checks what UMAP tries to keep. Compare it with
-a linear map. A swiss roll is a sheet rolled up, and no straight projection can unroll it:
+that are still among its `k` nearest in the map. Pass `metric="cosine"` if you mapped with it. It
+checks what UMAP tries to keep. Compare it with a linear map. A swiss roll is a sheet rolled up,
+and no straight projection can unroll it:
 
 ```python
 t = 1.5 * np.pi * (1 + 2 * rng.uniform(size=1000))
@@ -134,8 +166,8 @@ the eigenvector. The layout still runs.
 
 ## What it assumes
 
-- Distance in your space measures similarity, and the Euclidean distance is the right one. Scale
-  the columns first if they have different units.
+- Distance in your space measures similarity, and the Euclidean or the cosine distance is the
+  right one. Scale the columns first if they have different units and you use the Euclidean one.
 - The data lie near a manifold on which they are spread evenly (the assumptions of section 2 of the
   paper). Where the data are loose in one region and dense in another, UMAP puts both on an even
   footing (section 6).
@@ -144,7 +176,8 @@ the eigenvector. The layout still runs.
 
 ## What the library checks and does not check
 
-Checked: the points are a finite (n, d) array, `n_neighbors` is from 2 to n - 1, `min_dist` is in
+Checked: the points are a finite (n, d) array, `metric` is known and no row is zero for the cosine
+distance, `n_neighbors` is from 2 to n - 1, `min_dist` is in
 [0, 1], and the counts are in range.
 
 Reported: the number of graph pieces, the points with a random start, and whether the spectral
@@ -157,7 +190,7 @@ Not checked: that the map shows real groups. See above.
 
 - Mapping new points into an existing map. The paper lists it as future work (section 7), so
   there is no published algorithm to follow.
-- Other distances than the Euclidean one, supervised maps and approximate neighbours.
+- Other distances than the Euclidean and cosine ones, supervised maps and approximate neighbours.
 
 ## Checked in the tests
 
@@ -169,6 +202,9 @@ Not checked: that the map shows real groups. See above.
 - The force on a point equals the gradient of `log Phi` and of `log(1 - Phi)`, by central
   differences. The repulsive force differs from the exact gradient by the relative `eps / r^2` of
   the paper.
+- With `metric="cosine"` the neighbours and distances equal the exact `1 - cos` from the full
+  matrix, scaling a row changes nothing, a scaled copy of a row is at distance 0, and groups that
+  differ only in direction keep their neighbours when the lengths differ a hundredfold.
 - The cross entropy equals Definition 10 summed over all pairs, written out in the test.
 - The layout reaches the cross entropy of Algorithm 5 run one point at a time, within 30%, on
   random starts (the ratio was 0.84 to 1.10 on two machines). The two differ in one way: a point

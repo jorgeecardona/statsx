@@ -1,6 +1,6 @@
 [project]
 name = "statsx"
-version = "0.1.67"  # static: maturin is the build backend (it cannot read __version__ from a Python file; it reads Cargo.toml or this line). Keep in sync with rust/Cargo.toml.
+version = "0.1.68"  # static: maturin is the build backend (it cannot read __version__ from a Python file; it reads Cargo.toml or this line). Keep in sync with rust/Cargo.toml.
 description = "Statistics for experiments and forecasts, with a Rust extension and NumPy the only dependency"
 readme = "README.md"
 requires-python = ">=3.12"
