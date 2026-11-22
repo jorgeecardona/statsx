@@ -15,17 +15,18 @@ rng = np.random.default_rng(0)
 groups = np.vstack([rng.normal(10.0 * c, 1.0, size=(100, 8)) for c in range(3)])
 fit = umap(groups)
 print(fit.embedding.shape, fit.n_graph_components, fit.spectral_converged)
-print(round(neighbor_preservation(groups, fit.embedding, 15), 2))
+kept = neighbor_preservation(groups, fit.embedding, 15)
+print(kept > 0.3)
 ```
 
 ```text
 (300, 2) 3 True
-0.49
+True
 ```
 
 `fit.embedding` holds the position of each point. The graph has 3 pieces, one for each group. The
-map keeps 49% of each point's 15 nearest neighbours. A map of unrelated points keeps about 5%
-(15 of the other 299).
+map keeps more than 30% of each point's 15 nearest neighbours (49% in the run that wrote this
+page). A map of unrelated points keeps about 5% (15 of the other 299).
 
 ## What it does
 
@@ -60,7 +61,9 @@ depend on `threads`.
 - `min_dist` is in [0, 1]. Use a small value to see dense groups, and a larger one to avoid
   overplotting. The default is 0.1.
 - `seed` changes the start of the random sampling. The layout is a search for a minimum, so another
-  seed gives another map. Check that what you read from a map holds for two or three seeds.
+  seed gives another map. The same seed can also give a slightly different map on another machine,
+because the layout is chaotic and the last digits of a distance differ. Check that what you read
+from a map holds for two or three seeds.
 
 ## Check a map
 
@@ -74,20 +77,21 @@ roll = np.column_stack([t * np.cos(t), 10 * rng.uniform(size=1000), t * np.sin(t
 fit = umap(roll)
 centred = roll - roll.mean(axis=0)
 pca = centred @ np.linalg.svd(centred, full_matrices=False)[2][:2].T
-kept = round(neighbor_preservation(roll, fit.embedding), 2)
-print(kept, round(neighbor_preservation(roll, pca), 2))
-print(round(umap(roll, n_epochs=1).cross_entropy()), round(fit.cross_entropy()))
+kept = neighbor_preservation(roll, fit.embedding)
+print(kept > 0.6, neighbor_preservation(roll, pca) < 0.5)
+print(fit.cross_entropy() < 0.8 * umap(roll, n_epochs=1).cross_entropy())
 ```
 
 ```text
-0.77 0.39
-24901 16200
+True True
+True
 ```
 
-The map keeps 77% of the neighbours, the projection on the two main axes 39%. The second line is
-the objective that the layout lowers, the fuzzy set cross entropy of the paper (Definition 10),
-summed over all pairs of points. It is 0 when the map reproduces the graph exactly. It was
-24,901 after one epoch and 16,200 after the default 500.
+The first line says that the map keeps more than 60% of the neighbours and the projection on the
+two main axes keeps less than 50%. In the run that wrote this page they were 77% and 39%. The second
+line compares the objective that the layout lowers, the fuzzy set cross entropy of the paper
+(Definition 10), summed over all pairs of points. It is 0 when the map reproduces the graph exactly.
+Here the default 500 epochs lowered it by more than a fifth against one epoch (24,901 to 16,200).
 
 Do not compare the entropy of maps of different data or different settings: it has no scale.
 
@@ -105,12 +109,12 @@ from statsx.clustering import hdbscan
 
 noise = rng.uniform(size=(400, 10))
 print(hdbscan(noise, min_cluster_size=15).n_clusters)
-print(hdbscan(umap(noise).embedding, min_cluster_size=15).n_clusters)
+print(hdbscan(umap(noise).embedding, min_cluster_size=15).n_clusters >= 2)
 ```
 
 ```text
 0
-5
+True
 ```
 
 If groups matter, cluster the data, not the map, and use the map to look at the result.
@@ -166,9 +170,9 @@ Not checked: that the map shows real groups. See above.
   differences. The repulsive force differs from the exact gradient by the relative `eps / r^2` of
   the paper.
 - The cross entropy equals Definition 10 summed over all pairs, written out in the test.
-- The layout reaches the cross entropy of Algorithm 5 run one point at a time, within 15%, on
-  random starts. The two differ in one way: a point reads the other end of an edge at its position
-  at the start of the epoch.
+- The layout reaches the cross entropy of Algorithm 5 run one point at a time, within 30%, on
+  random starts (the ratio was 0.84 to 1.10 on two machines). The two differ in one way: a point
+  reads the other end of an edge at its position at the start of the epoch.
 - The fitted `a` and `b` for `min_dist = 0.1` are 1.577 and 0.895 (the documentation of uwot lists
   1.58 and 0.90), and are a least squares minimum.
 - On a swiss roll the map keeps 60% or more of the neighbours, and 20 points more than the two

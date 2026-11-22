@@ -1818,8 +1818,8 @@ decisions:
     It can come as its own need for large n.'
   - 'Sequential stochastic gradient descent, as the reference implementation runs it with unsynchronised
     threads: not used; it depends on thread timing. The layout here reads the other end of an edge at its
-    position at the start of the epoch. On a small graph it reaches the same cross entropy as the
-    sequential algorithm of the paper within 15%.'
+    position at the start of the epoch. On a small graph it reaches the cross entropy of the sequential
+    algorithm of the paper within 30% (ratio 0.84 to 1.10 on two machines).'
   - 'A UMAP step before clustering: not offered; on uniform noise in 10 dimensions HDBSCAN found no group
     in the data and 2 to 5 groups in the map, so the docs say to cluster the data and use the map to look.'
   consequences: 'The curve constants for min_dist 0.1 are a = 1.577 and b = 0.895, which match the values
