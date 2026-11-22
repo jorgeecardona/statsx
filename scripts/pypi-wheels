@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Check that PyPI holds every wheel of the version in pyproject.toml.
+
+Two commands, both run by CI on main after the release step:
+
+    pypi-wheels plan OUT   copy the macOS job file to OUT when a macOS wheel is missing, else the
+                           no-op file. The macOS runner bills at 6 times the normal rate, so it
+                           starts only when it has work to do.
+    pypi-wheels verify     exit 1 and list the files that are still missing.
+
+PyPI cannot hold a version back until all its files exist. This check closes the gap in the
+same pipeline: the macOS job builds the missing wheels, and verify turns the pipeline red if
+any file is still absent.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import sys
+import time
+import tomllib
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PROJECT = "statsx"
+MACOS = ("macosx_11_0_arm64.whl", "macosx_11_0_x86_64.whl")
+OTHER = (
+    "manylinux_2_17_x86_64.whl",
+    "manylinux_2_17_aarch64.whl",
+    "musllinux_1_2_x86_64.whl",
+    "musllinux_1_2_aarch64.whl",
+    ".tar.gz",
+)
+WAIT_SECONDS = 300
+POLL_SECONDS = 15
+
+
+def version() -> str:
+    """Return the version in pyproject.toml."""
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        return str(tomllib.load(handle)["project"]["version"])
+
+
+def filenames(release: str) -> list[str]:
+    """Return the file names PyPI lists for a release, or [] when it is not there yet."""
+    url = f"https://pypi.org/pypi/{PROJECT}/{release}/json"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            data = json.load(response)
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return []
+    return [str(entry["filename"]) for entry in data["urls"]]
+
+
+def missing(names: list[str], wanted: tuple[str, ...]) -> list[str]:
+    """Return the wanted endings that no file name has."""
+    return [end for end in wanted if not any(name.endswith(end) for name in names)]
+
+
+def wait_for(release: str, wanted: tuple[str, ...]) -> list[str]:
+    """Poll PyPI until the wanted files are listed, or WAIT_SECONDS pass. Return the names."""
+    deadline = time.monotonic() + WAIT_SECONDS
+    while True:
+        names = filenames(release)
+        if (names and not missing(names, wanted)) or time.monotonic() >= deadline:
+            return names
+        time.sleep(POLL_SECONDS)
+
+
+def plan(out: Path) -> int:
+    """Write the child pipeline file that the macOS state needs."""
+    release = version()
+    names = wait_for(release, ())
+    if not names:
+        print(f"{PROJECT} {release} is not on PyPI after {WAIT_SECONDS} s", file=sys.stderr)
+        return 1
+    lacking = missing(names, MACOS)
+    source = "wheels-macos.yml" if lacking else "wheels-none.yml"
+    print(f"{PROJECT} {release}: missing macOS wheels {lacking or 'none'}; using {source}")
+    shutil.copyfile(ROOT / "ci" / source, out)
+    return 0
+
+
+def verify() -> int:
+    """Exit 1 when a wheel or the source package of this version is not on PyPI."""
+    release = version()
+    names = wait_for(release, MACOS + OTHER)
+    lacking = missing(names, MACOS + OTHER)
+    if lacking:
+        print(f"{PROJECT} {release} on PyPI lacks: {', '.join(lacking)}", file=sys.stderr)
+        return 1
+    print(f"{PROJECT} {release}: all {len(MACOS + OTHER)} files are on PyPI")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    """Run the command named in argv."""
+    if len(argv) == 3 and argv[1] == "plan":  # noqa: PLR2004
+        return plan(Path(argv[2]))
+    if len(argv) == 2 and argv[1] == "verify":  # noqa: PLR2004
+        return verify()
+    print(__doc__, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

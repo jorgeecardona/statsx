@@ -38,15 +38,19 @@ make check             # lint + format-check + typecheck + test
 make docs              # build the docs site strictly (as the CI ci job does)
 ```
 
-CI has three GitLab jobs:
+CI has these GitLab jobs:
 
 - `ci` runs on every pipeline. `proto install` installs the toolchain, then one `moon run :ci`
   runs lint, format-check, typecheck, test, test-floor (the suite on Python 3.12), build, docs,
   version-guard and version-ahead. On `main` it runs `moon run :release`, which runs the same
   tasks and then publishes.
 - `pages` runs on `main` and publishes the docs site that `ci` built.
-- `wheels-macos` runs on `main` when `pyproject.toml` changed (manual on other pushes) and uploads
-  the macOS wheels.
+- `wheels-plan`, `wheels-macos` and `wheels-verify` run on `main` after `ci`. Every version must
+  have its macOS wheels. `wheels-plan` asks PyPI which files the version has. `wheels-macos` builds
+  and uploads the macOS wheels only when one is missing (the macOS runner costs 6 times more).
+  `wheels-verify` fails unless PyPI lists the six wheels and the source package. PyPI cannot hold
+  a version back, so a red `wheels-verify` means the version is public without a file: the next
+  `main` push builds it.
 
 moon orders the tasks, so run them through `make` or `moon run`.
 

@@ -93,54 +93,40 @@ pages:
     paths:
       - public
 
-# macOS wheels (Apple silicon + Intel) on GitLab's hosted macOS runner. It bills at cost factor 6,
-# so it runs only when pyproject.toml changes (a release); on other main pushes it is a manual job.
-# PyPI accepts new files on an existing version, and --skip-existing makes a re-run a no-op.
-# Best-effort: a macOS failure must not block the Linux publish. One Apple-silicon runner builds
-# both arches; x86_64 is a cross-compile that needs only the Rust target.
-wheels-macos:
-  tags:
-    - saas-macos-medium-m1
-  image: macos-15-xcode-16
-  needs:
-    - job: ci
-      artifacts: false
-  allow_failure: true
+# Every version must have its macOS wheels. PyPI cannot hold a version back until all files
+# exist, so the same pipeline completes it and goes red if it cannot:
+#   1. wheels-plan asks PyPI which files the version has, and picks the child pipeline file.
+#   2. wheels-macos runs that child: the macOS build when a macOS wheel is missing (the runner
+#      bills at cost factor 6), else a no-op. strategy: depend makes a failed build fail this job.
+#   3. wheels-verify fails unless PyPI lists all wheels and the sdist.
+# A pipeline whose ci job failed publishes nothing and so skips all three. The next main push
+# repairs a version that is on PyPI without its macOS wheels, even when that push is not a bump.
+wheels-plan:
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  needs: ["ci"]
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      changes:
-        paths:
-          - pyproject.toml
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
-  id_tokens:
-    PYPI_ID_TOKEN:
-      aud: pypi
-  environment:
-    name: pypi
-    url: https://pypi.org/project/statsx/
-  variables:
-    MACOSX_DEPLOYMENT_TARGET: "11.0"
   script:
-    - curl -LsSf https://astral.sh/uv/install.sh | sh
-    - curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
-    - export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-    - rustup target add aarch64-apple-darwin x86_64-apple-darwin
-    - uv venv --python 3.13 .venv
-    - uv pip install --python .venv maturin twine
-    # cp311-abi3: one wheel per arch covers Python 3.11+, the same as the Linux wheels.
-    - .venv/bin/maturin build --release --target aarch64-apple-darwin -o dist
-    - .venv/bin/maturin build --release --target x86_64-apple-darwin -o dist
-    - ls dist
-    # Mint a one-shot PyPI token from the job's OIDC id_token (same exchange as scripts/pypi-publish).
-    - >-
-      TOKEN=$(curl -sSf -X POST https://pypi.org/_/oidc/mint-token
-      -H 'Content-Type: application/json' -d "{\"token\": \"$PYPI_ID_TOKEN\"}"
-      | .venv/bin/python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-    - TWINE_USERNAME=__token__ TWINE_PASSWORD="$TOKEN" .venv/bin/twine upload --skip-existing --non-interactive dist/*.whl
+    - python3 scripts/pypi-wheels plan wheels-child.yml
   artifacts:
     paths:
-      - dist
-    expire_in: 1 week
+      - wheels-child.yml
+    expire_in: 1 day
+
+wheels-macos:
+  needs: ["wheels-plan"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  trigger:
+    include:
+      - artifact: wheels-child.yml
+        job: wheels-plan
+    strategy: depend
+
+wheels-verify:
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  needs: ["wheels-macos"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python3 scripts/pypi-wheels verify

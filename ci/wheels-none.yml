@@ -1,0 +1,5 @@
+# Child pipeline when PyPI already has the macOS wheels: nothing to build.
+wheels-macos-none:
+  image: debian:bookworm-slim
+  script:
+    - echo "the macOS wheels are already on PyPI"
