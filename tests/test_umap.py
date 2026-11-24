@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import math
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
@@ -10,7 +12,7 @@ import pytest
 
 from statsx import _accel
 from statsx.clustering import hdbscan
-from statsx.embedding import FuzzyGraph, Metric, fit_curve, neighbor_preservation, umap
+from statsx.embedding import FuzzyGraph, Metric, UMAPFit, fit_curve, neighbor_preservation, umap
 
 F64 = npt.NDArray[np.float64]
 
@@ -503,3 +505,112 @@ def test_transform_refuses_bad_input_and_the_fit_keeps_its_own_copy_of_the_data(
     x[:] = 0.0
     assert np.array_equal(fit.transform(_blobs(40, 5)[:5], n_epochs=0).embedding, before)
     assert not fit.data.flags.writeable
+
+
+def _same_fit(a: UMAPFit, b: UMAPFit) -> bool:
+    arrays = ("embedding", "data", "neighbors", "distances", "rho", "sigma")
+    graph = ("indptr", "indices", "weights")
+    plain = (
+        "metric",
+        "a",
+        "b",
+        "min_dist",
+        "n_epochs",
+        "negative_sample_rate",
+        "seed",
+        "n_graph_components",
+        "n_random_start",
+        "spectral_converged",
+    )
+    return (
+        all(np.array_equal(getattr(a, f), getattr(b, f)) for f in arrays)
+        and all(np.array_equal(getattr(a.graph, f), getattr(b.graph, f)) for f in graph)
+        and all(getattr(a, f) == getattr(b, f) for f in plain)
+    )
+
+
+def test_a_saved_fit_loads_back_exactly_and_places_new_points_the_same_way(
+    tmp_path: Path,
+) -> None:
+    train, test = _split_roll()
+    fit = umap(train, n_epochs=40, seed=2**63 + 5, metric="cosine")
+    path = tmp_path / "model.bin"  # the name is used as given: no .npz is added
+    fit.to_npz(path)
+    assert path.exists()
+    loaded = UMAPFit.from_npz(path)
+    assert _same_fit(fit, loaded)
+    assert not loaded.data.flags.writeable
+    assert np.array_equal(
+        fit.transform(test[:30], n_epochs=5).embedding,
+        loaded.transform(test[:30], n_epochs=5).embedding,
+    )
+    assert loaded.cross_entropy() == fit.cross_entropy()
+    buffer = io.BytesIO()
+    fit.to_npz(buffer)
+    buffer.seek(0)
+    assert _same_fit(fit, UMAPFit.from_npz(buffer))
+
+
+def _saved(fit: UMAPFit, **changes: object) -> io.BytesIO:
+    """A file of ``fit`` with some arrays replaced, as a damaged or edited file would be."""
+    plain = io.BytesIO()
+    fit.to_npz(plain)
+    plain.seek(0)
+    with np.load(plain) as store:
+        arrays: dict[str, object] = {name: store[name] for name in store.files}
+    arrays.update(changes)
+    out = io.BytesIO()
+    np.savez(out, **arrays)  # type: ignore[arg-type]
+    out.seek(0)
+    return out
+
+
+def test_a_file_that_is_not_a_fit_of_this_version_is_refused() -> None:
+    x = _blobs(30, 4)
+    fit = umap(x, n_neighbors=5, n_epochs=2)
+    with pytest.raises(ValueError, match="format version 99"):
+        UMAPFit.from_npz(_saved(fit, format_version=np.int64(99)))
+    with pytest.raises(ValueError, match="lacks"):
+        UMAPFit.from_npz(_without(fit, "sigma"))
+    with pytest.raises(ValueError, match="not a UMAPFit file"):
+        UMAPFit.from_npz(io.BytesIO(b"not a file"))
+    # a file with a pickled object array is refused, so loading never runs code
+    pickled = io.BytesIO()
+    np.savez(pickled, format_version=np.array([object()], dtype=object))
+    pickled.seek(0)
+    with pytest.raises(ValueError, match="not a UMAPFit file"):
+        UMAPFit.from_npz(pickled)
+
+
+def _without(fit: UMAPFit, name: str) -> io.BytesIO:
+    plain = io.BytesIO()
+    fit.to_npz(plain)
+    plain.seek(0)
+    with np.load(plain) as store:
+        arrays = {k: store[k] for k in store.files if k != name}
+    out = io.BytesIO()
+    np.savez(out, **arrays)  # type: ignore[arg-type]
+    out.seek(0)
+    return out
+
+
+def test_a_file_with_values_a_fit_cannot_have_is_refused() -> None:
+    x = _blobs(30, 4)
+    fit = umap(x, n_neighbors=5, n_epochs=2)
+    n = fit.n_points
+    bad_neighbors = fit.neighbors.copy()
+    bad_neighbors[0, 0] = n  # one past the last row
+    with pytest.raises(ValueError, match="cannot have"):
+        UMAPFit.from_npz(_saved(fit, neighbors=bad_neighbors))
+    bad_indices = fit.graph.indices.copy()
+    bad_indices[0] = -1
+    with pytest.raises(ValueError, match="cannot have"):
+        UMAPFit.from_npz(_saved(fit, graph_indices=bad_indices))
+    nan_points = fit.data.copy()
+    nan_points[0, 0] = np.nan
+    with pytest.raises(ValueError, match="cannot have"):
+        UMAPFit.from_npz(_saved(fit, data=nan_points))
+    with pytest.raises(ValueError, match="do not fit together"):
+        UMAPFit.from_npz(_saved(fit, embedding=fit.embedding[:-1]))
+    with pytest.raises(ValueError, match="metric must be one of"):
+        UMAPFit.from_npz(_saved(fit, metric=np.array("manhattan")))

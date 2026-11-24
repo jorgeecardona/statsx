@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `UMAPFit.to_npz` and `UMAPFit.from_npz` save and load a UMAP fit as a NumPy file with no
+  pickled objects. A loaded fit places new points exactly as the saved one does, and the load
+  refuses a file that is damaged or from another version.
 - `UMAPFit.transform(x)` places new points in a finished UMAP map without changing it, from
   their exact nearest training points. No paper describes this step; the docs say which
   description it follows. `UMAPFit` now keeps the fitted data.

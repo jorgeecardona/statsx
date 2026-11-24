@@ -111,3 +111,16 @@ needs:
       - "test:tests/test_umap.py::test_the_cosine_placement_finds_the_exact_cosine_neighbours"
       - "test:tests/test_umap.py::test_transform_refuses_bad_input_and_the_fit_keeps_its_own_copy_of_the_data"
     must: false
+
+  - id: CL-7
+    text: >
+      When the caller has fitted a UMAP map, they can save it to a file and load it later, in
+      another process, and place new rows with it exactly as before, with no pickled objects. It is
+      the third step of replacing fastumap with statsx.
+    sources:
+      - {kind: primary, date: 2026-11-24, who: maintainer, quote: "finish the features first, then archive"}
+    proofs:
+      - "test:tests/test_umap.py::test_a_saved_fit_loads_back_exactly_and_places_new_points_the_same_way"
+      - "test:tests/test_umap.py::test_a_file_that_is_not_a_fit_of_this_version_is_refused"
+      - "test:tests/test_umap.py::test_a_file_with_values_a_fit_cannot_have_is_refused"
+    must: false

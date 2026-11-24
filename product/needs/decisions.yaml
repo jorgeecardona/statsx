@@ -1878,3 +1878,24 @@ decisions:
     nearest-neighbour distance of where it was. The placement is identical for 1 and 3 threads. The
     distance to the nearest training point is returned so that the caller can see a point that is
     outside the data.'
+
+- id: D-69
+  text: 'UMAPFit.to_npz(file) and UMAPFit.from_npz(file) save and load a fit as a NumPy .npz of named arrays,
+    with a format version, no pickled objects (np.load with allow_pickle=False), and the seed stored as an
+    unsigned 64-bit integer so that a seed above 2^63 survives. A path is opened by statsx and written as
+    given, so no .npz is added. The loader checks the file before it builds the fit: the version, the
+    presence of every array, the shapes against each other, the neighbours and the graph entries inside
+    [0, n), the graph rows in order and the weights in (0, 1], finite values, and the settings (a, b > 0,
+    min_dist in [0, 1], n_epochs >= 1). Any failure, including a file that is not an .npz, raises ValueError.
+    The check is that the file is consistent, not that the map is a good map of the data.'
+  needs:
+  - CL-7
+  alternatives:
+  - 'pickle: not used; loading a pickle runs code, and a pickle welds the file to the layout of the class.'
+  - 'Store the fit without its data and the graph: not used; transform needs the data to find the
+    neighbours of new points, and the graph is what cross_entropy and the layout use.'
+  - 'Version 0 migration code: not written; there is one format. A change of the layout raises the version
+    and the loader names the version it found.'
+  consequences: 'A loaded fit has every array equal to the saved one and places new points with the same
+    result. The file is as large as the data. Two edits that keep the file consistent load without a
+    warning, and the docs say so.'

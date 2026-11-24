@@ -164,6 +164,38 @@ Hägele and Weiskopf (2024) state that no paper describes it. The method here is
 uwot article "Embedding New Data" describes and umap-learn follows, written again from that
 description. Treat it as an implementation choice and not as a published algorithm.
 
+## Save and load a fit
+
+Use `fit.to_npz(path)` to keep a fit, and `UMAPFit.from_npz(path)` to read it back. The file holds
+the map, the graph, the fitted data and the settings. A loaded fit places new points exactly as
+the saved one does.
+
+```python
+import io
+
+from statsx.embedding import UMAPFit
+
+buffer = io.BytesIO()
+fit.to_npz(buffer)
+buffer.seek(0)
+loaded = UMAPFit.from_npz(buffer)
+same = np.array_equal(loaded.transform(new[:20]).embedding, fit.transform(new[:20]).embedding)
+print(same, loaded.n_points == fit.n_points)
+```
+
+```text
+True True
+```
+
+The file is a NumPy `.npz` with no pickled objects, so loading it runs no code. Every value is
+stored exactly. It keeps the fitted data, so it is as large as the data. A path is written as you
+give it, and no `.npz` is added.
+
+`from_npz` checks the file before it uses it. It refuses another format version, a missing array,
+shapes that do not fit together, a neighbour or a graph entry that points to a row that does not
+exist, and values that are not finite. It raises `ValueError` in each case. It does not check that
+the map is a good map of the data: a file that someone edited with consistent values loads.
+
 ## The map is not the data
 
 UMAP keeps neighbours and gives up distances and densities (section 6 of the paper). In a map, the
@@ -242,6 +274,9 @@ Not checked: that the map shows real groups. See above.
 - With `metric="cosine"` the neighbours and distances equal the exact `1 - cos` from the full
   matrix, scaling a row changes nothing, a scaled copy of a row is at distance 0, and groups that
   differ only in direction keep their neighbours when the lengths differ a hundredfold.
+- A saved fit loads back with every array and setting equal, also for a seed above 2^63, and places
+  new points exactly as before. A file of another version, with a missing array, with a neighbour
+  or a graph entry out of range, with a NaN, or with a pickled object is refused.
 - `transform` finds the exact nearest training points, weights them with `rho` 0 so that the
   weights sum to `log2(k)`, and with 0 epochs it returns their weighted mean. On a swiss roll the
   new points keep about as many neighbours as the training points do (0.72 against 0.77, with 1000

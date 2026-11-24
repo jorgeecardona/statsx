@@ -69,8 +69,11 @@ References:
 
 from __future__ import annotations
 
+import os
+import zipfile
 from dataclasses import dataclass
-from typing import Literal
+from pathlib import Path
+from typing import IO, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -85,6 +88,9 @@ _METRICS = ("euclidean", "cosine")
 
 _SAME_DIRECTION = 1e-14
 """Unit rows closer than this are one direction: it is rounding of the normalised coordinates."""
+
+_FORMAT = 1
+"""Version of the ``.npz`` layout of ``UMAPFit.to_npz``. Raise it when the layout changes."""
 
 _MIN_TRANSFORM_EPOCHS = 30
 """Fewest epochs of ``transform`` by default."""
@@ -327,6 +333,104 @@ class UMAPFit:
             seed=stream,
         )
 
+    def to_npz(self, file: str | os.PathLike[str] | IO[bytes]) -> None:
+        """Save the fit to a ``.npz`` file that ``UMAPFit.from_npz`` reads back.
+
+        The file holds NumPy arrays and no pickled objects, so loading it runs no code. Every
+        value is stored exactly: a loaded fit places new points exactly as this one does. The
+        file keeps the fitted data, so it is as large as the data. The layout has a version
+        number, and ``from_npz`` refuses a file of another version.
+
+        Args:
+            file: A path, written as given (no ``.npz`` is added), or a binary file object.
+        """
+        arrays = {
+            "format_version": np.int64(_FORMAT),
+            "embedding": self.embedding,
+            "data": self.data,
+            "neighbors": self.neighbors,
+            "distances": self.distances,
+            "rho": self.rho,
+            "sigma": self.sigma,
+            "graph_indptr": self.graph.indptr,
+            "graph_indices": self.graph.indices,
+            "graph_weights": self.graph.weights,
+            "reals": np.array([self.a, self.b, self.min_dist], dtype=np.float64),
+            "counts": np.array(
+                [
+                    self.n_epochs,
+                    self.negative_sample_rate,
+                    self.n_graph_components,
+                    self.n_random_start,
+                    int(self.spectral_converged),
+                ],
+                dtype=np.int64,
+            ),
+            "seed": np.uint64(self.seed),
+            "metric": np.array(self.metric),
+        }
+        if isinstance(file, (str, os.PathLike)):
+            with Path(file).open("wb") as handle:
+                np.savez(handle, **arrays)  # type: ignore[arg-type]
+        else:
+            np.savez(file, **arrays)  # type: ignore[arg-type]
+
+    @classmethod
+    def from_npz(cls, file: str | os.PathLike[str] | IO[bytes]) -> UMAPFit:
+        """Load a fit saved by ``UMAPFit.to_npz``.
+
+        The arrays are checked before they are used: their shapes agree, the neighbours and the
+        graph point at existing rows, and the values are finite. A file of another format
+        version, or with a missing or inconsistent array, raises ``ValueError``.
+
+        Args:
+            file: A path or a binary file object.
+
+        Raises:
+            ValueError: If the file is not a fit that this version wrote, or is inconsistent.
+        """
+        try:
+            with np.load(file, allow_pickle=False) as store:
+                found = {name: store[name] for name in store.files}
+        except (OSError, EOFError, KeyError, ValueError, zipfile.BadZipFile) as error:
+            raise ValueError(f"not a UMAPFit file: {error}") from error
+        version = int(found["format_version"]) if "format_version" in found else None
+        if version != _FORMAT:
+            raise ValueError(f"the file has format version {version}, this reads {_FORMAT}")
+        missing = sorted(set(_FIELDS) - set(found))
+        if missing:
+            raise ValueError(f"the file lacks {missing}")
+        reals = found["reals"].astype(np.float64)
+        counts = found["counts"].astype(np.int64)
+        metric = str(found["metric"])
+        _check_metric(metric)
+        fit = cls(
+            embedding=_floats(found["embedding"], 2),
+            graph=FuzzyGraph(
+                _ints(found["graph_indptr"], 1),
+                _ints(found["graph_indices"], 1),
+                _floats(found["graph_weights"], 1),
+            ),
+            data=_floats(found["data"], 2),
+            neighbors=_ints(found["neighbors"], 2),
+            distances=_floats(found["distances"], 2),
+            metric=metric,  # type: ignore[arg-type]
+            rho=_floats(found["rho"], 1),
+            sigma=_floats(found["sigma"], 1),
+            a=float(reals[0]),
+            b=float(reals[1]),
+            min_dist=float(reals[2]),
+            n_epochs=int(counts[0]),
+            negative_sample_rate=int(counts[1]),
+            seed=int(found["seed"]),
+            n_graph_components=int(counts[2]),
+            n_random_start=int(counts[3]),
+            spectral_converged=bool(counts[4]),
+        )
+        _check_fit(fit)
+        fit.data.flags.writeable = False
+        return fit
+
     def cross_entropy(self, *, threads: int | None = None) -> float:
         """Return the fuzzy set cross entropy of the map (Definition 10 of the paper).
 
@@ -348,6 +452,83 @@ class UMAPFit:
                 resolve_threads(threads),
             )
         )
+
+
+_FIELDS = (
+    "embedding",
+    "data",
+    "neighbors",
+    "distances",
+    "rho",
+    "sigma",
+    "graph_indptr",
+    "graph_indices",
+    "graph_weights",
+    "reals",
+    "counts",
+    "seed",
+    "metric",
+)
+"""The arrays that a saved fit holds besides its format version."""
+
+
+def _numeric(value: npt.NDArray[np.generic], ndim: int) -> None:
+    """Raise ``ValueError`` unless ``value`` is a numeric array with ``ndim`` dimensions."""
+    if value.ndim != ndim or value.dtype.kind not in "fiu":
+        raise ValueError(f"expected a {ndim}-dimensional numeric array, got shape {value.shape}")
+
+
+def _floats(value: npt.NDArray[np.generic], ndim: int) -> npt.NDArray[np.float64]:
+    """Return ``value`` as a C-contiguous float array of ``ndim`` dimensions."""
+    _numeric(value, ndim)
+    return np.ascontiguousarray(value, dtype=np.float64)
+
+
+def _ints(value: npt.NDArray[np.generic], ndim: int) -> npt.NDArray[np.int64]:
+    """Return ``value`` as a C-contiguous integer array of ``ndim`` dimensions."""
+    _numeric(value, ndim)
+    return np.ascontiguousarray(value, dtype=np.int64)
+
+
+def _check_fit(fit: UMAPFit) -> None:
+    """Raise ``ValueError`` unless the parts of a loaded fit agree with each other."""
+    n, k = fit.neighbors.shape
+    dim = fit.embedding.shape[1]
+    g = fit.graph
+    shapes_agree = (
+        fit.embedding.shape[0] == n
+        and fit.data.shape[0] == n
+        and fit.distances.shape == (n, k)
+        and fit.rho.shape == (n,)
+        and fit.sigma.shape == (n,)
+        and g.indptr.shape == (n + 1,)
+        and g.indices.shape == g.weights.shape
+        and k >= _MIN_NEIGHBORS
+        and dim >= 1
+    )
+    if not shapes_agree:
+        raise ValueError("the arrays in the file have shapes that do not fit together")
+    finite = all(
+        bool(np.all(np.isfinite(v)))
+        for v in (fit.embedding, fit.data, fit.distances, fit.rho, fit.sigma, g.weights)
+    )
+    sound_graph = (
+        g.indptr[0] == 0
+        and g.indptr[-1] == g.indices.shape[0]
+        and bool(np.all(np.diff(g.indptr) >= 0))
+        and bool(np.all((g.indices >= 0) & (g.indices < n)))
+        and bool(np.all((g.weights > 0.0) & (g.weights <= 1.0)))
+    )
+    sound_neighbors = bool(np.all((fit.neighbors >= 0) & (fit.neighbors < n)))
+    sound_settings = (
+        fit.a > 0.0
+        and fit.b > 0.0
+        and 0.0 <= fit.min_dist <= 1.0
+        and fit.n_epochs >= 1
+        and fit.negative_sample_rate >= 0
+    )
+    if not (finite and sound_graph and sound_neighbors and sound_settings):
+        raise ValueError("the file holds values that a UMAPFit cannot have")
 
 
 def fit_curve(min_dist: float) -> tuple[float, float]:
