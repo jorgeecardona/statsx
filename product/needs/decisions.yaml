@@ -1849,3 +1849,32 @@ decisions:
     and a computation that runs is not evidence that its assumption holds.'
   consequences: 'The neighbours and distances equal the exact 1 - cos from the full matrix to 1e-12. Scaling
     a row changes nothing. Other distances (Manhattan, Hamming) are not offered.'
+
+- id: D-68
+  text: 'UMAPFit.transform(x) places new points in a finished map. No paper describes it: the UMAP paper lists
+    it as future work (section 7) and Reichmann, Hägele and Weiskopf (2024, section 3.2.1) state that the
+    out-of-sample extension of UMAP is not described in the literature. The method is the one that the
+    uwot article "Embedding New Data" describes and that umap-learn follows (umap/umap_.py lowers the
+    local connectivity by one in transform), written again here. The exact nearest training points of
+    each new point are found; the weights are exp(-d / sigma) with rho 0 (local connectivity 0) and sigma
+    solving the sum = log2(k); the point starts at the weighted mean of its neighbours; then Algorithm 5
+    runs for the new points alone, with the training positions fixed, training points as the negative
+    samples, and the learning rate falling from 1 to 0. Choices that no source states, which are statsx
+    choices: the default number of epochs is a third of the fit''s, at least 30; the random stream of a
+    point is seeded by (seed, epoch, row in the call); new points do not act on each other. This is an
+    implementation choice and not a published algorithm, and the docs and the module docstring say so.'
+  needs:
+  - CL-6
+  alternatives:
+  - 'Inverse distance weighting of the neighbours, as another library does: not used; it is no more
+    published than this one, and it would not use the objective that the fit lowers.'
+  - 'A neural network that learns the map (parametric UMAP, Sainburg, McInnes & Gentner 2021): not used;
+    it needs a training loop and a deep learning library, and it is a different method.'
+  - 'Refuse to place new points because there is no paper: not used; the need is real, the method is
+    the objective of the paper applied to a subset of the edges, and the docs say what it is.'
+  consequences: 'The weights sum to log2(k) and the start equals the weighted mean of the neighbours to 1e-12.
+    On a swiss roll of 1000 points the new points keep 0.72 of their 15 nearest training points in the
+    map against 0.77 for the training points. A training point placed again lands within 0.6 of its
+    nearest-neighbour distance of where it was. The placement is identical for 1 and 3 threads. The
+    distance to the nearest training point is returned so that the caller can see a point that is
+    outside the data.'

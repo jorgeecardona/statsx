@@ -127,6 +127,43 @@ Here the default 500 epochs lowered it by more than a fifth against one epoch (2
 
 Do not compare the entropy of maps of different data or different settings: it has no scale.
 
+## Place new points in a map
+
+Use `fit.transform(new_points)` when the map is finished and new rows arrive. The map does not
+change. Each new point is joined to its `n_neighbors` nearest training points, starts at the
+weighted mean of their positions, and is then moved by the same sampled gradient steps as the fit,
+with the training points held fixed. The result is a `UMAPPlacement`.
+
+The weights are the ones of the fit with one change: `rho` is 0, so a weight is `exp(-d / sigma)`
+and the nearest training point does not get weight 1 by force. The uwot article and the umap-learn
+code do the same for new points.
+
+```python
+train, new = roll[:800], roll[800:]
+fit = umap(train)
+placed = fit.transform(new)
+print(placed.embedding.shape, placed.neighbors.shape)
+print(placed.distances[:, 0].max() < 3 * fit.distances[:, 0].max())
+```
+
+```text
+(200, 2) (200, 15)
+True
+```
+
+`placed.distances[:, 0]` is how far each new point is from the training data. Compare it with
+`fit.distances[:, 0]`. A new point much farther out than the training points lands where the map
+has no information, so do not read its place as a result.
+
+`n_epochs=0` returns the weighted mean of the neighbours and does no gradient step. The default is
+a third of the epochs of the fit, at least 30. The result does not depend on `threads`. The
+random stream of a point is seeded by its row number in the call.
+
+This step is not in the paper. The paper lists it as future work (section 7), and Reichmann,
+Hägele and Weiskopf (2024) state that no paper describes it. The method here is the one that the
+uwot article "Embedding New Data" describes and umap-learn follows, written again from that
+description. Treat it as an implementation choice and not as a published algorithm.
+
 ## The map is not the data
 
 UMAP keeps neighbours and gives up distances and densities (section 6 of the paper). In a map, the
@@ -188,8 +225,8 @@ Not checked: that the map shows real groups. See above.
 
 ## Not included
 
-- Mapping new points into an existing map. The paper lists it as future work (section 7), so
-  there is no published algorithm to follow.
+- A published algorithm for mapping new points. There is none (section 7 of the paper), so
+  `transform` follows the description in the uwot article on embedding new data.
 - Other distances than the Euclidean and cosine ones, supervised maps and approximate neighbours.
 
 ## Checked in the tests
@@ -205,6 +242,12 @@ Not checked: that the map shows real groups. See above.
 - With `metric="cosine"` the neighbours and distances equal the exact `1 - cos` from the full
   matrix, scaling a row changes nothing, a scaled copy of a row is at distance 0, and groups that
   differ only in direction keep their neighbours when the lengths differ a hundredfold.
+- `transform` finds the exact nearest training points, weights them with `rho` 0 so that the
+  weights sum to `log2(k)`, and with 0 epochs it returns their weighted mean. On a swiss roll the
+  new points keep about as many neighbours as the training points do (0.72 against 0.77, with 1000
+  training points and 250 new ones). A training point placed again lands within 0.6 of its
+  nearest-neighbour distance from where it was. The result is identical with 1 and with 3
+  threads.
 - The cross entropy equals Definition 10 summed over all pairs, written out in the test.
 - The layout reaches the cross entropy of Algorithm 5 run one point at a time, within 30%, on
   random starts (the ratio was 0.84 to 1.10 on two machines). The two differ in one way: a point
@@ -240,3 +283,11 @@ Not checked: that the map shows real groups. See above.
 - Dong, W., Charikar, M., and Li, K. (2011). Efficient k-nearest neighbor graph construction for
   generic similarity measures. *Proceedings of the 20th International Conference on World Wide
   Web*, pp. 577-586. <https://doi.org/10.1145/1963405.1963487>
+- Reichmann, L., Hägele, D., and Weiskopf, D. (2024). Out-of-core dimensionality reduction for
+  large data via out-of-sample extensions. arXiv:2408.04129. It states that no paper describes the
+  out-of-sample extension of UMAP (section 3.2.1). <https://arxiv.org/abs/2408.04129>
+- uwot documentation. Embedding New Data. Article of the R package uwot (version 0.2.5.9000).
+  <https://jlmelville.github.io/uwot/articles/embedding-new-data.html>
+- umap-learn documentation. Transforming New Data with UMAP, and the `transform` method in
+  `umap/umap_.py`, which lowers the local connectivity by one for new points.
+  <https://umap-learn.readthedocs.io/en/latest/transform.html>

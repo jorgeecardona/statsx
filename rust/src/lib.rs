@@ -60,6 +60,8 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gmm::gmm_fit, m)?)?;
     m.add_function(wrap_pyfunction!(gmm::gmm_score, m)?)?;
     m.add_function(wrap_pyfunction!(umap::umap_knn, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_knn_between, m)?)?;
+    m.add_function(wrap_pyfunction!(umap::umap_place, m)?)?;
     m.add_function(wrap_pyfunction!(umap::umap_fuzzy, m)?)?;
     m.add_function(wrap_pyfunction!(umap::umap_components, m)?)?;
     m.add_function(wrap_pyfunction!(umap::umap_spectral, m)?)?;

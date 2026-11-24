@@ -95,3 +95,19 @@ needs:
       - "test:tests/test_umap.py::test_neighbor_preservation_with_the_cosine_distance_equals_its_definition"
       - "test:tests/test_umap.py::test_the_cosine_distance_refuses_a_row_of_zeros_and_an_unknown_metric_is_refused"
     must: false
+
+  - id: CL-6
+    text: >
+      When the caller has a finished UMAP map and new rows arrive, they can place the new rows in the
+      map without changing it, and see how far each is from the training data. It is the second
+      step of replacing fastumap with statsx.
+    sources:
+      - {kind: primary, date: 2026-11-24, who: maintainer, quote: "finish the features first, then archive"}
+    proofs:
+      - "test:tests/test_umap.py::test_a_new_point_starts_at_the_weighted_mean_of_its_neighbours"
+      - "test:tests/test_umap.py::test_new_points_keep_their_neighbours_about_as_well_as_the_training_points"
+      - "test:tests/test_umap.py::test_a_training_point_placed_again_lands_near_its_own_position"
+      - "test:tests/test_umap.py::test_the_placement_does_not_depend_on_threads_and_follows_the_seed"
+      - "test:tests/test_umap.py::test_the_cosine_placement_finds_the_exact_cosine_neighbours"
+      - "test:tests/test_umap.py::test_transform_refuses_bad_input_and_the_fit_keeps_its_own_copy_of_the_data"
+    must: false

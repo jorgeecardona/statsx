@@ -408,3 +408,98 @@ def test_the_cosine_distance_refuses_a_row_of_zeros_and_an_unknown_metric_is_ref
         umap(x, n_neighbors=5, metric="manhattan")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="metric must be one of"):
         neighbor_preservation(x, x[:, :2], 5, metric="manhattan")  # type: ignore[arg-type]
+
+
+def _split_roll() -> tuple[F64, F64]:
+    roll = _swiss_roll(1250, 0)
+    return roll[:1000], roll[1000:]
+
+
+def test_a_new_point_starts_at_the_weighted_mean_of_its_neighbours() -> None:
+    train, test = _split_roll()
+    fit = umap(train, n_neighbors=12, n_epochs=2)
+    placed = fit.transform(test[:60], n_epochs=0)
+    full = np.sqrt(((test[:60, None, :] - train[None, :, :]) ** 2).sum(axis=2))
+    assert np.array_equal(placed.neighbors, np.argsort(full, axis=1, kind="stable")[:, :12])
+    for i in range(60):
+        d = placed.distances[i]
+        # rho is 0 for a new point (local connectivity 0), so the weight is exp(-d / sigma)
+        w = np.exp(-d / placed.sigma[i])
+        assert w.sum() == pytest.approx(math.log2(12), abs=1e-9)  # the equation of section 3.1
+        mean = (w[:, None] * fit.embedding[placed.neighbors[i]]).sum(axis=0) / w.sum()
+        assert np.allclose(placed.embedding[i], mean, rtol=0.0, atol=1e-12)
+    assert placed.n_points == 60
+    assert placed.n_epochs == 0
+
+
+def _shared_with_map(train_map: F64, placed_map: F64, neighbors: npt.NDArray[np.int64]) -> float:
+    near, _ = _accel.umap_knn_between(train_map, placed_map, neighbors.shape[1], 2)
+    return float((neighbors[:, :, None] == near[:, None, :]).any(axis=2).mean())
+
+
+def test_new_points_keep_their_neighbours_about_as_well_as_the_training_points() -> None:
+    train, test = _split_roll()
+    fit = umap(train)
+    placed = fit.transform(test)
+    k = fit.n_neighbors
+    # the share of each new point's k nearest training points that are among its k nearest in the map
+    shared = _shared_with_map(fit.embedding, placed.embedding, placed.neighbors[:, :k])
+    own = neighbor_preservation(train, fit.embedding)
+    assert shared > 0.6
+    assert shared > own - 0.15
+
+
+def test_a_training_point_placed_again_lands_near_its_own_position() -> None:
+    train, _ = _split_roll()
+    fit = umap(train)
+    again = fit.transform(train[:200]).embedding
+    moved = np.sqrt(((again - fit.embedding[:200]) ** 2).sum(axis=1))
+    between = _pairwise(fit.embedding[:200]) + np.diag(np.full(200, np.inf))
+    assert np.median(moved) < 0.6 * np.median(between.min(axis=1))
+
+
+def test_the_placement_does_not_depend_on_threads_and_follows_the_seed() -> None:
+    train, test = _split_roll()
+    fit = umap(train, n_epochs=50)
+    one = fit.transform(test, threads=1)
+    three = fit.transform(test, threads=3)
+    assert np.array_equal(one.embedding, three.embedding)
+    assert np.array_equal(one.embedding, fit.transform(test).embedding)
+    assert not np.array_equal(one.embedding, fit.transform(test, seed=99).embedding)
+    # the first row of a call has the same stream whatever follows it
+    assert np.array_equal(fit.transform(test[:1]).embedding[0], one.embedding[0])
+    assert one.seed == fit.seed
+
+
+def test_the_cosine_placement_finds_the_exact_cosine_neighbours() -> None:
+    x, _ = _scaled_points(n=100)
+    new = _scaled_points(n=15, seed=8)[0]
+    fit = umap(x, n_neighbors=8, metric="cosine", n_epochs=5)
+    placed = fit.transform(new, n_epochs=3)
+    cross = 1.0 - (new @ x.T) / (
+        np.sqrt((new * new).sum(axis=1))[:, None] * np.sqrt((x * x).sum(axis=1))[None, :]
+    )
+    order = np.argsort(cross, axis=1)[:, :8]
+    assert np.array_equal(np.sort(placed.neighbors, axis=1), np.sort(order, axis=1))
+    assert np.allclose(placed.distances, np.take_along_axis(cross, order, axis=1), atol=1e-12)
+    assert np.array_equal(placed.neighbors, fit.transform(2.5 * new, n_epochs=3).neighbors)
+
+
+def test_transform_refuses_bad_input_and_the_fit_keeps_its_own_copy_of_the_data() -> None:
+    x = _blobs(40, 5)
+    fit = umap(x, n_neighbors=6, n_epochs=2)
+    with pytest.raises(ValueError, match="columns"):
+        fit.transform(x[:, :4])
+    with pytest.raises(ValueError, match="n_epochs"):
+        fit.transform(x[:3], n_epochs=-1)
+    with pytest.raises(ValueError, match="finite"):
+        fit.transform(np.full((2, 5), np.nan))
+    cosine = umap(x + 5.0, n_neighbors=6, metric="cosine", n_epochs=2)
+    with pytest.raises(ValueError, match="row of zeros"):
+        cosine.transform(np.zeros((1, 5)))
+    assert fit.transform(x[:1]).embedding.shape == (1, 2)
+    # a change of the caller's array must not change the fit
+    before = fit.transform(x[:5], n_epochs=0).embedding.copy()
+    x[:] = 0.0
+    assert np.array_equal(fit.transform(_blobs(40, 5)[:5], n_epochs=0).embedding, before)
+    assert not fit.data.flags.writeable

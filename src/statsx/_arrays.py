@@ -24,11 +24,11 @@ def resolve_threads(threads: int | None) -> int:
     return threads
 
 
-def as_points(x: npt.ArrayLike) -> npt.NDArray[np.float64]:
-    """Return ``x`` as a C-contiguous float array of shape (n, d), n >= 2, with finite values."""
+def as_points(x: npt.ArrayLike, *, min_rows: int = MATRIX) -> npt.NDArray[np.float64]:
+    """Return ``x`` as a C-contiguous float array of shape (n, d), n >= ``min_rows``, finite."""
     a = np.ascontiguousarray(x, dtype=np.float64)
-    if a.ndim != MATRIX or a.shape[0] < MATRIX or a.shape[1] < 1:
-        raise ValueError("x must have shape (n, d) with at least 2 rows and 1 column")
+    if a.ndim != MATRIX or a.shape[0] < min_rows or a.shape[1] < 1:
+        raise ValueError(f"x must have shape (n, d) with at least {min_rows} rows and 1 column")
     if not np.all(np.isfinite(a)):
         raise ValueError("x must be finite")
     return a

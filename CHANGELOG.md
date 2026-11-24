@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `UMAPFit.transform(x)` places new points in a finished UMAP map without changing it, from
+  their exact nearest training points. No paper describes this step; the docs say which
+  description it follows. `UMAPFit` now keeps the fitted data.
 - `umap(x, metric="cosine")` maps rows by the angle between them, for embeddings whose length
   means nothing. `neighbor_preservation` takes the same `metric`.
 - `statsx.embedding.umap`: UMAP from the paper, in Rust. It builds the weighted neighbour graph,

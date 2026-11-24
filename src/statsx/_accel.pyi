@@ -116,6 +116,20 @@ def gmm_score(
 def umap_knn(
     data: npt.NDArray[np.float64], k: int, threads: int
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]: ...
+def umap_knn_between(
+    reference: npt.NDArray[np.float64], query: npt.NDArray[np.float64], k: int, threads: int
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]: ...
+def umap_place(
+    embedding: npt.NDArray[np.float64],
+    idx: npt.NDArray[np.int64],
+    dist: npt.NDArray[np.float64],
+    a: float,
+    b: float,
+    n_epochs: int,
+    n_neg: int,
+    seed: int,
+    threads: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
 def umap_fuzzy(
     idx: npt.NDArray[np.int64], dist: npt.NDArray[np.float64]
 ) -> tuple[

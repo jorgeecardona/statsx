@@ -21,6 +21,10 @@
 //! Shao, Yang & Gu (2018), SIAM J. Sci. Comput. 40(5):C655-C676, discuss this). The small dense
 //! eigenproblems use Jacobi's method (Jacobi 1846), sweeping all pairs in a fixed order.
 //!
+//! New points are placed in a finished layout by the same Algorithm 5 with the training points held
+//! fixed (`place`), with local connectivity 0 as the uwot vignette and umap-learn do. No paper
+//! describes this (Reichmann et al. 2024 say so); decision D-68.
+//!
 //! The neighbours are exact (blocked matrix products, as in `density`), not the approximate
 //! nearest-neighbour descent of Dong, Charikar & Li (2011) that the paper prefers.
 //!
@@ -56,16 +60,23 @@ const BISECT: usize = 100;
 
 /// The `k` nearest other points of each point: indices and distances, nearest first, ties by index.
 fn knn(p: &Points, k: usize) -> (Vec<usize>, Vec<f64>) {
-    let parts: Vec<(Vec<usize>, Vec<f64>)> = (0..blocks(p.n))
+    search(p, 0, p.n, p.n, k)
+}
+
+/// The `k` nearest of the rows `0..refs` for each of the rows `q0..q1`, nearest first, ties by
+/// index. A row never counts as its own neighbour. When the queries come after the references
+/// (`q0 >= refs`) no row is one of its own candidates, so nothing is skipped.
+fn search(p: &Points, q0: usize, q1: usize, refs: usize, k: usize) -> (Vec<usize>, Vec<f64>) {
+    let parts: Vec<(Vec<usize>, Vec<f64>)> = (0..blocks(q1 - q0))
         .into_par_iter()
         .map(|b| {
-            let r0 = b * ROWS;
-            let rows = ROWS.min(p.n - r0);
+            let r0 = q0 + b * ROWS;
+            let rows = ROWS.min(q1 - r0);
             let mut best: Vec<Vec<(f64, usize)>> = vec![Vec::with_capacity(k + 1); rows];
             let mut scratch = vec![0.0; rows * COLS];
             let mut c0 = 0;
-            while c0 < p.n {
-                let cols = COLS.min(p.n - c0);
+            while c0 < refs {
+                let cols = COLS.min(refs - c0);
                 p.gram(r0, rows, c0, cols, &mut scratch);
                 for r in 0..rows {
                     let list = &mut best[r];
@@ -99,8 +110,8 @@ fn knn(p: &Points, k: usize) -> (Vec<usize>, Vec<f64>) {
             (idx, dist)
         })
         .collect();
-    let mut idx = Vec::with_capacity(p.n * k);
-    let mut dist = Vec::with_capacity(p.n * k);
+    let mut idx = Vec::with_capacity((q1 - q0) * k);
+    let mut dist = Vec::with_capacity((q1 - q0) * k);
     for (i, d) in parts {
         idx.extend(i);
         dist.extend(d);
@@ -113,9 +124,14 @@ fn knn(p: &Points, k: usize) -> (Vec<usize>, Vec<f64>) {
 
 /// `rho` and `sigma` of one point from its neighbour distances (section 3.1).
 fn smooth_knn(dists: &[f64]) -> (f64, f64) {
-    let k = dists.len();
     let rho = dists.iter().copied().filter(|&d| d > 0.0).fold(f64::INFINITY, f64::min);
     let rho = if rho.is_finite() { rho } else { 0.0 };
+    (rho, solve_sigma(dists, rho))
+}
+
+/// The `sigma` that solves `sum_j exp(-max(0, d_j - rho) / sigma) = log2(k)` for a given `rho`.
+fn solve_sigma(dists: &[f64], rho: f64) -> f64 {
+    let k = dists.len();
     let target = (k as f64).log2();
     let total = |sigma: f64| -> f64 { dists.iter().map(|&d| (-(d - rho).max(0.0) / sigma).exp()).sum() };
     // The sum grows with sigma, from the number of neighbours at distance rho (or less) up to k.
@@ -134,7 +150,7 @@ fn smooth_knn(dists: &[f64]) -> (f64, f64) {
             hi = mid;
         }
     }
-    (rho, 0.5 * (lo + hi))
+    0.5 * (lo + hi)
 }
 
 type Csr = (Vec<usize>, Vec<usize>, Vec<f64>);
@@ -422,6 +438,75 @@ fn dist2(y: &[f64], dim: usize, i: usize, j: usize) -> f64 {
     s
 }
 
+/// Moves one point by the edges that start at it and by its negative samples (Algorithm 5).
+///
+/// `heads` are the other ends of its edges and `weights` the probabilities of sampling them. The
+/// other ends and the negative samples are rows of `others`, read as they are. `own` is the row
+/// of `others` that is this point itself, which a negative sample skips.
+#[allow(clippy::too_many_arguments)]
+fn move_point(
+    pos: &mut [f64],
+    rng: &mut Rng,
+    others: &[f64],
+    dim: usize,
+    heads: &[usize],
+    weights: &[f64],
+    own: Option<usize>,
+    ab: (f64, f64),
+    alpha: f64,
+    n_neg: usize,
+) {
+    let n_others = others.len() / dim;
+    let (a, b) = ab;
+    for (e, &j) in heads.iter().enumerate() {
+        if rng.uniform() >= weights[e] {
+            continue;
+        }
+        // Attraction: the gradient of log Phi, -2ab r^(2(b-1)) / (1 + a r^(2b)) (y_i - y_j).
+        let mut r2 = 0.0;
+        for c in 0..dim {
+            let t = pos[c] - others[j * dim + c];
+            r2 += t * t;
+        }
+        if r2 > 0.0 {
+            let coef = attraction(r2, a, b);
+            for c in 0..dim {
+                pos[c] += alpha * clip(coef * (pos[c] - others[j * dim + c]));
+            }
+        }
+        // Repulsion: the gradient of log(1 - Phi), 2b / ((eps + r^2)(1 + a r^(2b))) (y_i - y_k).
+        for _ in 0..n_neg {
+            let kk = rng.below(n_others as u64) as usize;
+            if Some(kk) == own {
+                continue;
+            }
+            let mut r2 = 0.0;
+            for c in 0..dim {
+                let t = pos[c] - others[kk * dim + c];
+                r2 += t * t;
+            }
+            if r2 > 0.0 {
+                let coef = repulsion(r2, a, b);
+                for c in 0..dim {
+                    pos[c] += alpha * clip(coef * (pos[c] - others[kk * dim + c]));
+                }
+            } else {
+                // Coinciding points have no direction to move in; push all the same way.
+                for c in 0..dim {
+                    pos[c] += alpha * CLIP;
+                }
+            }
+        }
+    }
+}
+
+/// The seed of the random stream of one point in one epoch.
+fn point_stream(stream: u64, epoch_index: u64, i: usize) -> u64 {
+    stream
+        ^ epoch_index.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        ^ (i as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f)
+}
+
 /// One epoch of Algorithm 5. Every point is moved by the edges that start at it and by its own
 /// negative samples, the other end being read at its position at the start of the epoch.
 #[allow(clippy::too_many_arguments)]
@@ -436,59 +521,25 @@ fn epoch(
     stream: u64,
     epoch_index: u64,
 ) {
-    let n = cur.len() / dim;
-    let (a, b) = ab;
     let (indptr, indices, weights) = g;
     next.par_chunks_mut(CHUNK * dim).enumerate().for_each(|(c, chunk)| {
         for (r, out) in chunk.chunks_mut(dim).enumerate() {
             let i = c * CHUNK + r;
-            let mut rng = Rng::new(
-                stream
-                    ^ epoch_index.wrapping_mul(0x9e37_79b9_7f4a_7c15)
-                    ^ (i as u64).wrapping_mul(0xc2b2_ae3d_27d4_eb4f),
-            );
+            let mut rng = Rng::new(point_stream(stream, epoch_index, i));
             let mut pos: Vec<f64> = cur[i * dim..(i + 1) * dim].to_vec();
-            for e in indptr[i]..indptr[i + 1] {
-                if rng.uniform() >= weights[e] {
-                    continue;
-                }
-                let j = indices[e];
-                // Attraction: the gradient of log Phi, -2ab r^(2(b-1)) / (1 + a r^(2b)) (y_i - y_j).
-                let mut r2 = 0.0;
-                for c in 0..dim {
-                    let t = pos[c] - cur[j * dim + c];
-                    r2 += t * t;
-                }
-                if r2 > 0.0 {
-                    let coef = attraction(r2, a, b);
-                    for c in 0..dim {
-                        pos[c] += alpha * clip(coef * (pos[c] - cur[j * dim + c]));
-                    }
-                }
-                // Repulsion: the gradient of log(1 - Phi), 2b / ((eps + r^2)(1 + a r^(2b))) (y_i - y_k).
-                for _ in 0..n_neg {
-                    let kk = rng.below(n as u64) as usize;
-                    if kk == i {
-                        continue;
-                    }
-                    let mut r2 = 0.0;
-                    for c in 0..dim {
-                        let t = pos[c] - cur[kk * dim + c];
-                        r2 += t * t;
-                    }
-                    if r2 > 0.0 {
-                        let coef = repulsion(r2, a, b);
-                        for c in 0..dim {
-                            pos[c] += alpha * clip(coef * (pos[c] - cur[kk * dim + c]));
-                        }
-                    } else {
-                        // Coinciding points have no direction to move in; push all the same way.
-                        for c in 0..dim {
-                            pos[c] += alpha * CLIP;
-                        }
-                    }
-                }
-            }
+            let (lo, hi) = (indptr[i], indptr[i + 1]);
+            move_point(
+                &mut pos,
+                &mut rng,
+                cur,
+                dim,
+                &indices[lo..hi],
+                &weights[lo..hi],
+                Some(i),
+                ab,
+                alpha,
+                n_neg,
+            );
             out.copy_from_slice(&pos);
         }
     });
@@ -511,6 +562,61 @@ fn layout(
         let alpha = 1.0 - e as f64 / n_epochs as f64;
         epoch(&cur, &mut next, dim, g, ab, alpha, n_neg, seed, e as u64);
         std::mem::swap(&mut cur, &mut next);
+    }
+    cur
+}
+
+/// New points placed in a fixed layout.
+///
+/// Row `i` of `idx` and `w` holds the `k` training neighbours of new point `i` and the weights of
+/// those edges (section 3.1). The start is the weighted mean of the neighbours' positions. Then
+/// each epoch runs Algorithm 5 for the new point alone: its edges attract it, and negative samples
+/// drawn from the training points repel it. The training positions never move and the new points
+/// do not see each other, so each point has its own stream, seeded by (seed, epoch, point), and
+/// the result does not depend on the number of threads. Decision D-68.
+#[allow(clippy::too_many_arguments)]
+fn place(
+    train: &[f64],
+    dim: usize,
+    idx: &[usize],
+    w: &[f64],
+    k: usize,
+    ab: (f64, f64),
+    n_epochs: usize,
+    n_neg: usize,
+    seed: u64,
+) -> Vec<f64> {
+    let m = idx.len() / k;
+    let mut cur = vec![0.0; m * dim];
+    for i in 0..m {
+        let total: f64 = w[i * k..(i + 1) * k].iter().sum();
+        for e in 0..k {
+            let j = idx[i * k + e];
+            for c in 0..dim {
+                cur[i * dim + c] += w[i * k + e] * train[j * dim + c] / total;
+            }
+        }
+    }
+    for e in 0..n_epochs {
+        let alpha = 1.0 - e as f64 / n_epochs as f64;
+        cur.par_chunks_mut(CHUNK * dim).enumerate().for_each(|(c, chunk)| {
+            for (r, pos) in chunk.chunks_mut(dim).enumerate() {
+                let i = c * CHUNK + r;
+                let mut rng = Rng::new(point_stream(seed, e as u64, i));
+                move_point(
+                    pos,
+                    &mut rng,
+                    train,
+                    dim,
+                    &idx[i * k..(i + 1) * k],
+                    &w[i * k..(i + 1) * k],
+                    None,
+                    ab,
+                    alpha,
+                    n_neg,
+                );
+            }
+        });
     }
     cur
 }
@@ -746,6 +852,88 @@ pub fn umap_layout<'py>(
     Ok(out.into_pyarray_bound(py))
 }
 
+/// The `k` nearest of the rows of `reference` for each row of `query`, exact: indices into
+/// `reference` and distances, nearest first.
+#[pyfunction]
+pub fn umap_knn_between<'py>(
+    py: Python<'py>,
+    reference: PyReadonlyArray2<'py, f64>,
+    query: PyReadonlyArray2<'py, f64>,
+    k: usize,
+    threads: usize,
+) -> PyResult<KnnOut<'py>> {
+    let (n, dim) = (reference.shape()[0], reference.shape()[1]);
+    let m = query.shape()[0];
+    if query.shape()[1] != dim || m == 0 || k == 0 || k > n || dim == 0 {
+        return Err(PyValueError::new_err("need 1 <= k <= n and queries with the same columns"));
+    }
+    let mut flat: Vec<f64> = reference.as_array().iter().copied().collect();
+    flat.extend(query.as_array().iter().copied());
+    let pool = pool(threads)?;
+    let (idx, dist) =
+        py.allow_threads(|| pool.install(|| search(&Points::new(&flat, n + m, dim), n, n + m, n, k)));
+    let idx = Array2::from_shape_vec((m, k), idx.into_iter().map(|x| x as i64).collect())
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let dist = Array2::from_shape_vec((m, k), dist).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((idx.into_pyarray_bound(py), dist.into_pyarray_bound(py)))
+}
+
+type PlaceOut<'py> = (Bound<'py, PyArray2<f64>>, Bound<'py, PyArray1<f64>>);
+
+/// Places new points in a fixed layout from their training neighbours: the positions, then the
+/// `sigma` of each new point. The weights have `rho = 0` (local connectivity 0): a new point is
+/// not forced to be fully connected to its nearest training point, as in uwot and umap-learn.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub fn umap_place<'py>(
+    py: Python<'py>,
+    embedding: PyReadonlyArray2<'py, f64>,
+    idx: PyReadonlyArray2<'py, i64>,
+    dist: PyReadonlyArray2<'py, f64>,
+    a: f64,
+    b: f64,
+    n_epochs: usize,
+    n_neg: usize,
+    seed: u64,
+    threads: usize,
+) -> PyResult<PlaceOut<'py>> {
+    let (n, dim) = (embedding.shape()[0], embedding.shape()[1]);
+    let (m, k) = (idx.shape()[0], idx.shape()[1]);
+    if dist.shape() != [m, k] || m == 0 || k < 2 || dim == 0 || !(a > 0.0 && b > 0.0) {
+        return Err(PyValueError::new_err("need matching (m, k) tables with k >= 2 and a, b > 0"));
+    }
+    let table: Vec<usize> = idx
+        .as_array()
+        .iter()
+        .map(|&x| usize::try_from(x).ok().filter(|&j| j < n))
+        .collect::<Option<_>>()
+        .ok_or_else(|| PyValueError::new_err("neighbour index out of range"))?;
+    let d: Vec<f64> = dist.as_array().iter().copied().collect();
+    if d.iter().any(|v| !v.is_finite() || *v < 0.0) {
+        return Err(PyValueError::new_err("distances must be finite and not negative"));
+    }
+    let train: Vec<f64> = embedding.as_array().iter().copied().collect();
+    let mut sigma = vec![0.0; m];
+    let mut weight = vec![0.0; m * k];
+    for i in 0..m {
+        let row = &d[i * k..(i + 1) * k];
+        let s = solve_sigma(row, 0.0);
+        sigma[i] = s;
+        for (e, &dj) in row.iter().enumerate() {
+            weight[i * k + e] = (-dj / s).exp();
+        }
+    }
+    let pool = pool(threads)?;
+    let out = py.allow_threads(|| {
+        pool.install(|| place(&train, dim, &table, &weight, k, (a, b), n_epochs, n_neg, seed))
+    });
+    let out = Array2::from_shape_vec((m, dim), out).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((
+        out.into_pyarray_bound(py),
+        Array1::from_vec(sigma).into_pyarray_bound(py),
+    ))
+}
+
 /// The cross entropy of Definition 10 between the graph and the embedding, over all pairs.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
@@ -862,5 +1050,31 @@ mod tests {
         let nu = 1.0 / (1.0 + a);
         let g: Csr = (vec![0, 1, 2], vec![1, 0], vec![nu, nu]);
         assert!(cross_entropy(&y, 2, &g, (a, b)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_search_between_two_sets_equals_the_brute_force_answer() {
+        let (n, m, dim, k) = (300, 70, 4, 6);
+        let mut rng = Rng::new(11);
+        let flat: Vec<f64> = (0..(n + m) * dim).map(|_| rng.normal()).collect();
+        let p = Points::new(&flat, n + m, dim);
+        let (idx, dist) = search(&p, n, n + m, n, k);
+        for q in 0..m {
+            let mut all: Vec<(f64, usize)> = (0..n).map(|j| (p.exact_d2(n + q, j), j)).collect();
+            all.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            for e in 0..k {
+                assert_eq!(idx[q * k + e], all[e].1);
+                assert!((dist[q * k + e] - all[e].0.sqrt()).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn a_new_point_with_one_heavy_edge_is_attracted_to_its_neighbour() {
+        // One new point, two training points far apart. The edge to the first has weight 1 and
+        // the second has weight 0, so with no negative samples the point ends at the first.
+        let train = [0.0, 0.0, 10.0, 0.0];
+        let out = place(&train, 2, &[0, 1], &[1.0, 0.0], 2, (1.5769, 0.8951), 200, 0, 1);
+        assert!(out[0].abs() < 1e-6 && out[1].abs() < 1e-6, "{out:?}");
     }
 }

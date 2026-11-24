@@ -27,8 +27,13 @@ dissimilarity can feed it. The cosine distance is not a metric (it breaks the tr
 inequality), and the paper states its theory for metric spaces, so the cosine map is a use of the
 construction beyond what the paper proves.
 
-Not in the paper, so not here: mapping new points into an existing map (the paper lists it as
-future work, section 7), and supervised maps.
+``UMAPFit.transform`` places new points in a finished map. The paper lists this as future work
+(section 7) and no paper describes it (Reichmann et al. 2024 say so, section 3.2.1). It is
+Algorithm 5 run for the new points alone with the training points held fixed, the method that the
+uwot vignette on embedding new data describes, and umap-learn follows. It is a statsx
+implementation of that description and not a published algorithm: the docs say so.
+
+Not in the paper, so not here: supervised maps.
 
 References:
     McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and
@@ -52,6 +57,14 @@ References:
     Tang, J., Liu, J., Zhang, M., & Mei, Q. (2016). Visualizing large-scale and high-dimensional
     data. *Proceedings of the 25th International Conference on World Wide Web*, pp. 287-297.
     https://doi.org/10.1145/2872427.2883041.
+
+    Reichmann, L., Hägele, D., & Weiskopf, D. (2024). Out-of-core dimensionality reduction for
+    large data via out-of-sample extensions. arXiv:2408.04129. States that no paper describes the
+    out-of-sample extension of UMAP. https://arxiv.org/abs/2408.04129.
+
+    uwot documentation, "Embedding New Data" (article of the R package uwot, version 0.2.5.9000).
+    Describes the placement of new points in a fixed map.
+    https://jlmelville.github.io/uwot/articles/embedding-new-data.html.
 """
 
 from __future__ import annotations
@@ -72,6 +85,12 @@ _METRICS = ("euclidean", "cosine")
 
 _SAME_DIRECTION = 1e-14
 """Unit rows closer than this are one direction: it is rounding of the normalised coordinates."""
+
+_MIN_TRANSFORM_EPOCHS = 30
+"""Fewest epochs of ``transform`` by default."""
+
+_TRANSFORM_SHARE = 3
+"""``transform`` runs one third of the epochs of the fit by default."""
 
 _CURVE_END = 3.0
 """The curve of the paper is fitted on distances in (0, 3]: ``Psi`` has fallen to ``exp(-3)``."""
@@ -144,12 +163,44 @@ class FuzzyGraph:
 
 
 @dataclass(frozen=True, slots=True)
+class UMAPPlacement:
+    """New points placed in a finished map by ``UMAPFit.transform``.
+
+    Args:
+        embedding: The position of each new point, shape (m, dimensions).
+        neighbors: The ``n_neighbors`` nearest training points of each new point, shape (m, k),
+            as row numbers of the fitted data, nearest first.
+        distances: The distance to each of those in the metric of the fit, shape (m, k). The first
+            column is how far the new point is from the training data: compare it with the same
+            column of ``UMAPFit.distances``. A new point much farther out than the training points
+            lands where the map has no information.
+        sigma: The scale of each new point: the ``sigma`` with ``sum exp(-d / sigma) = log2(k)``.
+        n_epochs: Passes of the placement.
+        seed: The seed of the random sampling.
+    """
+
+    embedding: npt.NDArray[np.float64]
+    neighbors: npt.NDArray[np.int64]
+    distances: npt.NDArray[np.float64]
+    sigma: npt.NDArray[np.float64]
+    n_epochs: int
+    seed: int
+
+    @property
+    def n_points(self) -> int:
+        """The number of new points."""
+        return int(self.embedding.shape[0])
+
+
+@dataclass(frozen=True, slots=True)
 class UMAPFit:
     """A UMAP map and what it was built from.
 
     Args:
         embedding: The position of each point, shape (n, dimensions).
         graph: The weighted graph of the points.
+        data: The points that the map was built from, shape (n, d). ``transform`` finds the
+            neighbours of new points among them.
         neighbors: The ``n_neighbors`` nearest other points of each point, shape (n, k), nearest
             first.
         distances: The distance to each of those in ``metric``, shape (n, k).
@@ -173,6 +224,7 @@ class UMAPFit:
 
     embedding: npt.NDArray[np.float64]
     graph: FuzzyGraph
+    data: npt.NDArray[np.float64]
     neighbors: npt.NDArray[np.int64]
     distances: npt.NDArray[np.float64]
     metric: Metric
@@ -202,6 +254,78 @@ class UMAPFit:
     def n_neighbors(self) -> int:
         """The number of neighbours of each point."""
         return int(self.neighbors.shape[1])
+
+    def transform(
+        self,
+        x: npt.ArrayLike,
+        *,
+        n_epochs: int | None = None,
+        seed: int | None = None,
+        threads: int | None = None,
+    ) -> UMAPPlacement:
+        """Place new points in this map without changing it.
+
+        Each new point is joined to its ``n_neighbors`` nearest training points with the weights
+        of section 3.1 of the paper, except that ``rho`` is 0: the weight is ``exp(-d / sigma)``,
+        so the nearest point does not get weight 1 by force. uwot and umap-learn do the same for
+        new points (their local connectivity is lowered by one). The point starts at the weighted
+        mean of its neighbours' positions. Then it runs Algorithm 5: its edges attract it, and
+        training points drawn at random repel it. The training points never move and the new
+        points do not act on each other. The random stream of a point is seeded by its row number
+        in ``x``.
+
+        No paper describes this step (the paper lists it as future work, section 7). This is the
+        method of the uwot vignette on embedding new data, which umap-learn follows, written
+        again from that description. The neighbours are exact, and the result does not depend on
+        ``threads``.
+
+        Args:
+            x: The new points, shape (m, d) with the same ``d`` as the fitted data, finite.
+            n_epochs: Passes of the placement. 0 returns the weighted mean of the neighbours. The
+                default is a third of the epochs of the fit, at least 30. This is a choice of
+                statsx.
+            seed: Seed of the random sampling. Defaults to the seed of the fit.
+            threads: Worker threads. Defaults to the CPU count, at most 4.
+
+        Raises:
+            ValueError: If ``x`` has a different number of columns than the fitted data, if
+                ``n_epochs`` is negative, or if the fit used the cosine distance and a row of
+                ``x`` is all zeros.
+        """
+        new = as_points(x, min_rows=1)
+        if new.shape[1] != self.data.shape[1]:
+            raise ValueError(
+                f"x has {new.shape[1]} columns, the fitted data has {self.data.shape[1]}"
+            )
+        epochs = (
+            max(_MIN_TRANSFORM_EPOCHS, self.n_epochs // _TRANSFORM_SHARE)
+            if n_epochs is None
+            else n_epochs
+        )
+        if epochs < 0:
+            raise ValueError(f"n_epochs must be at least 0, got {epochs}")
+        stream = self.seed if seed is None else seed
+        workers = resolve_threads(threads)
+        idx, dist = _neighbors_between(self.data, new, self.n_neighbors, self.metric, workers)
+        position, sigma = _accel.umap_place(
+            self.embedding,
+            idx,
+            dist,
+            self.a,
+            self.b,
+            epochs,
+            self.negative_sample_rate,
+            stream,
+            workers,
+        )
+        return UMAPPlacement(
+            embedding=position,
+            neighbors=idx,
+            distances=dist,
+            sigma=sigma,
+            n_epochs=epochs,
+            seed=stream,
+        )
 
     def cross_entropy(self, *, threads: int | None = None) -> float:
         """Return the fuzzy set cross entropy of the map (Definition 10 of the paper).
@@ -368,6 +492,23 @@ def _neighbors(
     return idx, np.where(euclid <= _SAME_DIRECTION, 0.0, euclid * euclid / 2.0)
 
 
+def _neighbors_between(
+    reference: npt.NDArray[np.float64],
+    query: npt.NDArray[np.float64],
+    k: int,
+    metric: Metric,
+    workers: int,
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]:
+    """Return the ``k`` nearest rows of ``reference`` for each row of ``query``, and distances.
+
+    The cosine distance is handled as in ``_neighbors``.
+    """
+    if metric == "euclidean":
+        return _accel.umap_knn_between(reference, query, k, workers)
+    idx, euclid = _accel.umap_knn_between(_unit_rows(reference), _unit_rows(query), k, workers)
+    return idx, np.where(euclid <= _SAME_DIRECTION, 0.0, euclid * euclid / 2.0)
+
+
 def umap(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     *,
@@ -441,9 +582,12 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         seed,
         workers,
     )
+    kept = a.copy() if np.may_share_memory(a, x) else a
+    kept.flags.writeable = False
     return UMAPFit(
         embedding=embedding,
         graph=graph,
+        data=kept,
         neighbors=idx,
         distances=dist,
         metric=metric,
