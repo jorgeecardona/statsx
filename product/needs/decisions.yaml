@@ -1967,3 +1967,24 @@ decisions:
   consequences: 'On 600 unit rows in 128 dimensions with 8 centres the pick moves between 1 and 2 as
     n_reference goes through 2, 3, 5 and 10, and every run has a decision_margin below 1. On three well
     separated groups the margin is above 1.'
+
+- id: D-73
+  text: 'statsx.embedding.pca(x, k) is exact principal component analysis (Pearson 1901; Hotelling 1933): the
+    eigenvectors of the d x d scatter matrix, summed over blocks of 4096 rows, with numpy.linalg.eigh when
+    d <= n, and the right singular vectors of the centred data otherwise. Columns are centred and not
+    scaled. The entry of largest size in each component is made positive. k is from 1 to min(n - 1, d),
+    since later directions have no variance and are arbitrary. It returns the scores, components, mean and
+    variances, and transform for new rows. It is a function of its own, not a pca_dim argument of each
+    clustering call.'
+  needs:
+  - MG-10
+  alternatives:
+  - 'Randomized SVD (Halko, Martinsson & Tropp 2011): not used yet; the exact scatter matrix is cheap for
+    the widths in sight (1024 columns) and gives the same answer on every run. It can come with MG-5 if the
+    time says so.'
+  - 'A pca_dim argument on kmeans, hdbscan and umap, as fastumap has: not used; one function composes with
+    all of them, and the caller decides in which space centres and new points live.'
+  - 'A PCA kernel in Rust: not written; NumPy is already the only run time dependency, and its eigensolver
+    is a published, tested one.'
+  consequences: 'On 2000 rows of 256 columns with 8 groups the elbow on 8 components gives 8. PCA removes
+    groups that differ along a small-variance direction; a test and the docs show it.'

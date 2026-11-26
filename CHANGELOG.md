@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.embedding.pca` reduces wide data to its principal components, with `transform` for new
+  rows. On embeddings it lets `elbow_k` find groups that it misses on all the columns.
 - `choose_k` says when its pick is decided by noise: `decision_margin` is the closest comparison
   in standard errors, and `margins` holds each one. `k_min` starts the search above 1. The
   docstring states how many k-means fits a call runs. (#17)

@@ -26,6 +26,7 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `hdbscan(x, min_cluster_size=...)` | `statsx.clustering.hdbscan(x, min_cluster_size)` |
 | `neighbor_overlap(x, y, k)` | `neighbor_preservation(x, y, k)` |
 | `choose_k(x)` (the elbow) | `elbow_k(x).k` |
+| `pca_dim=m` | `pca(x, m).scores` first, then call `kmeans`, `hdbscan` or `umap` on it |
 | `choose_k(x, return_evidence=True)` | `elbow_k(x)`: `ks`, `inertia`, `inertia_rises` |
 
 Files saved by `fastumap` do not load in `statsx`. Fit again and save.
@@ -42,6 +43,8 @@ again after the switch.
   mean of the unit rows, which is shorter, so some labels differ.
 - Cosine HDBSCAN uses the densities of `1 - cos`. `fastumap` uses the Euclidean distance of the
   unit rows, so it can choose other clusters. Cosine `eps` is in `1 - cos` in both.
+- `pca_dim` in `fastumap` returns centres in the original columns. With `pca`, average the rows by
+  label yourself. For the cosine distance, scale the rows to length 1 before `pca`.
 - `eps` has no default in `dbscan`. Use `k_distances` to choose it.
 - `choose_k` means another thing: in `statsx` it is the gap statistic. The elbow is `elbow_k`.
   It takes no `max_samples`: sample the rows first if you need to. If you use the gap statistic,
@@ -56,7 +59,7 @@ In this order.
 |---|---|---|
 | MG-3 | `assign_clusters` with your centroids, `max_distance` | `predict` of a statsx fit only |
 | MG-4 | per-cluster `dispersion` | sizes only |
-| MG-5 | speed and memory at 1024 columns, `batch_size`, `pca_dim` | not measured |
+| MG-5 | speed and memory at 1024 columns, `batch_size` | not measured |
 | MG-6 | thread cap in containers, thread safety | up to 4 threads from the CPU count of the host |
 | MG-7 | `init=` | not there |
 | MG-8 | `y=` (supervised) | not there |

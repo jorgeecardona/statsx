@@ -105,6 +105,11 @@ True True
 `se` smaller: it is the spread of the reference `log W_k`, and with 2 or 3 references that spread
 is poorly estimated. When the margin is small, use `elbow_k` or decide on other grounds.
 
+A margin above 1 says that the pick is stable. It does not say that it is right.
+
+On data with many columns, reduce them with [PCA](pca.md) before you cluster: k-means can miss
+groups in hundreds of columns that it finds on the first components.
+
 `k_min` starts the rule at a larger `k`, if one cluster is no answer for you. The result can then
 never say 1.
 

@@ -1,4 +1,4 @@
-"""UMAP: a low-dimensional map of points, built from a graph of nearest neighbours.
+"""Fewer coordinates per point: UMAP maps and principal component analysis (PCA).
 
 ``umap`` follows McInnes, Healy & Melville (2018). It has two phases. First it builds a weighted
 graph: each point is joined to its ``n_neighbors`` nearest points, the weight of an edge falls with
@@ -35,7 +35,20 @@ implementation of that description and not a published algorithm: the docs say s
 
 Not in the paper, so not here: supervised maps.
 
+``pca`` projects points onto the directions along which they vary most (Pearson 1901; Hotelling
+1933). The projection is the linear one with the smallest squared reconstruction error. It is
+exact and uses NumPy's eigendecomposition. Use it to look at the linear structure, or to reduce
+wide data before clustering or ``umap``. It keeps the directions of largest variance, which are
+not always the directions that separate groups.
+
 References:
+    Pearson, K. (1901). On lines and planes of closest fit to systems of points in space.
+    *Philosophical Magazine* 2(11):559-572. https://doi.org/10.1080/14786440109462720.
+
+    Hotelling, H. (1933). Analysis of a complex of statistical variables into principal
+    components. *Journal of Educational Psychology* 24(6):417-441.
+    https://doi.org/10.1037/h0071325.
+
     McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and
     Projection for Dimension Reduction. arXiv:1802.03426 (version 3, 2020).
     https://arxiv.org/abs/1802.03426.
@@ -87,6 +100,9 @@ from statsx._arrays import (
     resolve_threads,
     unit_rows,
 )
+
+_PCA_BLOCK = 4096
+"""Rows per block of ``pca``, so that no second copy of the data is held."""
 
 _FORMAT = 1
 """Version of the ``.npz`` layout of ``UMAPFit.to_npz``. Raise it when the layout changes."""
@@ -807,3 +823,124 @@ def neighbor_preservation(
     near_y, _ = _accel.umap_knn(mapped, k, workers)
     shared = (near_x[:, :, None] == near_y[:, None, :]).any(axis=2).sum(axis=1)
     return float(shared.mean()) / k
+
+
+@dataclass(frozen=True, slots=True)
+class PCAFit:
+    """A principal component analysis of the rows of a data set.
+
+    Args:
+        scores: The coordinates of each row on the components, shape (n, k).
+        components: The directions, one per row, shape (k, d), of length 1 and at right angles,
+            largest variance first. In each, the entry of largest size is positive.
+        mean: The mean of the rows, shape (d,).
+        explained_variance: The variance of the rows along each component, divisor n - 1.
+        total_variance: The sum of the variances of the d columns, divisor n - 1.
+    """
+
+    scores: npt.NDArray[np.float64]
+    components: npt.NDArray[np.float64]
+    mean: npt.NDArray[np.float64]
+    explained_variance: npt.NDArray[np.float64]
+    total_variance: float
+
+    @property
+    def n_components(self) -> int:
+        """The number of components."""
+        return int(self.components.shape[0])
+
+    @property
+    def explained_variance_ratio(self) -> npt.NDArray[np.float64]:
+        """The share of the total variance along each component."""
+        return self.explained_variance / self.total_variance
+
+    def transform(self, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Return the coordinates of new rows on the components, shape (m, k).
+
+        Raises:
+            ValueError: If ``x`` is not a finite array with the columns of the fitted data.
+        """
+        a = as_points(x, min_rows=1)
+        if a.shape[1] != self.mean.shape[0]:
+            raise ValueError(
+                f"x has {a.shape[1]} columns, the fitted data has {self.mean.shape[0]}"
+            )
+        return _project(a, self.mean, self.components)
+
+
+def _project(
+    a: npt.NDArray[np.float64],
+    mean: npt.NDArray[np.float64],
+    components: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    out = np.empty((a.shape[0], components.shape[0]))
+    for start in range(0, a.shape[0], _PCA_BLOCK):
+        block = a[start : start + _PCA_BLOCK] - mean
+        out[start : start + _PCA_BLOCK] = block @ components.T
+    return out
+
+
+def _directions(
+    a: npt.NDArray[np.float64], mean: npt.NDArray[np.float64], k: int
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the first ``k`` principal directions as rows and the sum of squares along each."""
+    n, d = a.shape
+    if d <= n:
+        # eigenvectors of the d by d scatter matrix, summed over blocks of rows
+        scatter = np.zeros((d, d))
+        for start in range(0, n, _PCA_BLOCK):
+            block = a[start : start + _PCA_BLOCK] - mean
+            scatter += block.T @ block
+        values, vectors = np.linalg.eigh(scatter)  # ascending
+        return vectors[:, ::-1][:, :k].T, np.maximum(values[::-1][:k], 0.0)
+    # more columns than rows: the singular vectors of the centred data are the same directions
+    _, singular, vt = np.linalg.svd(a - mean, full_matrices=False)
+    return vt[:k], singular[:k] ** 2
+
+
+def pca(x: npt.ArrayLike, n_components: int) -> PCAFit:
+    """Return the first ``n_components`` principal components of the rows of ``x``.
+
+    The components are the eigenvectors of the covariance matrix with the largest eigenvalues
+    (Pearson 1901; Hotelling 1933). They are exact, not randomized. With d columns and n rows the
+    cost is O(n d^2 + d^3) when d <= n, and O(n^2 d) otherwise. The columns are centred and not
+    scaled: divide each by its standard deviation first if they have different units.
+
+    The sign of a component is arbitrary in the mathematics. Here the entry of largest size is
+    made positive. When two eigenvalues are equal, any pair of directions in their plane is a
+    valid answer, and another machine can return another pair.
+
+    NumPy's linear algebra library decides how many threads the products use.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        n_components: How many components, from 1 to min(n - 1, d).
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array, ``n_components`` is out of range, or
+            all rows are equal.
+    """
+    a = as_points(x)
+    n, d = a.shape
+    if not 1 <= n_components <= min(n - 1, d):
+        raise ValueError(
+            f"n_components must be between 1 and min(n - 1, d) = {min(n - 1, d)}, "
+            f"got {n_components}"
+        )
+    mean = a.mean(axis=0)
+    total = 0.0
+    for start in range(0, n, _PCA_BLOCK):
+        block = a[start : start + _PCA_BLOCK] - mean
+        total += float(np.einsum("ij,ij->", block, block))
+    if total <= 0.0:
+        raise ValueError("all rows are equal: there is no direction of variance")
+    components, squares = _directions(a, mean, n_components)
+    largest = components[np.arange(n_components), np.abs(components).argmax(axis=1)]
+    components = np.ascontiguousarray(components * np.where(largest < 0, -1.0, 1.0)[:, None])
+    return PCAFit(
+        scores=_project(a, mean, components),
+        components=components,
+        mean=mean,
+        explained_variance=squares / (n - 1),
+        total_variance=total / (n - 1),
+    )
