@@ -163,6 +163,7 @@ def umap_layout(
     b: float,
     n_epochs: int,
     n_neg: int,
+    learning_rate: float,
     seed: int,
     threads: int,
 ) -> npt.NDArray[np.float64]: ...

@@ -195,7 +195,17 @@ def test_the_layout_reaches_the_cross_entropy_of_the_sequential_algorithm() -> N
     y0 = rng.normal(0.0, 5.0, size=(n, 2))
     epochs = 100
     ours = _accel.umap_layout(
-        y0, fit.graph.indptr, fit.graph.indices, fit.graph.weights, fit.a, fit.b, epochs, 5, 3, 2
+        y0,
+        fit.graph.indptr,
+        fit.graph.indices,
+        fit.graph.weights,
+        fit.a,
+        fit.b,
+        epochs,
+        5,
+        1.0,
+        3,
+        2,
     )
     theirs = _sequential_layout(y0, fit.graph, fit.a, fit.b, epochs, 5, 3)
     start = _entropy(y0, fit.graph, fit.a, fit.b)
@@ -521,6 +531,8 @@ def _same_fit(a: UMAPFit, b: UMAPFit) -> bool:
         "n_graph_components",
         "n_random_start",
         "spectral_converged",
+        "learning_rate",
+        "start",
     )
     return (
         all(np.array_equal(getattr(a, f), getattr(b, f)) for f in arrays)
@@ -614,3 +626,151 @@ def test_a_file_with_values_a_fit_cannot_have_is_refused() -> None:
         UMAPFit.from_npz(_saved(fit, embedding=fit.embedding[:-1]))
     with pytest.raises(ValueError, match="metric must be one of"):
         UMAPFit.from_npz(_saved(fit, metric=np.array("manhattan")))
+
+
+def _groups(n: int, seed: int) -> tuple[F64, F64, F64]:
+    """Return ``n`` points in 8 Gaussian groups of 64 columns, ``n // 6`` more, and the centres."""
+    rng = np.random.default_rng(seed)
+    centres = rng.normal(0.0, 4.0, (8, 64))
+
+    def draw(m: int) -> F64:
+        return centres[rng.integers(0, 8, m)] + rng.normal(0.0, 1.0, (m, 64))
+
+    return draw(n), draw(n // 6), centres
+
+
+def _movement(a: F64, b: F64) -> float:
+    return float(np.median(np.linalg.norm(a - b, axis=1)))
+
+
+def test_zero_epochs_return_the_given_start_in_a_new_array() -> None:
+    x = _blobs(30, 4)
+    given = np.random.default_rng(3).normal(0.0, 5.0, (90, 2))
+    fit = umap(x, init=given, n_epochs=0)
+    assert np.array_equal(fit.embedding, given)
+    assert not np.shares_memory(fit.embedding, given)
+    assert (fit.start, fit.n_epochs) == ("init", 0)
+    assert fit.cross_entropy() > umap(x, init=given).cross_entropy()
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32])
+def test_the_layout_never_writes_the_callers_start(dtype: type[np.floating]) -> None:
+    x = _blobs(30, 4)
+    given = np.ascontiguousarray(umap(x, n_epochs=50).embedding, dtype=dtype)
+    before = given.copy()
+    given.flags.writeable = False
+    fit = umap(x, init=given, learning_rate=1.0)
+    assert np.array_equal(given, before)
+    assert not np.shares_memory(fit.embedding, given)
+    assert _movement(fit.embedding, np.asarray(before, dtype=np.float64)) > 0.1
+
+
+def test_a_turned_start_gives_a_turned_map() -> None:
+    x = _groups(300, seed=1)[0]
+    old = umap(x, seed=42).embedding
+    turned = (old - old.mean(axis=0)) @ np.array([[0.0, 1.0], [-1.0, 0.0]]) + old.mean(axis=0)
+    again = umap(x, init=turned, seed=5).embedding
+    assert _movement(again, turned) < 0.1 * _movement(again, old)
+
+
+def test_the_step_size_defaults_to_one_cold_and_a_tenth_with_a_start() -> None:
+    x = _groups(300, seed=2)[0]
+    cold = umap(x, seed=42)
+    warm = umap(x, init=cold.embedding)
+    assert (cold.learning_rate, cold.start) == (1.0, "spectral")
+    assert (warm.learning_rate, warm.start) == (0.1, "init")
+    assert np.array_equal(warm.embedding, umap(x, init=cold.embedding, learning_rate=0.1).embedding)
+    small = umap(x, init=cold.embedding, learning_rate=0.01).embedding
+    full = umap(x, init=cold.embedding, learning_rate=1.0).embedding
+    assert _movement(small, cold.embedding) < 0.5 * _movement(full, cold.embedding)
+
+
+def test_a_moving_window_placed_in_the_old_map_is_about_as_good_as_a_cold_map() -> None:
+    x, fresh, _ = _groups(600, seed=0)
+    old = umap(x, seed=42)
+    window = np.vstack([x[100:], fresh])
+    cold = umap(window, seed=42)
+    warm = umap(window, init=old.transform(window).embedding, seed=42)
+    kept_cold = neighbor_preservation(window, cold.embedding)
+    assert neighbor_preservation(window, warm.embedding) >= kept_cold - 0.03
+    assert warm.cross_entropy() <= 1.05 * cold.cross_entropy()  # the same graph for both
+    same = old.embedding[100:]
+    assert _movement(warm.embedding[:500], same) < 0.3 * _movement(cold.embedding[:500], same)
+
+
+def test_a_warm_map_does_not_depend_on_threads_and_counts_the_pieces_of_its_graph() -> None:
+    rng = np.random.default_rng(0)
+    x = np.vstack([rng.normal(0.0, 1.0, (60, 3)), rng.normal(100.0, 0.01, (3, 3))])
+    cold = umap(x, n_neighbors=2, n_epochs=20)
+    one = umap(x, n_neighbors=2, n_epochs=20, init=cold.embedding, threads=1)
+    many = umap(x, n_neighbors=2, n_epochs=20, init=cold.embedding, threads=3)
+    assert np.array_equal(one.embedding, many.embedding)
+    assert one.n_graph_components == cold.n_graph_components >= 2
+    assert (one.n_random_start, one.spectral_converged) == (0, True)
+
+
+def test_rows_that_start_on_the_same_position_come_apart() -> None:
+    x = _blobs(30, 4)
+    given = np.random.default_rng(1).normal(0.0, 5.0, (90, 2))
+    given[:10] = given[0]
+    fit = umap(x, init=given, n_epochs=50)
+    assert np.unique(fit.embedding[:10], axis=0).shape[0] == 10
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"init": np.zeros((89, 2))}, "init must have shape"),
+        ({"init": np.eye(90, 3)}, "init must have shape"),
+        ({"init": np.full((90, 2), np.nan)}, "init must be finite"),
+        ({"init": np.eye(90, 2) * 1e200}, "init must be finite and at most"),
+        ({"init": np.zeros((90, 2))}, "fewer than 2 dimensions"),
+        ({"init": np.outer(np.arange(90.0), [1.0, 2.0])}, "fewer than 2 dimensions"),
+        ({"init": np.eye(90, 2), "n_epochs": -1}, "n_epochs must be at least 0"),
+        ({"learning_rate": 0.0}, "learning_rate"),
+        ({"learning_rate": 1.5}, "learning_rate"),
+        ({"learning_rate": math.nan}, "learning_rate"),
+    ],
+)
+def test_a_bad_start_or_step_size_is_refused(kwargs: dict[str, object], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        umap(_blobs(30, 4), **kwargs)  # type: ignore[arg-type]
+
+
+def test_a_warm_fit_survives_a_save_and_a_load() -> None:
+    x = _blobs(30, 4)
+    start = umap(x, n_epochs=20).embedding
+    for epochs in (0, 10):
+        fit = umap(x, init=start, n_epochs=epochs, learning_rate=0.3)
+        buffer = io.BytesIO()
+        fit.to_npz(buffer)
+        buffer.seek(0)
+        assert _same_fit(fit, UMAPFit.from_npz(buffer))
+
+
+def test_a_file_of_format_version_1_loads_as_a_cold_fit() -> None:
+    # written by statsx 0.1.79: two groups of 20 points, n_neighbors 5, 20 epochs, seed 7
+    old = UMAPFit.from_npz(Path(__file__).parent / "data" / "umap_fit_v1.npz")
+    assert (old.learning_rate, old.start) == (1.0, "spectral")
+    assert (old.n_points, old.n_neighbors, old.n_epochs, old.seed) == (40, 5, 20, 7)
+    # the layout of 0.1.79 and of this version are the same, up to the last digits of a processor
+    now = umap(old.data, n_neighbors=5, n_epochs=20, seed=7)
+    assert now.graph.weights == pytest.approx(old.graph.weights, rel=1e-9)
+
+
+def test_a_warm_file_with_values_a_fit_cannot_have_is_refused() -> None:
+    x = _blobs(30, 4)
+    fit = umap(x, n_neighbors=5, n_epochs=2)
+    warm = umap(x, n_neighbors=5, n_epochs=0, init=fit.embedding)
+    for damaged in (
+        _saved(warm, counts=np.array([0, 5, 1, 1, 1])),
+        _saved(warm, start=np.array("random")),
+        _saved(fit, counts=np.array([0, 5, 1, 0, 1])),
+        _saved(fit, reals=np.array([fit.a, fit.b, fit.min_dist, 2.0])),
+    ):
+        with pytest.raises(ValueError, match="cannot have"):
+            UMAPFit.from_npz(damaged)
+    with pytest.raises(ValueError, match="do not fit together"):
+        UMAPFit.from_npz(_saved(fit, reals=np.array([fit.a, fit.b, fit.min_dist])))
+    with pytest.raises(ValueError, match="lacks"):
+        UMAPFit.from_npz(_without(fit, "start"))

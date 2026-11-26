@@ -2071,3 +2071,38 @@ decisions:
   consequences: 'Measured: CPUQuota 50% and 150% give 1 thread, 300% gives 3, 800% gives 4; docker run
     --cpus=0.5 gives 1; taskset on 2 CPUs gives 2. Two processes give the same bytes, and 16 calls from 8
     threads give the serial results. On a host that hides its limit the default stays up to 4.'
+
+- id: D-78
+  text: 'umap(x, init=y0) starts the layout of Algorithm 5 from the positions y0 instead of the spectral
+    start of Algorithm 4. y0 is a finite (n, dimensions) array, copied and used as given: no rescaling and
+    no noise, so a row starts where the caller put it and the caller''s array is never written. A start
+    whose rows lie in fewer than `dimensions` dimensions is refused, because every force is along a
+    difference of positions and the layout cannot leave that subspace. learning_rate is the first step
+    size of Algorithm 5, alpha = learning_rate (1 - e / n_epochs), in (0, 1]. The paper sets it to 1;
+    Tang et al. (2016) write the same schedule with the first value as a parameter. The default is 1
+    without init and 0.1 with it. The value 0.1 is a statsx choice and comes from no paper. n_epochs = 0
+    is allowed with init and returns the start with the graph of the new data. The fit records start
+    (spectral or init) and learning_rate; with init, n_random_start is 0 and spectral_converged is True
+    because no spectral start ran. The npz format is version 2 and the loader reads version 1 as
+    learning_rate 1 and a spectral start, which amends D-69. umap does not place new rows: the caller
+    places them with UMAPFit.transform (D-68).'
+  needs:
+  - MG-7
+  alternatives:
+  - 'A fill rule for NaN rows: not used; placing a row needs the old data and the old map, which transform
+    has and umap does not, and it would be a second unpublished placement.'
+  - 'Rescale the start to a fixed box, as umap-learn does: not used; it changes the scale and the shape of
+    the old map, and the two maps could not be compared.'
+  - 'Fewer epochs at step size 1: not used; 50 epochs lowered the neighbours kept from 0.35 to 0.29-0.30.'
+  - 'Step size 1 by default with init: not used; unchanged rows moved 2.5-5.3 against 1.1-1.4 at 0.1.'
+  - 'A step size above 1: refused; no source and no measurement.'
+  - 'Procrustes alignment of two maps: not written; no caller asked, and a shared start removes the
+    rotation.'
+  - 'Hold the carried rows fixed: not used; that is transform.'
+  consequences: 'On 600 points in 8 groups of 64 columns, 3 data sets, a window with 100 rows replaced and
+    every new row placed by transform: unchanged rows moved 1.1-1.4 on a map 58-60 wide, the map kept
+    0.385-0.389 of 15 neighbours against 0.354-0.358 for a cold fit, and the cross entropy was 0.96-0.98
+    of the cold fit. A row whose data changed and whose start stayed at the old position moved 7-9 of the
+    34-40 it needed at 0.1: the docs tell the caller to place such rows with transform or to pass
+    learning_rate 1. An unchanged row still moves, so movement is not a measure of change without a
+    baseline run.'

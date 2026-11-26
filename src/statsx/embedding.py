@@ -33,6 +33,13 @@ Algorithm 5 run for the new points alone with the training points held fixed, th
 uwot vignette on embedding new data describes, and umap-learn follows. It is a statsx
 implementation of that description and not a published algorithm: the docs say so.
 
+A map can be refreshed: ``umap(x, init=positions)`` runs Algorithm 5 from positions that the
+caller gives, in place of the spectral start of Algorithm 4. The first step size of Algorithm 5,
+which the paper sets to 1, is ``learning_rate``; LargeVis writes the same linear schedule with the
+first value as a parameter. The start decides the large-scale arrangement of a map (Kobak &
+Linderman 2021), so two maps that share a start can be compared point by point. A point whose data
+did not change still moves a little.
+
 Not in the paper, so not here: supervised maps.
 
 ``pca`` projects points onto the directions along which they vary most (Pearson 1901; Hotelling
@@ -61,6 +68,10 @@ References:
     LOBPCG. *SIAM Journal on Scientific Computing* 40(5):C655-C676.
     https://doi.org/10.1137/17M1129830.
 
+    Kobak, D., & Linderman, G. C. (2021). Initialization is critical for preserving global data
+    structure in both t-SNE and UMAP. *Nature Biotechnology* 39:156-157.
+    https://doi.org/10.1038/s41587-020-00809-z.
+
     Levenberg, K. (1944). A method for the solution of certain non-linear problems in least
     squares. *Quarterly of Applied Mathematics* 2(2):164-168.
 
@@ -86,7 +97,7 @@ import os
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO
+from typing import IO, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -104,8 +115,17 @@ from statsx._arrays import (
 _PCA_BLOCK = 4096
 """Rows per block of ``pca``, so that no second copy of the data is held."""
 
-_FORMAT = 1
+_FORMAT = 2
 """Version of the ``.npz`` layout of ``UMAPFit.to_npz``. Raise it when the layout changes."""
+
+_PAPER_RATE = 1.0
+"""First step size of Algorithm 5 in the paper: the default without ``init``."""
+
+_REFRESH_RATE = 0.1
+"""First step size by default with ``init``. A choice of statsx, from no paper (D-78)."""
+
+Start = Literal["spectral", "init"]
+"""Where the layout started: the eigenvectors of Algorithm 4, or positions given by the caller."""
 
 _MIN_TRANSFORM_EPOCHS = 30
 """Fewest epochs of ``transform`` by default."""
@@ -138,6 +158,9 @@ _LARGE = 10_000
 """Points above which the default number of epochs drops from 500 to 200."""
 
 _LM_ITERATIONS = 200
+
+_FARTHEST = 1e100
+"""Largest size of a coordinate of ``init``: squared distances must not overflow."""
 
 _MIN_NEIGHBORS = 2
 """Fewest neighbours: the weights of one neighbour always sum to 1, so sigma is undefined."""
@@ -234,13 +257,16 @@ class UMAPFit:
         min_dist: The distance below which the curve is fitted to 1.
         n_epochs: Passes of the layout.
         negative_sample_rate: Negative samples per sampled edge.
-        seed: The seed of the start and the layout.
-        n_graph_components: Connected components of the graph. Each one gets its own start.
+        seed: The seed of the start and the layout. With ``init`` it seeds the layout only.
+        n_graph_components: Connected components of the graph. A spectral start treats each one
+            on its own.
         n_random_start: Points whose component was too small for a spectral start and got a
             random one.
         spectral_converged: True when every spectral start reached the tolerance. When False the
             start is the last iterate, which is still a smooth map of the graph but not the
-            eigenvector.
+            eigenvector. Also True when no spectral start ran (``start`` is ``"init"``).
+        learning_rate: The first step size of the layout.
+        start: ``"spectral"``, or ``"init"`` when the caller gave the start positions.
     """
 
     embedding: npt.NDArray[np.float64]
@@ -260,6 +286,8 @@ class UMAPFit:
     n_graph_components: int
     n_random_start: int
     spectral_converged: bool
+    learning_rate: float
+    start: Start
 
     @property
     def n_points(self) -> int:
@@ -371,7 +399,9 @@ class UMAPFit:
             "graph_indptr": self.graph.indptr,
             "graph_indices": self.graph.indices,
             "graph_weights": self.graph.weights,
-            "reals": np.array([self.a, self.b, self.min_dist], dtype=np.float64),
+            "reals": np.array(
+                [self.a, self.b, self.min_dist, self.learning_rate], dtype=np.float64
+            ),
             "counts": np.array(
                 [
                     self.n_epochs,
@@ -384,6 +414,7 @@ class UMAPFit:
             ),
             "seed": np.uint64(self.seed),
             "metric": np.array(self.metric),
+            "start": np.array(self.start),
         }
         if isinstance(file, (str, os.PathLike)):
             with Path(file).open("wb") as handle:
@@ -394,6 +425,9 @@ class UMAPFit:
     @classmethod
     def from_npz(cls, file: str | os.PathLike[str] | IO[bytes]) -> UMAPFit:
         """Load a fit saved by ``UMAPFit.to_npz``.
+
+        A file of format version 1 holds no ``learning_rate`` and no ``start``: every such fit
+        used 1.0 and a spectral start, and loads with those values.
 
         The arrays are checked before they are used: their shapes agree, the neighbours and the
         graph point at existing rows, and the values are finite. A file of another format
@@ -411,13 +445,17 @@ class UMAPFit:
         except (OSError, EOFError, KeyError, ValueError, zipfile.BadZipFile) as error:
             raise ValueError(f"not a UMAPFit file: {error}") from error
         version = int(found["format_version"]) if "format_version" in found else None
-        if version != _FORMAT:
-            raise ValueError(f"the file has format version {version}, this reads {_FORMAT}")
-        missing = sorted(set(_FIELDS) - set(found))
+        if version not in range(1, _FORMAT + 1):
+            raise ValueError(f"the file has format version {version}, this reads 1 to {_FORMAT}")
+        fields = _FIELDS if version == 1 else (*_FIELDS, "start")
+        missing = sorted(set(fields) - set(found))
         if missing:
             raise ValueError(f"the file lacks {missing}")
-        reals = found["reals"].astype(np.float64)
-        counts = found["counts"].astype(np.int64)
+        reals = _floats(found["reals"], 1)
+        counts = _ints(found["counts"], 1)
+        if reals.shape != (3 if version == 1 else 4,) or counts.shape != (5,):
+            raise ValueError("the arrays in the file have shapes that do not fit together")
+        start = "spectral" if version == 1 else str(found["start"])
         metric = str(found["metric"])
         check_metric(metric)
         fit = cls(
@@ -442,6 +480,8 @@ class UMAPFit:
             n_graph_components=int(counts[2]),
             n_random_start=int(counts[3]),
             spectral_converged=bool(counts[4]),
+            learning_rate=_PAPER_RATE if version == 1 else float(reals[3]),
+            start=start,  # type: ignore[arg-type]
         )
         _check_fit(fit)
         fit.data.flags.writeable = False
@@ -540,8 +580,11 @@ def _check_fit(fit: UMAPFit) -> None:
         fit.a > 0.0
         and fit.b > 0.0
         and 0.0 <= fit.min_dist <= 1.0
-        and fit.n_epochs >= 1
+        and fit.n_epochs >= (0 if fit.start == "init" else 1)
         and fit.negative_sample_rate >= 0
+        and 0.0 < fit.learning_rate <= _PAPER_RATE
+        and fit.start in {"spectral", "init"}
+        and (fit.start == "spectral" or fit.n_random_start == 0)
     )
     if not (finite and sound_graph and sound_neighbors and sound_settings):
         raise ValueError("the file holds values that a UMAPFit cannot have")
@@ -660,6 +703,24 @@ def _start(
     return start, n_components, random_points, converged
 
 
+def _given_start(init: npt.ArrayLike, n: int, dimensions: int) -> npt.NDArray[np.float64]:
+    """Return a copy of ``init``, checked as the start of a layout of ``n`` points."""
+    start = np.array(init, dtype=np.float64, order="C", copy=True)
+    if start.shape != (n, dimensions):
+        raise ValueError(
+            f"init must have shape (n, dimensions) = {(n, dimensions)}, got {start.shape}"
+        )
+    if not np.all(np.isfinite(start)) or np.max(np.abs(start)) > _FARTHEST:
+        raise ValueError(f"init must be finite and at most {_FARTHEST:g} in size")
+    if np.linalg.matrix_rank(start - start.mean(axis=0)) < dimensions:
+        raise ValueError(
+            f"the rows of init lie in fewer than {dimensions} dimensions (all on one point, line "
+            "or plane): every force is along a difference of positions, so the layout would stay "
+            "there"
+        )
+    return start
+
+
 def _neighbors(
     a: npt.NDArray[np.float64], k: int, metric: Metric, workers: int
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]:
@@ -701,6 +762,8 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     min_dist: float = 0.1,
     n_epochs: int | None = None,
     negative_sample_rate: int = 5,
+    init: npt.ArrayLike | None = None,
+    learning_rate: float | None = None,
     seed: int = 0,
     threads: int | None = None,
 ) -> UMAPFit:
@@ -714,6 +777,19 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     to the caller. ``negative_sample_rate`` 5 is the value of LargeVis (Tang et al. 2016), whose
     sampling the paper follows.
 
+    ``init`` refreshes a map: the layout starts at the positions given, used exactly as they are
+    (no rescaling, no noise) and copied, so the caller's array is never written. The graph is
+    built from ``x`` as usual. Rows need positions that fit their data: for a window that moves
+    over time, ``init=old.transform(x).embedding`` places every row of ``x`` in the old map. A row
+    whose data changed and whose start was left at its old position may not reach its new place at
+    a ``learning_rate`` below 1. A row whose data did not change still moves a little: to know how
+    much, run ``umap(old.data, init=old.embedding)`` and measure the movement.
+
+    ``learning_rate`` is the first step size of the layout, which falls linearly to 0. It is 1.0
+    without ``init``, the value of the paper, and 0.1 with it, a choice of statsx that comes from
+    no paper. The default epochs are the same in both cases: fewer epochs at step size 1 destroy
+    local structure without repairing it.
+
     Args:
         x: The points, shape (n, d), finite.
         n_neighbors: Neighbours per point, from 2 to n - 1. Small values keep fine structure and
@@ -725,15 +801,20 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
             direction carries the meaning. The map itself is always Euclidean.
         min_dist: How close two points may sit in the map, in [0, 1]. It changes the look of the
             map, not the graph (section 4.3 of the paper).
-        n_epochs: Passes over the edges.
+        n_epochs: Passes over the edges. 0 is allowed with ``init`` only: the map is the start,
+            with the graph of ``x``, so ``cross_entropy`` is the cost of those positions.
         negative_sample_rate: Points drawn at random per sampled edge to push away from.
+        init: Start positions, shape (n, dimensions), finite. Row ``i`` is the start of row ``i``
+            of ``x``. The default is the spectral start of the paper.
+        learning_rate: First step size of the layout, above 0 and at most 1.
         seed: Seed of the start and the layout.
         threads: Worker threads. Defaults to the CPUs the process may use, at most 4, or to
             the ``STATSX_THREADS`` environment variable.
 
     Raises:
-        ValueError: If ``n_neighbors`` is not in [2, n - 1], a setting is out of range, or
-            ``metric`` is ``"cosine"`` and a row is all zeros.
+        ValueError: If ``n_neighbors`` is not in [2, n - 1], a setting is out of range,
+            ``metric`` is ``"cosine"`` and a row is all zeros, or ``init`` has another shape, is
+            not finite, or has all its rows in fewer than ``dimensions`` dimensions.
     """
     check_metric(metric)
     a = as_points(x)
@@ -745,26 +826,42 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     if negative_sample_rate < 0:
         raise ValueError(f"negative_sample_rate must be at least 0, got {negative_sample_rate}")
     epochs = n_epochs if n_epochs is not None else (500 if n <= _LARGE else 200)
-    if epochs < 1:
-        raise ValueError(f"n_epochs must be at least 1, got {epochs}")
+    fewest = 1 if init is None else 0
+    if epochs < fewest:
+        raise ValueError(f"n_epochs must be at least {fewest}, got {epochs}")
+    rate = learning_rate
+    if rate is None:
+        rate = _PAPER_RATE if init is None else _REFRESH_RATE
+    if not 0.0 < rate <= _PAPER_RATE:
+        raise ValueError(f"learning_rate must be above 0 and at most 1, got {rate}")
+    given = None if init is None else _given_start(init, n, dimensions)
     curve_a, curve_b = fit_curve(min_dist)
     workers = resolve_threads(threads)
 
     idx, dist = _neighbors(a, n_neighbors, metric, workers)
     rho, sigma, indptr, indices, weights = _accel.umap_fuzzy(idx, dist)
     graph = FuzzyGraph(indptr, indices, weights)
-    start, n_components, n_random, converged = _start(graph, dimensions, seed, workers)
-    embedding = _accel.umap_layout(
-        start,
-        graph.indptr,
-        graph.indices,
-        graph.weights,
-        curve_a,
-        curve_b,
-        epochs,
-        negative_sample_rate,
-        seed,
-        workers,
+    if given is None:
+        start, n_components, n_random, converged = _start(graph, dimensions, seed, workers)
+    else:
+        start, n_random, converged = given, 0, True
+        n_components = int(_accel.umap_components(graph.indptr, graph.indices).max()) + 1
+    embedding = (
+        start
+        if epochs == 0
+        else _accel.umap_layout(
+            start,
+            graph.indptr,
+            graph.indices,
+            graph.weights,
+            curve_a,
+            curve_b,
+            epochs,
+            negative_sample_rate,
+            rate,
+            seed,
+            workers,
+        )
     )
     kept = a.copy() if np.may_share_memory(a, x) else a
     kept.flags.writeable = False
@@ -786,6 +883,8 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         n_graph_components=n_components,
         n_random_start=n_random,
         spectral_converged=converged,
+        learning_rate=float(rate),
+        start="spectral" if given is None else "init",
     )
 
 

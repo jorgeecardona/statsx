@@ -15,6 +15,8 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `metric="cosine"` (UMAP) | `umap(x, metric="cosine")` |
 | `fit(x)`, `model.transform(new)` | `fit = umap(x)`, `fit.transform(new).embedding` |
 | `return_distances=True` | `fit.transform(new).distances[:, 0]` |
+| `umap_project(x, 2, init=previous)` | `umap(x, init=previous).embedding` |
+| `initial_alpha=a` | `learning_rate=a` |
 | `model.to_npz`, `UMAPModel.from_npz` | `fit.to_npz`, `UMAPFit.from_npz` |
 | `kmeans(x, k)` | `statsx.clustering.kmeans(x, k)` |
 | `metric="cosine"` (clustering) | the same argument of `kmeans`, `dbscan`, `hdbscan`, `elbow_k` |
@@ -56,6 +58,9 @@ again after the switch.
 - `choose_k` means another thing: in `statsx` it is the gap statistic. The elbow is `elbow_k`.
   It takes no `max_samples`: sample the rows first if you need to. If you use the gap statistic,
   read `decision_margin`: on embeddings the curve can be flat.
+- `init`: the step size starts at 0.1, not 1.0, so rows move less than in `fastumap` at its
+  default. `init` is never written to. It needs one position for every row. See
+  [Refresh a map](methods/embedding.md#refresh-a-map).
 - `transform`: see [Place new points in a map](methods/embedding.md#place-new-points-in-a-map).
 
 ## Speed and memory
@@ -92,7 +97,6 @@ In this order.
 | Need | fastumap | Status in statsx |
 |---|---|---|
 | MG-5 | `batch_size` (mini-batch k-means), float32 input | measured below; not added |
-| MG-7 | `init=` | not there |
 | MG-8 | `y=` (supervised) | not there |
 | MG-9 | `knn=` (approximate), `precomputed_knn` | exact neighbours only |
 
@@ -106,6 +110,6 @@ hides the limit, such as AWS Fargate, set `STATSX_THREADS`. See
 
 No issue of `fastumap` asked for these. Open an issue in `statsx` if you use one.
 
-- `densmap`, `spread`, `initial_alpha`, `chunk_count`
+- `densmap`, `spread`, `chunk_count`
 - `spectral_project`, spectral clustering
 - `global_distance_correlation`, `random_layout`, the `grade` command

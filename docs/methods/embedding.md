@@ -164,6 +164,107 @@ Hägele and Weiskopf (2024) state that no paper describes it. The method here is
 uwot article "Embedding New Data" describes and umap-learn follows, written again from that
 description. Treat it as an implementation choice and not as a published algorithm.
 
+## Refresh a map
+
+Use `umap(x, init=positions)` when the data change over time and the new map has to stay
+comparable with the old one. Without it, a new map of nearly the same rows can come out turned,
+mirrored or arranged differently.
+
+`init` has one start position per row of `x`, shape (n, dimensions). The simplest start is the old
+map's own placement of every row. Here 200 rows leave a window and 200 new rows enter it:
+
+```python
+before = umap(roll[:800])
+window = roll[200:]
+after = umap(window, init=before.transform(window).embedding)
+cold = umap(window)
+
+
+def movement(fit_of_window):
+    shared = fit_of_window.embedding[:600] - before.embedding[200:]
+    return np.median(np.linalg.norm(shared, axis=1))
+
+
+print(after.start, after.learning_rate)
+print(movement(after) < 0.3 * movement(cold))
+```
+
+```text
+init 0.1
+True
+```
+
+If you know which rows stayed, you can give them their old positions and place only the new ones:
+
+```python
+start = np.vstack([before.embedding[200:], before.transform(roll[800:]).embedding])
+after = umap(window, init=start)
+print(movement(after) < 0.3 * movement(cold))
+```
+
+```text
+True
+```
+
+### What happens to `init`
+
+- It is used as given: no rescaling and no noise. Row `i` starts where you put it.
+- It is copied. The layout never writes your array.
+- `n_epochs=0` returns the start with the graph of the new data. `cross_entropy()` of that fit is
+  the cost of the old positions on the new data.
+- It is refused when its rows all lie on one point, line or plane of a lower dimension than the
+  map. The layout could not leave it.
+
+### The step size
+
+`learning_rate` is the first step size of the layout (Algorithm 5), which falls linearly to 0. The
+default is 1.0 without `init`, the value of the paper, and 0.1 with `init`. The value 0.1 is a
+choice of statsx and comes from no paper.
+
+Measured on 600 points in 8 Gaussian groups of 64 columns, 3 data sets. 100 rows left, 100 new
+rows from the same groups entered, and every new row started at `before.transform`. The map is 58
+to 60 wide. "Moved" is the median distance between the old and new position of the 500 rows that
+stayed. "Kept" is `neighbor_preservation` with 15 neighbours.
+
+| Run | Moved | Kept | Cross entropy against a cold fit |
+|---|---|---|---|
+| cold fit | not comparable | 0.354 to 0.358 | 1.00 |
+| `learning_rate=1.0`, 500 epochs | 2.5 to 5.3 | 0.352 to 0.356 | 0.996 to 1.010 |
+| `learning_rate=0.1`, 500 epochs (default) | 1.1 to 1.4 | 0.385 to 0.389 | 0.961 to 0.977 |
+| `learning_rate=0.1`, 200 epochs | 0.8 | 0.376 to 0.379 | 0.974 to 0.982 |
+
+Fewer epochs at step size 1 are not a substitute. On the same kind of data with unchanged rows,
+50 epochs kept 0.29 to 0.30 of the neighbours, less than the 0.35 of the old positions.
+
+This is one shape of data. Check your own maps with `neighbor_preservation` and `cross_entropy`
+against a cold fit of the same rows. Both fits have the same graph, so the two values compare.
+
+### What a refresh does not promise
+
+- A row whose data did not change does not stay exactly where it was. The example below the list
+  measures how far rows move with no change at all.
+- A row whose data changed may not reach its new place if its start is its old position and
+  `learning_rate` is below 1. In one test, rows moved to another group travelled 7 to 9 of the 34
+  to 40 units they needed. Place such rows with `transform`, or pass `learning_rate=1.0`.
+- A group of rows that the old map never saw has no right place in it. `transform` reports how far
+  each row is from the old data in `placement.distances`.
+- A chain of refreshes adds the movement of each step. Compare neighbouring maps, or start every
+  refresh from one reference map.
+- A start from another source (PCA scores, another library's map) was not measured. Use
+  `learning_rate=1.0` for it.
+
+To read movement as change, compare it with a refresh of the old data, where nothing changed:
+
+```python
+baseline = umap(before.data, init=before.embedding)
+steps = np.linalg.norm(baseline.embedding - before.embedding, axis=1)
+print(np.median(steps) > 0.0)
+```
+
+```text
+True
+```
+
 ## Save and load a fit
 
 Use `fit.to_npz(path)` to keep a fit, and `UMAPFit.from_npz(path)` to read it back. The file holds
@@ -191,7 +292,9 @@ The file is a NumPy `.npz` with no pickled objects, so loading it runs no code. 
 stored exactly. It keeps the fitted data, so it is as large as the data. A path is written as you
 give it, and no `.npz` is added.
 
-`from_npz` checks the file before it uses it. It refuses another format version, a missing array,
+The format has version 2. `from_npz` also reads version 1, written by statsx 0.1.79 and before.
+
+`from_npz` checks the file before it uses it. It refuses an unknown format version, a missing array,
 shapes that do not fit together, a neighbour or a graph entry that points to a row that does not
 exist, and values that are not finite. It raises `ValueError` in each case. It does not check that
 the map is a good map of the data: a file that someone edited with consistent values loads.
@@ -249,8 +352,8 @@ Checked: the points are a finite (n, d) array, `metric` is known and no row is z
 distance, `n_neighbors` is from 2 to n - 1, `min_dist` is in
 [0, 1], and the counts are in range.
 
-Reported: the number of graph pieces, the points with a random start, and whether the spectral
-start converged.
+Reported: the number of graph pieces, the points with a random start, whether the spectral
+start converged, where the start came from (`fit.start`) and `fit.learning_rate`.
 
 Not checked: that the layout reached the best map. It is a stochastic search for a local minimum.
 Not checked: that the map shows real groups. See above.
@@ -275,7 +378,7 @@ Not checked: that the map shows real groups. See above.
   matrix, scaling a row changes nothing, a scaled copy of a row is at distance 0, and groups that
   differ only in direction keep their neighbours when the lengths differ a hundredfold.
 - A saved fit loads back with every array and setting equal, also for a seed above 2^63, and places
-  new points exactly as before. A file of another version, with a missing array, with a neighbour
+  new points exactly as before. A file of an unknown version, with a missing array, with a neighbour
   or a graph entry out of range, with a NaN, or with a pickled object is refused.
 - `transform` finds the exact nearest training points, weights them with `rho` 0 so that the
   weights sum to `log2(k)`, and with 0 epochs it returns their weighted mean. On a swiss roll the
@@ -283,6 +386,11 @@ Not checked: that the map shows real groups. See above.
   training points and 250 new ones). A training point placed again lands within 0.6 of its
   nearest-neighbour distance from where it was. The result is identical with 1 and with 3
   threads.
+- With `init`: 0 epochs return the start in a new array, the caller's array is unchanged also when
+  it is read-only, a start turned by 90 degrees gives a turned map, rows with one start position
+  come apart, the result is identical with 1 and with 3 threads, and a moving window keeps as many
+  neighbours (within 0.03) as a cold fit while its shared rows move under 0.3 as far.
+- A saved version 1 file loads with `learning_rate` 1.0 and a spectral start.
 - The cross entropy equals Definition 10 summed over all pairs, written out in the test.
 - The layout reaches the cross entropy of Algorithm 5 run one point at a time, within 30%, on
   random starts (the ratio was 0.84 to 1.10 on two machines). The two differ in one way: a point
@@ -314,7 +422,11 @@ Not checked: that the map shows real groups. See above.
   *Journal of the Society for Industrial and Applied Mathematics* 11(2):431-441.
 - Tang, J., Liu, J., Zhang, M., and Mei, Q. (2016). Visualizing large-scale and high-dimensional
   data. *Proceedings of the 25th International Conference on World Wide Web*, pp. 287-297.
-  <https://doi.org/10.1145/2872427.2883041>
+  <https://doi.org/10.1145/2872427.2883041>. It writes the linear schedule of the step size with
+  its first value as a parameter.
+- Kobak, D., and Linderman, G. C. (2021). Initialization is critical for preserving global data
+  structure in both t-SNE and UMAP. *Nature Biotechnology* 39:156-157.
+  <https://doi.org/10.1038/s41587-020-00809-z>
 - Dong, W., Charikar, M., and Li, K. (2011). Efficient k-nearest neighbor graph construction for
   generic similarity measures. *Proceedings of the 20th International Conference on World Wide
   Web*, pp. 577-586. <https://doi.org/10.1145/1963405.1963487>

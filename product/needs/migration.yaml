@@ -114,7 +114,18 @@ needs:
       - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/12"}
       - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/15"}
       - {kind: secondary, date: 2026-08-25, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/16"}
-    proofs: []
+    proofs:
+      - "test:tests/test_umap.py::test_zero_epochs_return_the_given_start_in_a_new_array"
+      - "test:tests/test_umap.py::test_the_layout_never_writes_the_callers_start"
+      - "test:tests/test_umap.py::test_a_turned_start_gives_a_turned_map"
+      - "test:tests/test_umap.py::test_the_step_size_defaults_to_one_cold_and_a_tenth_with_a_start"
+      - "test:tests/test_umap.py::test_a_moving_window_placed_in_the_old_map_is_about_as_good_as_a_cold_map"
+      - "test:tests/test_umap.py::test_a_warm_map_does_not_depend_on_threads_and_counts_the_pieces_of_its_graph"
+      - "test:tests/test_umap.py::test_rows_that_start_on_the_same_position_come_apart"
+      - "test:tests/test_umap.py::test_a_bad_start_or_step_size_is_refused"
+      - "test:tests/test_umap.py::test_a_warm_fit_survives_a_save_and_a_load"
+      - "test:tests/test_umap.py::test_a_file_of_format_version_1_loads_as_a_cold_fit"
+      - "test:tests/test_umap.py::test_a_warm_file_with_values_a_fit_cannot_have_is_refused"
     must: false
 
   - id: MG-8

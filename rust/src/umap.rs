@@ -553,13 +553,15 @@ fn layout(
     ab: (f64, f64),
     n_epochs: usize,
     n_neg: usize,
+    learning_rate: f64,
     seed: u64,
 ) -> Vec<f64> {
     let mut cur = start.to_vec();
     let mut next = vec![0.0; cur.len()];
     for e in 0..n_epochs {
-        // Section 4.1, Algorithm 5: alpha = 1 at the first epoch, falling to 1 / n_epochs.
-        let alpha = 1.0 - e as f64 / n_epochs as f64;
+        // Section 4.1, Algorithm 5: alpha falls linearly from its first value, which the paper
+        // sets to 1, to 1 / n_epochs of it.
+        let alpha = learning_rate * (1.0 - e as f64 / n_epochs as f64);
         epoch(&cur, &mut next, dim, g, ab, alpha, n_neg, seed, e as u64);
         std::mem::swap(&mut cur, &mut next);
     }
@@ -837,17 +839,24 @@ pub fn umap_layout<'py>(
     b: f64,
     n_epochs: usize,
     n_neg: usize,
+    learning_rate: f64,
     seed: u64,
     threads: usize,
 ) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let (n, dim) = (y0.shape()[0], y0.shape()[1]);
     let g = as_csr(indptr, indices, data)?;
-    if g.0.len() != n + 1 || dim == 0 || n_epochs == 0 || !(a > 0.0 && b > 0.0) {
-        return Err(PyValueError::new_err("need a graph on the n points, n_epochs >= 1, a, b > 0"));
+    let positive = a > 0.0 && b > 0.0 && learning_rate > 0.0;
+    if g.0.len() != n + 1 || dim == 0 || n_epochs == 0 || !positive {
+        return Err(PyValueError::new_err(
+            "need a graph on the n points, n_epochs >= 1, a, b, learning_rate > 0",
+        ));
     }
     let start: Vec<f64> = y0.as_array().iter().copied().collect();
     let pool = pool(threads)?;
-    let out = py.allow_threads(|| pool.install(|| layout(&start, dim, &g, (a, b), n_epochs, n_neg, seed)));
+    let ab = (a, b);
+    let out = py.allow_threads(|| {
+        pool.install(|| layout(&start, dim, &g, ab, n_epochs, n_neg, learning_rate, seed))
+    });
     let out = Array2::from_shape_vec((n, dim), out).map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(out.into_pyarray_bound(py))
 }
