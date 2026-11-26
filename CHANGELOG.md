@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The default number of threads follows the CPU limit of the process (containers, `taskset`), and
+  not only the CPUs of the host. `STATSX_THREADS` sets the default, for hosts that hide the limit.
 - Faster `kmeans`, `hdbscan`, `dbscan` and `umap` on wide data: exact distances use vector
   instructions, and `kmeans` no longer copies the data (about a third less memory). The last digits
   of an inertia or a distance can differ from the previous release.

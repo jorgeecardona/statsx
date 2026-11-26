@@ -306,7 +306,8 @@ class UMAPFit:
                 default is a third of the epochs of the fit, at least 30. This is a choice of
                 statsx.
             seed: Seed of the random sampling. Defaults to the seed of the fit.
-            threads: Worker threads. Defaults to the CPU count, at most 4.
+            threads: Worker threads. Defaults to the CPUs the process may use, at most 4, or to
+            the ``STATSX_THREADS`` environment variable.
 
         Raises:
             ValueError: If ``x`` has a different number of columns than the fitted data, if
@@ -727,7 +728,8 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         n_epochs: Passes over the edges.
         negative_sample_rate: Points drawn at random per sampled edge to push away from.
         seed: Seed of the start and the layout.
-        threads: Worker threads. Defaults to the CPU count, at most 4.
+        threads: Worker threads. Defaults to the CPUs the process may use, at most 4, or to
+            the ``STATSX_THREADS`` environment variable.
 
     Raises:
         ValueError: If ``n_neighbors`` is not in [2, n - 1], a setting is out of range, or

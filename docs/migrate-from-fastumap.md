@@ -92,12 +92,15 @@ In this order.
 | Need | fastumap | Status in statsx |
 |---|---|---|
 | MG-5 | `batch_size` (mini-batch k-means), float32 input | measured below; not added |
-| MG-6 | thread cap in containers, thread safety | up to 4 threads from the CPU count of the host |
 | MG-7 | `init=` | not there |
 | MG-8 | `y=` (supervised) | not there |
 | MG-9 | `knn=` (approximate), `precomputed_knn` | exact neighbours only |
 
-Until MG-6 is done, pass `threads=1` inside a container with less than one CPU.
+## Containers
+
+`statsx` reads the CPU limit of a container and uses that many threads, at most 4. On a host that
+hides the limit, such as AWS Fargate, set `STATSX_THREADS`. See
+[Threads, containers and repeat runs](recipes/threads.md).
 
 ## Not planned
 

@@ -2049,3 +2049,25 @@ decisions:
   consequences: 'A test checks that the vector and the scalar code give the same bits for widths from 0 to
     1031. HDBSCAN on 5,000 x 1024 went from 17 s to 10 s and k-means on 100,000 x 1024 used 1.35 GB instead
     of 2.13 GB on the same machine.'
+
+- id: D-77
+  text: 'When threads is not given, it is STATSX_THREADS if set (a whole number >= 1, not capped), else
+    min(4, CPUs the process may use). The CPUs it may use are the smaller of its scheduling affinity
+    (os.sched_getaffinity where it exists, else os.cpu_count) and the floor of the smallest CPU time limit
+    found in its control group and the groups above it, cgroup v2 cpu.max or v1 cpu.cfs_quota_us over
+    cpu.cfs_period_us, at least 1. Each call builds its own rayon pool and its own random streams, so
+    calls can run side by side.'
+  needs:
+  - MG-6
+  alternatives:
+  - 'Round a fractional limit up, as some runtimes do: not used; 1.5 CPUs with 2 threads is throttled by the
+    scheduler, and the result does not depend on the count.'
+  - 'Honour RAYON_NUM_THREADS or OMP_NUM_THREADS: not used; they set other libraries, and one variable of
+    statsx is explicit. NumPy keeps following its own.'
+  - 'Read the ECS task metadata to find the Fargate size: not used; it needs a network call from a numeric
+    library. The variable covers it.'
+  - 'One shared worker pool: not used; a pool per call keeps calls independent, and its cost is small
+    against the computations.'
+  consequences: 'Measured: CPUQuota 50% and 150% give 1 thread, 300% gives 3, 800% gives 4; docker run
+    --cpus=0.5 gives 1; taskset on 2 CPUs gives 2. Two processes give the same bytes, and 16 calls from 8
+    threads give the serial results. On a host that hides its limit the default stays up to 4.'

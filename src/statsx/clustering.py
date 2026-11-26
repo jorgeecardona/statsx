@@ -340,7 +340,8 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
         tol: Stop when the sum of squared centre moves is below ``tol`` times the mean variance of
             the columns of ``x``.
         seed: Seed of the generator.
-        threads: Worker threads. The default is the number of cores, at most 4. The result does
+        threads: Worker threads. The default is the CPUs the process may use, at most 4, or
+            the ``STATSX_THREADS`` environment variable. The result does
             not depend on it.
 
     Raises:
@@ -971,7 +972,8 @@ def gaussian_mixture(  # noqa: PLR0913 (settings are keyword-only)
         tol: Stop when the mean log-likelihood per row changes by less than this.
         reg: Ridge on the variances, as a fraction of the mean variance of the columns of ``x``.
         seed: Seed of the generator.
-        threads: Worker threads. The default is the number of cores, at most 4. The result does
+        threads: Worker threads. The default is the CPUs the process may use, at most 4, or
+            the ``STATSX_THREADS`` environment variable. The result does
             not depend on it.
 
     Raises:

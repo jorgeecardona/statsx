@@ -96,7 +96,13 @@ needs:
       - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
       - {kind: secondary, date: 2026-08-23, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/3"}
       - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/10"}
-    proofs: []
+    proofs:
+      - "test:tests/test_threads.py::test_the_cpu_limit_is_read_from_the_control_group"
+      - "test:tests/test_threads.py::test_a_system_without_control_groups_has_no_limit"
+      - "test:tests/test_threads.py::test_available_cpus_is_the_smaller_of_affinity_and_the_limit"
+      - "test:tests/test_threads.py::test_the_variable_sets_the_default_and_an_argument_wins"
+      - "test:tests/test_threads.py::test_two_processes_give_the_same_bytes"
+      - "test:tests/test_threads.py::test_calls_from_several_threads_give_what_one_thread_gives"
     must: false
 
   - id: MG-7
