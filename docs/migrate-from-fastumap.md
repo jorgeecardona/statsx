@@ -17,6 +17,7 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `return_distances=True` | `fit.transform(new).distances[:, 0]` |
 | `umap_project(x, 2, init=previous)` | `umap(x, init=previous).embedding` |
 | `initial_alpha=a` | `learning_rate=a` |
+| `precomputed_knn=(indices, distances)` | `umap(x, neighbors=(indices, distances))` |
 | `model.to_npz`, `UMAPModel.from_npz` | `fit.to_npz`, `UMAPFit.from_npz` |
 | `kmeans(x, k)` | `statsx.clustering.kmeans(x, k)` |
 | `metric="cosine"` (clustering) | the same argument of `kmeans`, `dbscan`, `hdbscan`, `elbow_k` |
@@ -61,6 +62,10 @@ again after the switch.
 - `init`: the step size starts at 0.1, not 1.0, so rows move less than in `fastumap` at its
   default. `init` is never written to. It needs one position for every row. See
   [Refresh a map](methods/embedding.md#refresh-a-map).
+- Neighbours: `statsx` always searches exactly. For many rows of many columns, build a table
+  with an approximate library and pass it as `neighbors`; see
+  [Bring your own neighbours](methods/embedding.md#bring-your-own-neighbours). Pass Euclidean
+  distances (the square root of what faiss returns for L2) or only the row numbers.
 - `transform`: see [Place new points in a map](methods/embedding.md#place-new-points-in-a-map).
 
 ## Speed and memory
@@ -98,7 +103,7 @@ In this order.
 |---|---|---|
 | MG-5 | `batch_size` (mini-batch k-means), float32 input | measured below; not added |
 | MG-8 | `y=` (supervised) | not there |
-| MG-9 | `knn=` (approximate), `precomputed_knn` | exact neighbours only |
+| MG-9 | `knn="approx"` or `"auto"` | exact search, or bring a table with `neighbors=` |
 
 ## Containers
 

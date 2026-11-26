@@ -43,6 +43,7 @@ use rayon::prelude::*;
 use crate::density::{blocks, Points, COLS, ROWS};
 use crate::kmeans::pool;
 use crate::rng::Rng;
+use crate::simd;
 
 /// Each coordinate of one gradient step is limited to this, as in the reference implementation of
 /// the paper. The paper does not state a limit; without one, a pair of points that nearly coincide
@@ -59,14 +60,41 @@ const BISECT: usize = 100;
 // Nearest neighbours
 
 /// The `k` nearest other points of each point: indices and distances, nearest first, ties by index.
-fn knn(p: &Points, k: usize) -> (Vec<usize>, Vec<f64>) {
-    search(p, 0, p.n, p.n, k)
+fn knn(p: &Points, x: &[f64], k: usize) -> (Vec<usize>, Vec<f64>) {
+    search(p, x, 0, p.n, p.n, k)
+}
+
+/// The squared distance of rows `i` and `j` of `x`.
+fn pair_d2(x: &[f64], dim: usize, i: usize, j: usize) -> f64 {
+    simd::dist2(&x[i * dim..(i + 1) * dim], &x[j * dim..(j + 1) * dim])
+}
+
+/// The squared distance of row `rows[q]` to each row in `idx[q * k..(q + 1) * k]`, from the rows
+/// as the caller gave them (not centred, so no copy of the data is made).
+fn table_d2(x: &[f64], dim: usize, rows: &[usize], idx: &[usize], k: usize) -> Vec<f64> {
+    let mut out = vec![0.0; idx.len()];
+    out.par_chunks_mut(k).enumerate().for_each(|(q, found)| {
+        for (e, v) in found.iter_mut().enumerate() {
+            *v = pair_d2(x, dim, rows[q], idx[q * k + e]);
+        }
+    });
+    out
 }
 
 /// The `k` nearest of the rows `0..refs` for each of the rows `q0..q1`, nearest first, ties by
 /// index. A row never counts as its own neighbour. When the queries come after the references
 /// (`q0 >= refs`) no row is one of its own candidates, so nothing is skipped.
-fn search(p: &Points, q0: usize, q1: usize, refs: usize, k: usize) -> (Vec<usize>, Vec<f64>) {
+///
+/// `p` holds the centred rows, used to find the candidates. `x` holds the same rows as given, and
+/// the distances of the answer come from them, as in `table_d2`.
+fn search(
+    p: &Points,
+    x: &[f64],
+    q0: usize,
+    q1: usize,
+    refs: usize,
+    k: usize,
+) -> (Vec<usize>, Vec<f64>) {
     let parts: Vec<(Vec<usize>, Vec<f64>)> = (0..blocks(q1 - q0))
         .into_par_iter()
         .map(|b| {
@@ -100,7 +128,7 @@ fn search(p: &Points, q0: usize, q1: usize, refs: usize, k: usize) -> (Vec<usize
                 // Exact distances for the k kept, so the answer does not carry the rounding of
                 // the expansion, and so equal distances are ordered by index.
                 let mut exact: Vec<(f64, usize)> =
-                    list.iter().map(|&(_, j)| (p.exact_d2(r0 + r, j), j)).collect();
+                    list.iter().map(|&(_, j)| (pair_d2(x, p.dim, r0 + r, j), j)).collect();
                 exact.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
                 for (d2, j) in exact {
                     idx.push(j);
@@ -722,7 +750,7 @@ pub fn umap_knn<'py>(
     }
     let flat: Vec<f64> = data.as_array().iter().copied().collect();
     let pool = pool(threads)?;
-    let (idx, dist) = py.allow_threads(|| pool.install(|| knn(&Points::new(&flat, n, dim), k)));
+    let (idx, dist) = py.allow_threads(|| pool.install(|| knn(&Points::new(&flat, n, dim), &flat, k)));
     let idx = Array2::from_shape_vec((n, k), idx.into_iter().map(|x| x as i64).collect())
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let dist = Array2::from_shape_vec((n, k), dist).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -861,6 +889,36 @@ pub fn umap_layout<'py>(
     Ok(out.into_pyarray_bound(py))
 }
 
+/// The squared distance of each row `rows[q]` to the rows that row `q` of `idx` names. `data`
+/// must be C-contiguous; it is read in place.
+#[pyfunction]
+pub fn umap_table_d2<'py>(
+    py: Python<'py>,
+    data: PyReadonlyArray2<'py, f64>,
+    rows: PyReadonlyArray1<'py, i64>,
+    idx: PyReadonlyArray2<'py, i64>,
+    threads: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let (n, dim) = (data.shape()[0], data.shape()[1]);
+    let (m, k) = (idx.shape()[0], idx.shape()[1]);
+    if rows.as_array().len() != m || k == 0 || dim == 0 {
+        return Err(PyValueError::new_err("need one row number per row of neighbours"));
+    }
+    let numbers = |values: &mut dyn Iterator<Item = &i64>| {
+        values
+            .map(|&j| usize::try_from(j).ok().filter(|&j| j < n))
+            .collect::<Option<Vec<usize>>>()
+            .ok_or_else(|| PyValueError::new_err("a row number is outside the data"))
+    };
+    let queries = numbers(&mut rows.as_array().iter())?;
+    let table = numbers(&mut idx.as_array().iter())?;
+    let x = data.as_slice()?;
+    let pool = pool(threads)?;
+    let out = py.allow_threads(|| pool.install(|| table_d2(x, dim, &queries, &table, k)));
+    let out = Array2::from_shape_vec((m, k), out).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(out.into_pyarray_bound(py))
+}
+
 /// The `k` nearest of the rows of `reference` for each row of `query`, exact: indices into
 /// `reference` and distances, nearest first.
 #[pyfunction]
@@ -880,7 +938,7 @@ pub fn umap_knn_between<'py>(
     flat.extend(query.as_array().iter().copied());
     let pool = pool(threads)?;
     let (idx, dist) =
-        py.allow_threads(|| pool.install(|| search(&Points::new(&flat, n + m, dim), n, n + m, n, k)));
+        py.allow_threads(|| pool.install(|| search(&Points::new(&flat, n + m, dim), &flat, n, n + m, n, k)));
     let idx = Array2::from_shape_vec((m, k), idx.into_iter().map(|x| x as i64).collect())
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let dist = Array2::from_shape_vec((m, k), dist).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -1067,9 +1125,9 @@ mod tests {
         let mut rng = Rng::new(11);
         let flat: Vec<f64> = (0..(n + m) * dim).map(|_| rng.normal()).collect();
         let p = Points::new(&flat, n + m, dim);
-        let (idx, dist) = search(&p, n, n + m, n, k);
+        let (idx, dist) = search(&p, &flat, n, n + m, n, k);
         for q in 0..m {
-            let mut all: Vec<(f64, usize)> = (0..n).map(|j| (p.exact_d2(n + q, j), j)).collect();
+            let mut all: Vec<(f64, usize)> = (0..n).map(|j| (pair_d2(&flat, dim, n + q, j), j)).collect();
             all.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
             for e in 0..k {
                 assert_eq!(idx[q * k + e], all[e].1);

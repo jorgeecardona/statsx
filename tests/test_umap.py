@@ -533,6 +533,7 @@ def _same_fit(a: UMAPFit, b: UMAPFit) -> bool:
         "spectral_converged",
         "learning_rate",
         "start",
+        "neighbor_source",
     )
     return (
         all(np.array_equal(getattr(a, f), getattr(b, f)) for f in arrays)

@@ -2106,3 +2106,38 @@ decisions:
     34-40 it needed at 0.1: the docs tell the caller to place such rows with transform or to pass
     learning_rate 1. An unchanged row still moves, so movement is not a measure of change without a
     baseline run.'
+
+- id: D-79
+  text: 'umap(x, neighbors=t) builds the graph of section 3.1 from neighbours that the caller gives, in
+    place of the exact search: row numbers (n, K), or row numbers and distances. statsx drops a row''s
+    own number, computes every distance from x in float64, orders each row by distance and then row
+    number, and uses the first n_neighbors. Given distances are only compared with the computed ones
+    (a gap above 0.001 of the distance plus the median distance is refused, and squared distances and
+    cosine similarities are named). The fit records neighbor_source, exact or given; the npz format is
+    version 3 and reads 1 and 2 as exact. nearest_neighbors returns the exact table. neighbor_recall
+    measures a table on a random sample of rows against exact neighbours, counting a neighbour whose
+    distance is at most the exact k-th distance, with the standard error of a sample without
+    replacement and the mean over the worst tenth. It is a sample mean and comes from no paper; umap
+    never calls it and states no recall of its own. neighbor_preservation takes sample and seed. The
+    distances of the exact search are now computed from the rows as given, not from the centred rows,
+    so that a table and the search give the same bits.'
+  needs:
+  - MG-9
+  alternatives:
+  - 'HNSW (Malkov & Yashunin 2020): not used; insertion is sequential, and a build on several threads
+    depends on their order.'
+  - 'NN-descent (Dong, Charikar & Li 2011): not written yet. The paper reports recall near 50% at 50
+    dimensions, and its cost against the exact search at 1024 columns is not measured. Measure both on
+    real embeddings first.'
+  - 'Approximate neighbours for hdbscan and dbscan: not written; the spanning tree and the eps
+    neighbourhoods need all pairs (D-65).'
+  - 'Settings of an approximate backend, as the fastumap issue asked: nothing to expose; statsx has no
+    backend.'
+  - 'Keep the distances of the caller: not used; the fit would hold numbers that do not follow from its
+    data.'
+  - 'Count recall by row number: not used; copies of one row, common among embeddings, would count as
+    missed when they swap places.'
+  consequences: 'Exact search time at 1024 columns and 4 threads on a loaded 16-core laptop: 7 s at
+    10,000 rows, 41 s at 25,000, 189 s at 50,000, 776 s at 100,000; 54 s at 100,000 rows of 16
+    columns. A user above that needs a table from elsewhere, or pca first.'
+

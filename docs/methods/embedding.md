@@ -48,10 +48,10 @@ UMAP has two phases (section 3 of the paper).
 falls as `exp(-(r - min_dist))`. A larger `min_dist` spreads points out in the map. It changes the
 look of the map and not the graph.
 
-The neighbours are exact. The paper uses an approximate method (nearest-neighbour descent, Dong,
-Charikar and Li, 2011); here the cost is O(n^2 d) for the neighbours, which is fine up to some tens
-of thousands of points. The layout costs O(`n_neighbors` x n x `n_epochs`). The result does not
-depend on `threads`.
+The neighbour search is exact. The paper uses an approximate method (nearest-neighbour descent,
+Dong, Charikar and Li, 2011); here the cost is O(n^2 d) for the neighbours, which is fine up to some
+tens of thousands of points. The layout costs O(`n_neighbors` x n x `n_epochs`). The result does not
+depend on `threads`. For more rows, see [Bring your own neighbours](#bring-your-own-neighbours).
 
 ## Choose n_neighbors and min_dist
 
@@ -265,6 +265,73 @@ print(np.median(steps) > 0.0)
 True
 ```
 
+## Bring your own neighbours
+
+Use `umap(x, neighbors=table)` when the exact search is too slow, with a table from an approximate
+method of another library, or when several maps of the same rows should share one search.
+
+The exact search grows with the square of the number of rows. At 1,024 columns and 4 threads, on a
+laptop with other work running, it took 7 s for 10,000 rows, 41 s for 25,000 and 13 minutes for
+100,000. At 16 columns it took 54 s for 100,000 rows.
+
+`nearest_neighbors` runs the exact search once. A table with more columns than `n_neighbors` serves
+several settings:
+
+```python
+from statsx.embedding import nearest_neighbors
+
+table = nearest_neighbors(roll, 30)
+maps = [umap(roll, n_neighbors=k, neighbors=table.indices) for k in (10, 30)]
+print([fit.n_neighbors for fit in maps], maps[0].neighbor_source)
+```
+
+```text
+[10, 30] given
+```
+
+A table can come from any source. `neighbor_recall` says how good it is: for a random sample of
+rows it searches exactly, and counts the neighbours of the table that are as near as the true
+ones. Here the table is poor on purpose, it holds only every second neighbour:
+
+```python
+from statsx.embedding import neighbor_recall
+
+rough = table.indices[:, ::2]
+measured = neighbor_recall(roll, rough, k=15)
+print(round(measured.recall, 1), measured.n_sample)
+print(umap(roll, neighbors=rough).neighbor_recall().recall == measured.recall)
+```
+
+```text
+0.5 1000
+True
+```
+
+- `recall` is the mean share over the sampled rows, and `standard_error` its sampling error.
+- `worst_decile` is the mean over the worst tenth of the rows. A good mean can hide rows or whole
+  groups with poor neighbours.
+- The cost is O(sample x n x d). The estimate is a sample mean, a choice of statsx: it comes from
+  no paper.
+- On many rows, check the map with `neighbor_preservation(x, fit.embedding, sample=1000)`.
+
+### What statsx does with a table
+
+- `neighbors` is an array of row numbers, shape (n, K), or `(indices, distances)`.
+- A row's own number is dropped wherever it stands.
+- The distances are computed from `x`. Each row is ordered by distance, then row number, and the
+  first `n_neighbors` are used.
+- Given distances are only compared with the computed ones. Squared distances (faiss returns them
+  for L2) and cosine similarities are refused by name.
+- A row number outside `x` (such as -1), a number twice in a row, or fewer than `n_neighbors`
+  other rows raises `ValueError`.
+- `transform` still searches exactly among the training rows.
+
+Nothing in a table that passes these checks says that it is a good one. Build it from the same
+rows and the same metric as the map, and measure it.
+
+`hdbscan` and `dbscan` take no table: they need all pairs. For many rows, reduce the columns with
+[`pca`](pca.md) first.
+
 ## Save and load a fit
 
 Use `fit.to_npz(path)` to keep a fit, and `UMAPFit.from_npz(path)` to read it back. The file holds
@@ -292,7 +359,7 @@ The file is a NumPy `.npz` with no pickled objects, so loading it runs no code. 
 stored exactly. It keeps the fitted data, so it is as large as the data. A path is written as you
 give it, and no `.npz` is added.
 
-The format has version 2. `from_npz` also reads version 1, written by statsx 0.1.79 and before.
+The format has version 3. `from_npz` also reads versions 1 and 2, written by older releases.
 
 `from_npz` checks the file before it uses it. It refuses an unknown format version, a missing array,
 shapes that do not fit together, a neighbour or a graph entry that points to a row that does not
@@ -349,11 +416,12 @@ the eigenvector. The layout still runs.
 ## What the library checks and does not check
 
 Checked: the points are a finite (n, d) array, `metric` is known and no row is zero for the cosine
-distance, `n_neighbors` is from 2 to n - 1, `min_dist` is in
-[0, 1], and the counts are in range.
+distance, `n_neighbors` is from 2 to n - 1, `min_dist` is in [0, 1], and the counts are in range.
+A table of `neighbors` is checked as [above](#what-statsx-does-with-a-table).
 
 Reported: the number of graph pieces, the points with a random start, whether the spectral
-start converged, where the start came from (`fit.start`) and `fit.learning_rate`.
+start converged, where the start came from (`fit.start`), `fit.learning_rate` and
+`fit.neighbor_source`.
 
 Not checked: that the layout reached the best map. It is a stochastic search for a local minimum.
 Not checked: that the map shows real groups. See above.
@@ -362,7 +430,9 @@ Not checked: that the map shows real groups. See above.
 
 - A published algorithm for mapping new points. There is none (section 7 of the paper), so
   `transform` follows the description in the uwot article on embedding new data.
-- Other distances than the Euclidean and cosine ones, supervised maps and approximate neighbours.
+- Other distances than the Euclidean and cosine ones, and supervised maps.
+- An approximate neighbour search. `umap` takes the table of one: see
+  [Bring your own neighbours](#bring-your-own-neighbours).
 
 ## Checked in the tests
 
@@ -386,6 +456,12 @@ Not checked: that the map shows real groups. See above.
   training points and 250 new ones). A training point placed again lands within 0.6 of its
   nearest-neighbour distance from where it was. The result is identical with 1 and with 3
   threads.
+- With `neighbors`: the table of the exact search gives the same bytes as no table, also far from
+  the origin and with distances in float32; a wider table in any order with the row itself gives
+  the same fit; broken tables are refused.
+- `neighbor_recall` is 1 for the exact table, falls by exactly the share of neighbours removed,
+  counts a neighbour at the same distance as found, and 40 samples of 100 rows estimate the value
+  of all rows within their standard errors.
 - With `init`: 0 epochs return the start in a new array, the caller's array is unchanged also when
   it is read-only, a start turned by 90 degrees gives a turned map, rows with one start position
   come apart, the result is identical with 1 and with 3 threads, and a moving window keeps as many

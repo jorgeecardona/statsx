@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `umap(x, init=positions)` refreshes a map: the layout starts at your positions, which are not
   changed, so the new map can be compared with the old one. `learning_rate` sets the first step
   size: 1.0 without `init` and 0.1 with it. A fit records both, and files saved before still load.
+- `umap(x, neighbors=table)` takes neighbours that you computed, for example with an approximate
+  library, and `nearest_neighbors` builds the exact table once for several maps.
+  `neighbor_recall` and `fit.neighbor_recall()` measure a table on a sample of rows, and
+  `neighbor_preservation` takes `sample` to check large maps.
 - A k-means fit has `dispersion`: the mean distance of each cluster's rows to its centroid.
 - `assign_clusters(rows, centroids)` and `fit.assign(rows)` give each row its nearest centre and
   distance, and label rows beyond `max_distance` -1.

@@ -9,9 +9,11 @@ apart. It starts from the eigenvectors of the normalized graph Laplacian (Algori
 the points by stochastic gradient descent on the fuzzy set cross entropy with negative sampling
 (section 4.1, Algorithm 5).
 
-Everything is written in Rust and NumPy: the neighbours are exact (no approximate index), the
-eigenvectors come from LOBPCG, the curve ``a``, ``b`` from Levenberg-Marquardt, and the layout
-from the algorithm of the paper. A result does not depend on the number of threads.
+Everything is written in Rust and NumPy: the neighbour search is exact (statsx has no
+approximate index; ``umap(x, neighbors=table)`` takes the table of one and ``neighbor_recall``
+measures it on a sample of rows), the eigenvectors come from LOBPCG, the curve ``a``, ``b`` from
+Levenberg-Marquardt, and the layout from the algorithm of the paper. A result does not depend on
+the number of threads.
 
 A picture of a map is not evidence of groups. UMAP keeps the neighbours of each point and gives up
 distances and densities (section 6 of the paper): the size of a cluster on the map, the gap
@@ -95,7 +97,7 @@ from __future__ import annotations
 
 import os
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Literal
 
@@ -115,7 +117,7 @@ from statsx._arrays import (
 _PCA_BLOCK = 4096
 """Rows per block of ``pca``, so that no second copy of the data is held."""
 
-_FORMAT = 2
+_FORMAT = 3
 """Version of the ``.npz`` layout of ``UMAPFit.to_npz``. Raise it when the layout changes."""
 
 _PAPER_RATE = 1.0
@@ -126,6 +128,19 @@ _REFRESH_RATE = 0.1
 
 Start = Literal["spectral", "init"]
 """Where the layout started: the eigenvectors of Algorithm 4, or positions given by the caller."""
+
+NeighborSource = Literal["exact", "given"]
+"""Where the neighbours came from: the exact search of statsx, or a table of the caller."""
+
+_TABLE_TOLERANCE = 1e-3
+"""Largest accepted gap between a given distance and the recomputed one, relative to that
+distance plus the median distance of the table. It allows the rounding of float32."""
+
+_RECALL_SAMPLE = 1000
+"""Rows that ``neighbor_recall`` checks by default."""
+
+_WORST_SHARE = 10
+"""``NeighborRecall.worst_decile`` is the mean over this share (1 in 10) of the sampled rows."""
 
 _MIN_TRANSFORM_EPOCHS = 30
 """Fewest epochs of ``transform`` by default."""
@@ -207,6 +222,53 @@ class FuzzyGraph:
 
 
 @dataclass(frozen=True, slots=True)
+class Neighbors:
+    """The nearest other rows of each row of a data set.
+
+    Args:
+        indices: Row numbers, shape (n, k), nearest first, ties by row number.
+        distances: The distance to each of those in ``metric``, shape (n, k).
+        metric: ``"euclidean"``, or ``"cosine"`` for ``1 - cos``.
+    """
+
+    indices: npt.NDArray[np.int64]
+    distances: npt.NDArray[np.float64]
+    metric: Metric
+
+
+NeighborTable = npt.ArrayLike | tuple[npt.ArrayLike, npt.ArrayLike]
+"""Neighbours that the caller brings: row numbers (n, k), or row numbers and distances."""
+
+
+@dataclass(frozen=True, slots=True)
+class NeighborRecall:
+    """How many true nearest neighbours a table holds, measured on a sample of rows.
+
+    Args:
+        recall: Mean over the sampled rows of the share of their ``k`` neighbours in the table
+            that are as near as the true ``k``-th nearest. 1 means no neighbour is missing.
+        standard_error: Standard error of ``recall`` from the sampling of rows, without
+            replacement. 0 when every row was checked.
+        worst_decile: Mean over the tenth of the sampled rows with the lowest share.
+        per_row: The share of each sampled row, shape (m,).
+        rows: The sampled row numbers, ascending, shape (m,).
+        k: Neighbours per row that were checked.
+    """
+
+    recall: float
+    standard_error: float
+    worst_decile: float
+    per_row: npt.NDArray[np.float64] = field(repr=False)
+    rows: npt.NDArray[np.int64] = field(repr=False)
+    k: int
+
+    @property
+    def n_sample(self) -> int:
+        """The number of rows checked."""
+        return int(self.rows.shape[0])
+
+
+@dataclass(frozen=True, slots=True)
 class UMAPPlacement:
     """New points placed in a finished map by ``UMAPFit.transform``.
 
@@ -267,6 +329,8 @@ class UMAPFit:
             eigenvector. Also True when no spectral start ran (``start`` is ``"init"``).
         learning_rate: The first step size of the layout.
         start: ``"spectral"``, or ``"init"`` when the caller gave the start positions.
+        neighbor_source: ``"exact"``, or ``"given"`` when the caller gave the neighbours. A
+            given table has the quality that ``neighbor_recall`` measures and no other claim.
     """
 
     embedding: npt.NDArray[np.float64]
@@ -288,6 +352,7 @@ class UMAPFit:
     spectral_converged: bool
     learning_rate: float
     start: Start
+    neighbor_source: NeighborSource
 
     @property
     def n_points(self) -> int:
@@ -415,6 +480,7 @@ class UMAPFit:
             "seed": np.uint64(self.seed),
             "metric": np.array(self.metric),
             "start": np.array(self.start),
+            "neighbor_source": np.array(self.neighbor_source),
         }
         if isinstance(file, (str, os.PathLike)):
             with Path(file).open("wb") as handle:
@@ -427,7 +493,8 @@ class UMAPFit:
         """Load a fit saved by ``UMAPFit.to_npz``.
 
         A file of format version 1 holds no ``learning_rate`` and no ``start``: every such fit
-        used 1.0 and a spectral start, and loads with those values.
+        used 1.0 and a spectral start, and loads with those values. A file of version 1 or 2
+        holds no ``neighbor_source``: every such fit searched its own neighbours.
 
         The arrays are checked before they are used: their shapes agree, the neighbours and the
         graph point at existing rows, and the values are finite. A file of another format
@@ -445,9 +512,10 @@ class UMAPFit:
         except (OSError, EOFError, KeyError, ValueError, zipfile.BadZipFile) as error:
             raise ValueError(f"not a UMAPFit file: {error}") from error
         version = int(found["format_version"]) if "format_version" in found else None
-        if version not in range(1, _FORMAT + 1):
+        if version is None or version not in range(1, _FORMAT + 1):
             raise ValueError(f"the file has format version {version}, this reads 1 to {_FORMAT}")
-        fields = _FIELDS if version == 1 else (*_FIELDS, "start")
+        added = ("start", "neighbor_source")[: version - 1]
+        fields = (*_FIELDS, *added)
         missing = sorted(set(fields) - set(found))
         if missing:
             raise ValueError(f"the file lacks {missing}")
@@ -455,7 +523,8 @@ class UMAPFit:
         counts = _ints(found["counts"], 1)
         if reals.shape != (3 if version == 1 else 4,) or counts.shape != (5,):
             raise ValueError("the arrays in the file have shapes that do not fit together")
-        start = "spectral" if version == 1 else str(found["start"])
+        start = str(found["start"]) if "start" in added else "spectral"
+        source = str(found["neighbor_source"]) if "neighbor_source" in added else "exact"
         metric = str(found["metric"])
         check_metric(metric)
         fit = cls(
@@ -482,10 +551,33 @@ class UMAPFit:
             spectral_converged=bool(counts[4]),
             learning_rate=_PAPER_RATE if version == 1 else float(reals[3]),
             start=start,  # type: ignore[arg-type]
+            neighbor_source=source,  # type: ignore[arg-type]
         )
         _check_fit(fit)
         fit.data.flags.writeable = False
         return fit
+
+    def neighbor_recall(
+        self, *, sample: int = _RECALL_SAMPLE, seed: int = 0, threads: int | None = None
+    ) -> NeighborRecall:
+        """Measure the neighbours of this fit against exact ones, on a sample of rows.
+
+        It is the module function ``neighbor_recall`` on the data, the neighbours and the metric
+        of the fit. It is 1 for a fit whose neighbours statsx searched.
+
+        Args:
+            sample: Rows to check, at least 2. All rows when there are fewer.
+            seed: Seed of the sample.
+            threads: Worker threads. The result does not depend on it.
+        """
+        return neighbor_recall(
+            self.data,
+            self.neighbors,
+            metric=self.metric,
+            sample=sample,
+            seed=seed,
+            threads=threads,
+        )
 
     def cross_entropy(self, *, threads: int | None = None) -> float:
         """Return the fuzzy set cross entropy of the map (Definition 10 of the paper).
@@ -575,7 +667,12 @@ def _check_fit(fit: UMAPFit) -> None:
         and bool(np.all((g.indices >= 0) & (g.indices < n)))
         and bool(np.all((g.weights > 0.0) & (g.weights <= 1.0)))
     )
-    sound_neighbors = bool(np.all((fit.neighbors >= 0) & (fit.neighbors < n)))
+    ordered = np.sort(fit.neighbors, axis=1)
+    sound_neighbors = bool(
+        np.all((fit.neighbors >= 0) & (fit.neighbors < n))
+        & np.all(ordered[:, 1:] != ordered[:, :-1])
+        & np.all(fit.neighbors != np.arange(n, dtype=np.int64)[:, None])
+    )
     sound_settings = (
         fit.a > 0.0
         and fit.b > 0.0
@@ -584,6 +681,7 @@ def _check_fit(fit: UMAPFit) -> None:
         and fit.negative_sample_rate >= 0
         and 0.0 < fit.learning_rate <= _PAPER_RATE
         and fit.start in {"spectral", "init"}
+        and fit.neighbor_source in {"exact", "given"}
         and (fit.start == "spectral" or fit.n_random_start == 0)
     )
     if not (finite and sound_graph and sound_neighbors and sound_settings):
@@ -753,6 +851,198 @@ def _neighbors_between(
     return idx, cosine_of_chord(euclid)
 
 
+def _given_neighbors(
+    a: npt.NDArray[np.float64], table: NeighborTable, k: int | None, metric: Metric, workers: int
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]:
+    """Return the ``k`` nearest of the neighbours in ``table`` of each row, and their distances.
+
+    A row's own number is dropped wherever it stands. The distances are computed from ``a``, and
+    each row is ordered by distance, then row number. ``k`` None takes as many as every row has.
+    Distances in ``table`` are only compared with the computed ones.
+    """
+    n = a.shape[0]
+    stated: npt.NDArray[np.float64] | None = None
+    raw = table
+    if isinstance(table, tuple):
+        if len(table) != 2:  # noqa: PLR2004 (indices and distances)
+            raise ValueError("neighbors as a tuple must be (indices, distances)")
+        raw, stated = table[0], np.asarray(table[1], dtype=np.float64)
+    idx = np.asarray(raw)
+    if idx.dtype.kind not in "iu":
+        raise ValueError(f"neighbors must be whole row numbers, got dtype {idx.dtype}")
+    if idx.ndim != 2 or idx.shape[0] != n or idx.shape[1] < 1:  # noqa: PLR2004 (a table)
+        raise ValueError(f"neighbors must have shape ({n}, k), got {idx.shape}")
+    outside = (idx < 0) | (idx >= n)
+    if np.any(outside):
+        raise ValueError(
+            f"neighbors holds {idx[outside][0]}, which is not a row of x (some libraries write "
+            "-1 when they find too few neighbours)"
+        )
+    idx = np.ascontiguousarray(idx, dtype=np.int64)
+    ordered = np.sort(idx, axis=1)
+    twice = np.flatnonzero(np.any(ordered[:, 1:] == ordered[:, :-1], axis=1))
+    if twice.size:
+        raise ValueError(f"row {twice[0]} of neighbors names a row twice")
+    every = np.arange(n, dtype=np.int64)
+    own = idx == every[:, None]
+    others = int(idx.shape[1] - own.sum(axis=1).max())
+    if others < 1 or (k is not None and others < k):
+        raise ValueError(
+            f"neighbors needs at least {k or 1} other rows in every row, and one row has {others}"
+        )
+    points = a if metric == "euclidean" else unit_rows(a)
+    squared = _accel.umap_table_d2(points, every, idx, workers)
+    if stated is not None:
+        _check_stated(stated, np.sqrt(squared), own, metric)
+    squared = np.where(own, np.inf, squared)  # a row is not its own neighbour: sort it last
+    first = np.lexsort((idx, squared), axis=-1)[:, : others if k is None else k]
+    near = np.take_along_axis(idx, first, axis=1)
+    chosen = np.take_along_axis(squared, first, axis=1)
+    return np.ascontiguousarray(near), _in_metric(chosen, metric)
+
+
+def _in_metric(squared: npt.NDArray[np.float64], metric: Metric) -> npt.NDArray[np.float64]:
+    """Return squared distances of rows (of unit rows for cosine) as distances in ``metric``."""
+    chord = np.sqrt(squared)
+    return np.ascontiguousarray(chord if metric == "euclidean" else cosine_of_chord(chord))
+
+
+def _check_stated(
+    stated: npt.NDArray[np.float64],
+    chord: npt.NDArray[np.float64],
+    own: npt.NDArray[np.bool_],
+    metric: Metric,
+) -> None:
+    """Raise ``ValueError`` unless the distances of a given table are the ones of the data."""
+    true = chord if metric == "euclidean" else cosine_of_chord(chord)
+    if stated.shape != true.shape:
+        raise ValueError(
+            f"the distances of neighbors have shape {stated.shape}, the row numbers {true.shape}"
+        )
+    other = ~own
+    given, true = stated[other], true[other]
+    allowed = _TABLE_TOLERANCE * (true + float(np.median(true))) + 1e-6
+
+    def agrees(expected: npt.NDArray[np.float64]) -> bool:
+        return bool(np.all(np.abs(given - expected) <= allowed))
+
+    if agrees(true):
+        return
+    hint = ""
+    squares = np.abs(given - true**2) <= _TABLE_TOLERANCE * (true**2 + 1.0)
+    if metric == "euclidean" and np.all(squares):
+        hint = " They are squared distances: pass their square root."
+    if metric == "cosine" and np.all(np.abs(given - (1.0 - true)) <= _TABLE_TOLERANCE):
+        hint = " They are cosine similarities: pass 1 minus each."
+    raise ValueError(
+        f"the distances of neighbors are not the {metric} distances between those rows of x.{hint}"
+    )
+
+
+def nearest_neighbors(
+    x: npt.ArrayLike, k: int, *, metric: Metric = "euclidean", threads: int | None = None
+) -> Neighbors:
+    """Return the ``k`` nearest other rows of each row of ``x``, by exact search.
+
+    ``umap`` runs this search itself. Call it to build the table once and pass it to several
+    ``umap`` calls as ``neighbors``. The cost is O(n^2 d).
+
+    Args:
+        x: The points, shape (n, d), finite.
+        k: Neighbours per row, from 1 to n - 1.
+        metric: ``"euclidean"``, or ``"cosine"`` for ``1 - cos``.
+        threads: Worker threads. The result does not depend on it.
+
+    Raises:
+        ValueError: If ``k`` is not in [1, n - 1], or ``metric`` is ``"cosine"`` and a row is
+            all zeros.
+    """
+    check_metric(metric)
+    a = as_points(x)
+    n = a.shape[0]
+    if not 1 <= k <= n - 1:
+        raise ValueError(f"k must be in [1, n - 1] = [1, {n - 1}], got {k}")
+    idx, dist = _neighbors(a, k, metric, resolve_threads(threads))
+    return Neighbors(indices=idx, distances=dist, metric=metric)
+
+
+def _sample_rows(n: int, sample: int, seed: int) -> npt.NDArray[np.int64]:
+    """Return ``sample`` different row numbers below ``n``, ascending; all rows when fewer."""
+    if sample < 2:  # noqa: PLR2004 (a standard error needs two rows)
+        raise ValueError(f"sample must be at least 2, got {sample}")
+    if sample >= n:
+        return np.arange(n, dtype=np.int64)
+    drawn = np.random.default_rng(seed).choice(n, size=sample, replace=False)
+    return np.sort(drawn).astype(np.int64)
+
+
+def _neighbors_of(
+    a: npt.NDArray[np.float64], rows: npt.NDArray[np.int64], k: int, metric: Metric, workers: int
+) -> npt.NDArray[np.int64]:
+    """Return the ``k`` nearest other rows of ``a`` for each of ``rows``, by exact search."""
+    idx, _ = _neighbors_between(a, np.ascontiguousarray(a[rows]), k + 1, metric, workers)
+    # drop the row itself; when copies of it crowd it out of the list, drop the last entry
+    others = np.argsort(idx == rows[:, None], axis=1, kind="stable")[:, :k]
+    return np.take_along_axis(idx, others, axis=1)
+
+
+def neighbor_recall(  # noqa: PLR0913 (settings are keyword-only)
+    x: npt.ArrayLike,
+    neighbors: NeighborTable,
+    *,
+    k: int | None = None,
+    metric: Metric = "euclidean",
+    sample: int = _RECALL_SAMPLE,
+    seed: int = 0,
+    threads: int | None = None,
+) -> NeighborRecall:
+    """Measure how many true nearest neighbours a table holds, on a sample of rows.
+
+    For each sampled row it finds the exact ``k`` nearest other rows among all rows, and counts
+    the neighbours in the table (its ``k`` nearest, as ``umap`` would take them) that are at most
+    as far as the ``k``-th of those. A swap between rows at the same distance, such as copies of
+    one row, counts as found. The cost is O(sample n d). The result is the mean over a random
+    sample of rows, a choice of statsx: it comes from no paper.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        neighbors: Row numbers, shape (n, K), or ``(indices, distances)``. See ``umap``.
+        k: Neighbours per row to check. The default is as many as every row of the table has.
+        metric: The distance between rows of ``x``.
+        sample: Rows to check, at least 2. All rows when there are fewer.
+        seed: Seed of the sample.
+        threads: Worker threads. The result does not depend on it.
+
+    Raises:
+        ValueError: If the table is not one that ``umap`` accepts, or ``k`` or ``sample`` is out
+            of range.
+    """
+    check_metric(metric)
+    a = as_points(x)
+    n = a.shape[0]
+    if k is not None and not 1 <= k <= n - 1:
+        raise ValueError(f"k must be in [1, n - 1] = [1, {n - 1}], got {k}")
+    workers = resolve_threads(threads)
+    rows = _sample_rows(n, sample, seed)
+    near, dist = _given_neighbors(a, neighbors, k, metric, workers)
+    size = int(near.shape[1])
+    truth = _neighbors_of(a, rows, size, metric, workers)
+    # the same function measures both tables, so equal distances compare equal
+    points = a if metric == "euclidean" else unit_rows(a)
+    exact = _in_metric(_accel.umap_table_d2(points, rows, truth, workers), metric)
+    per_row = (dist[rows] <= exact.max(axis=1, keepdims=True)).mean(axis=1)
+    m = int(rows.shape[0])
+    spread = float(per_row.std(ddof=1))
+    return NeighborRecall(
+        recall=float(per_row.mean()),
+        standard_error=spread * float(np.sqrt((1.0 - m / n) / m)),
+        worst_decile=float(np.sort(per_row)[: -(-m // _WORST_SHARE)].mean()),
+        per_row=per_row,
+        rows=rows,
+        k=size,
+    )
+
+
 def umap(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     *,
@@ -764,13 +1054,14 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     negative_sample_rate: int = 5,
     init: npt.ArrayLike | None = None,
     learning_rate: float | None = None,
+    neighbors: NeighborTable | None = None,
     seed: int = 0,
     threads: int | None = None,
 ) -> UMAPFit:
     """Return a UMAP map of the rows of ``x``.
 
-    The neighbours are exact, so the cost is O(n^2 d) for them and O(n_neighbors n n_epochs) for
-    the layout. The result does not depend on ``threads``. A different ``seed`` gives a different
+    Without ``neighbors`` the search is exact, so the cost is O(n^2 d) for the neighbours and
+    O(n_neighbors n n_epochs) for the layout. The result does not depend on ``threads``. A different ``seed`` gives a different
     map: the layout is a stochastic search for a minimum, not a unique answer.
 
     The default ``n_epochs`` is 500 up to 10,000 points and 200 above. The paper leaves the number
@@ -790,6 +1081,12 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     no paper. The default epochs are the same in both cases: fewer epochs at step size 1 destroy
     local structure without repairing it.
 
+    ``neighbors`` gives the neighbours instead of searching: from an approximate method of
+    another library, or from ``nearest_neighbors`` to reuse one search. statsx drops a row's own
+    number, computes every distance from ``x``, orders each row by distance then row number, and
+    uses the first ``n_neighbors``. The map is then as good as the table: measure it with
+    ``fit.neighbor_recall()``. Build the table from the same rows and the same ``metric``.
+
     Args:
         x: The points, shape (n, d), finite.
         n_neighbors: Neighbours per point, from 2 to n - 1. Small values keep fine structure and
@@ -807,6 +1104,10 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         init: Start positions, shape (n, dimensions), finite. Row ``i`` is the start of row ``i``
             of ``x``. The default is the spectral start of the paper.
         learning_rate: First step size of the layout, above 0 and at most 1.
+        neighbors: Row numbers of neighbours of each row, shape (n, K) with K at least
+            ``n_neighbors`` besides the row itself, or ``(indices, distances)``. Given distances
+            are only checked against the data: pass Euclidean distances, not squared ones, and
+            ``1 - cos`` for the cosine metric.
         seed: Seed of the start and the layout.
         threads: Worker threads. Defaults to the CPUs the process may use, at most 4, or to
             the ``STATSX_THREADS`` environment variable.
@@ -814,7 +1115,8 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     Raises:
         ValueError: If ``n_neighbors`` is not in [2, n - 1], a setting is out of range,
             ``metric`` is ``"cosine"`` and a row is all zeros, or ``init`` has another shape, is
-            not finite, or has all its rows in fewer than ``dimensions`` dimensions.
+            not finite, or has all its rows in fewer than ``dimensions`` dimensions, or
+            ``neighbors`` is not a table of enough different rows with the distances of ``x``.
     """
     check_metric(metric)
     a = as_points(x)
@@ -838,7 +1140,10 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     curve_a, curve_b = fit_curve(min_dist)
     workers = resolve_threads(threads)
 
-    idx, dist = _neighbors(a, n_neighbors, metric, workers)
+    if neighbors is None:
+        idx, dist = _neighbors(a, n_neighbors, metric, workers)
+    else:
+        idx, dist = _given_neighbors(a, neighbors, n_neighbors, metric, workers)
     rho, sigma, indptr, indices, weights = _accel.umap_fuzzy(idx, dist)
     graph = FuzzyGraph(indptr, indices, weights)
     if given is None:
@@ -885,15 +1190,18 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         spectral_converged=converged,
         learning_rate=float(rate),
         start="spectral" if given is None else "init",
+        neighbor_source="exact" if neighbors is None else "given",
     )
 
 
-def neighbor_preservation(
+def neighbor_preservation(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     embedding: npt.ArrayLike,
     k: int = 15,
     *,
     metric: Metric = "euclidean",
+    sample: int | None = None,
+    seed: int = 0,
     threads: int | None = None,
 ) -> float:
     """Return the share of nearest neighbours that the map keeps.
@@ -909,6 +1217,9 @@ def neighbor_preservation(
         embedding: Their positions in the map, shape (n, m).
         k: Neighbours per point, from 1 to n - 1.
         metric: The distance between rows of ``x``. The embedding always uses the Euclidean one.
+        sample: Check this many rows, drawn at random, instead of every row: an estimate of the
+            same number at a cost of O(sample n d). All rows when there are fewer.
+        seed: Seed of the sample.
         threads: Worker threads. The value does not depend on it.
     """
     check_metric(metric)
@@ -920,8 +1231,13 @@ def neighbor_preservation(
     if not 1 <= k <= n - 1:
         raise ValueError(f"k must be in [1, n - 1] = [1, {n - 1}], got {k}")
     workers = resolve_threads(threads)
-    near_x, _ = _neighbors(original, k, metric, workers)
-    near_y, _ = _accel.umap_knn(mapped, k, workers)
+    rows = None if sample is None else _sample_rows(n, sample, seed)
+    if rows is None or rows.shape[0] == n:
+        near_x, _ = _neighbors(original, k, metric, workers)
+        near_y, _ = _accel.umap_knn(mapped, k, workers)
+    else:
+        near_x = _neighbors_of(original, rows, k, metric, workers)
+        near_y = _neighbors_of(mapped, rows, k, "euclidean", workers)
     shared = (near_x[:, :, None] == near_y[:, None, :]).any(axis=2).sum(axis=1)
     return float(shared.mean()) / k
 

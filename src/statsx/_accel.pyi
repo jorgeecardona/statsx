@@ -121,6 +121,12 @@ def umap_knn(
 def umap_knn_between(
     reference: npt.NDArray[np.float64], query: npt.NDArray[np.float64], k: int, threads: int
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]: ...
+def umap_table_d2(
+    data: npt.NDArray[np.float64],
+    rows: npt.NDArray[np.int64],
+    idx: npt.NDArray[np.int64],
+    threads: int,
+) -> npt.NDArray[np.float64]: ...
 def umap_place(
     embedding: npt.NDArray[np.float64],
     idx: npt.NDArray[np.int64],
