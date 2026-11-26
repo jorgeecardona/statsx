@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `statsx.clustering.elbow_k` picks the number of clusters at the elbow of the k-means inertia, by
+  the Kneedle algorithm, and returns the curve it used. `find_knees` is the algorithm alone. The
+  new page "Move from fastumap" maps each call of fastumap to statsx.
 - `UMAPFit.to_npz` and `UMAPFit.from_npz` save and load a UMAP fit as a NumPy file with no
   pickled objects. A loaded fit places new points exactly as the saved one does, and the load
   refuses a file that is damaged or from another version.

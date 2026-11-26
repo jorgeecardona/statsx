@@ -9,6 +9,8 @@ likelihood partition when the clusters are round, of equal spread and of similar
 are not, k-means still returns k clusters: that it returned a result is no evidence the clusters
 exist. ``choose_k`` compares the data with a uniform reference, so a result of ``k = 1`` is the
 library saying it sees no structure. ``silhouette`` shows which points sit between clusters.
+``elbow_k`` finds where the inertia curve bends (the Kneedle algorithm). It has no model of "no
+clusters": it picks a k for any data.
 
 ``gaussian_mixture`` fits a mixture of Gaussians by expectation maximization. Each point gets a
 probability for each component, and each component has its own mean and covariance. The model
@@ -33,6 +35,11 @@ References:
     Rousseeuw, P. J. (1987). Silhouettes: a graphical aid to the interpretation and validation of
     cluster analysis. *Journal of Computational and Applied Mathematics* 20:53-65.
     https://doi.org/10.1016/0377-0427(87)90125-7.
+
+    Satopaa, V., Albrecht, J., Irwin, D., & Raghavan, B. (2011). Finding a "Kneedle" in a
+    haystack: detecting knee points in system behavior. *2011 31st International Conference on
+    Distributed Computing Systems Workshops*, pp. 166-171.
+    https://doi.org/10.1109/ICDCSW.2011.20.
 
     Ester, M., Kriegel, H.-P., Sander, J., & Xu, X. (1996). A density-based algorithm for
     discovering clusters in large spatial databases with noise. *Proceedings of the 2nd
@@ -85,6 +92,9 @@ from statsx._arrays import MATRIX, as_points, resolve_threads
 
 _BLOCK = 512
 """Rows per block of the silhouette distance matrix."""
+
+_MIN_CURVE = 3
+"""Points a curve needs to have a bend: a start, a middle and an end."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,6 +387,185 @@ def choose_k(  # noqa: PLR0913 (settings are keyword-only)
             pick, found = ks[i], True
             break
     return GapResult(ks, gap, se, observed, pick, found, reference, n_reference)
+
+
+@dataclass(frozen=True, slots=True)
+class Knees:
+    """The knees of a rising curve, by the Kneedle algorithm (Satopaa et al. 2011).
+
+    Args:
+        difference: The difference curve: ``y`` and ``x`` both scaled to [0, 1], ``y - x``.
+        indices: The positions of the knees, ascending. Empty when the algorithm declares none.
+        sensitivity: The ``S`` of the threshold.
+    """
+
+    difference: npt.NDArray[np.float64]
+    indices: tuple[int, ...]
+    sensitivity: float
+
+
+def find_knees(x: npt.ArrayLike, y: npt.ArrayLike, *, sensitivity: float = 1.0) -> Knees:
+    """Return the knees of a curve that rises and bends downwards (Kneedle, offline).
+
+    A knee is where such a curve turns flat. ``x`` and ``y`` are scaled to [0, 1] and the
+    difference ``y - x`` is taken. Each local maximum of the difference is a candidate. It is a
+    knee when the difference falls below ``maximum - sensitivity / (n - 1)`` after it, before the
+    difference turns up again. A larger ``sensitivity`` asks for a clearer bend.
+
+    For another shape, turn the curve first: for a falling curve that bends upwards (an elbow),
+    pass ``-y``.
+
+    The paper smooths the data with a spline first. This function does not: pass smoothed values
+    if the curve is noisy.
+
+    Args:
+        x: Positions, shape (n,), n >= 3, strictly increasing. The paper's threshold uses the
+            mean step, ``1 / (n - 1)`` after scaling.
+        y: Values, shape (n,), not all equal.
+        sensitivity: ``S``, at least 0. The paper discusses values from 1 up.
+
+    Raises:
+        ValueError: If the arrays differ in shape or are too short, ``x`` does not increase,
+            ``y`` is constant, a value is not finite, or ``sensitivity`` is negative.
+    """
+    xs = np.asarray(x, dtype=np.float64)
+    ys = np.asarray(y, dtype=np.float64)
+    if xs.ndim != 1 or xs.shape != ys.shape or xs.shape[0] < _MIN_CURVE:
+        raise ValueError("x and y must be 1-D of the same length, at least 3")
+    if not (np.all(np.isfinite(xs)) and np.all(np.isfinite(ys))):
+        raise ValueError("x and y must be finite")
+    if not np.all(np.diff(xs) > 0):
+        raise ValueError("x must be strictly increasing")
+    low, high = float(ys.min()), float(ys.max())
+    if high <= low:
+        raise ValueError("y must not be constant")
+    if sensitivity < 0:
+        raise ValueError(f"sensitivity must be at least 0, got {sensitivity}")
+    n = xs.shape[0]
+    d = (ys - low) / (high - low) - (xs - xs[0]) / (xs[-1] - xs[0])
+    step = sensitivity / (n - 1)
+    peaks = (i for i in range(1, n - 1) if d[i - 1] < d[i] > d[i + 1])
+    return Knees(d, tuple(i for i in peaks if _falls(d, i, d[i] - step)), sensitivity)
+
+
+def _falls(d: npt.NDArray[np.float64], peak: int, threshold: float) -> bool:
+    """Whether ``d`` drops below ``threshold`` after ``peak`` before it turns up (step 6)."""
+    for j in range(peak + 1, d.shape[0]):
+        if d[j] < threshold:
+            return True
+        if d[j] > d[j - 1]:
+            return False
+    return False
+
+
+ElbowScale = Literal["log", "linear"]
+
+
+@dataclass(frozen=True, slots=True)
+class ElbowResult:
+    """The k-means inertia over a range of cluster counts, and its elbow.
+
+    Args:
+        ks: The cluster counts tried.
+        inertia: The within-cluster sum of squares of the best k-means fit at each k.
+        difference: The difference curve of ``find_knees`` on the turned inertia curve.
+        k: The k with the largest difference: the point farthest below the straight line from the
+            first to the last candidate. Every curve has one, so it is not evidence of clusters.
+        is_knee: True when the Kneedle threshold declares a knee at ``k``. It can be True for
+            data with no clusters.
+        knees: Every k that Kneedle declares a knee.
+        inertia_rises: Candidates whose inertia is above the one before. The best possible
+            inertia never rises with k, so a value above 0 means a fit missed it and the elbow is
+            less reliable. Raise ``n_init``.
+        scale: ``"log"`` or ``"linear"``: what the curve was measured on.
+        sensitivity: The ``S`` of the Kneedle threshold.
+    """
+
+    ks: tuple[int, ...]
+    inertia: npt.NDArray[np.float64]
+    difference: npt.NDArray[np.float64]
+    k: int
+    is_knee: bool
+    knees: tuple[int, ...]
+    inertia_rises: int
+    scale: ElbowScale
+    sensitivity: float
+
+
+def elbow_k(  # noqa: PLR0913 (settings are keyword-only)
+    x: npt.ArrayLike,
+    k_max: int = 10,
+    *,
+    k_min: int = 2,
+    n_init: int = 5,
+    scale: ElbowScale = "log",
+    sensitivity: float = 1.0,
+    seed: int = 0,
+    threads: int | None = None,
+) -> ElbowResult:
+    """Return the elbow of the k-means inertia over ``k = k_min .. k_max``.
+
+    The inertia curve falls and flattens. ``find_knees`` (Satopaa et al. 2011) is applied to the
+    curve turned upside down. The result is the k with the largest difference, and ``is_knee``
+    says whether the Kneedle threshold declares a knee there.
+
+    With ``scale="log"`` the curve is the logarithm of the inertia, so each drop is measured
+    against the inertia at that k. On the raw inertia, a few large early drops can hide the bend.
+    The logarithm is a choice of statsx, taken from fastumap, and is not in the paper.
+
+    An elbow compares no model of "no clusters": a curve from uniform data bends too, and it never
+    answers 1. ``choose_k`` (the gap statistic) can answer 1. Use it to ask whether there are
+    clusters at all.
+
+    ``kmeans(x, result.k, n_init=n_init, seed=seed)`` gives the fit behind the chosen k.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        k_max: Largest number of clusters tried, at most n.
+        k_min: Smallest number tried, at least 1. At least 3 candidates are needed.
+        n_init: k-means runs per candidate.
+        scale: ``"log"`` or ``"linear"``.
+        sensitivity: ``S`` of the Kneedle threshold, at least 0.
+        seed: Seed of k-means.
+        threads: Worker threads, as in ``kmeans``.
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array, the range holds fewer than 3
+            candidates or goes outside [1, n], ``scale`` is unknown, a fit with ``scale="log"``
+            has inertia 0, or the inertia is the same for every k.
+    """
+    a = as_points(x)
+    if not (k_min >= 1 and k_min + _MIN_CURVE - 1 <= k_max <= a.shape[0]):
+        raise ValueError(
+            f"need 1 <= k_min <= k_max - 2 and k_max <= n = {a.shape[0]}, got {k_min} and {k_max}"
+        )
+    if scale not in ("log", "linear"):
+        raise ValueError(f"scale must be 'log' or 'linear', got {scale!r}")
+    ks = tuple(range(k_min, k_max + 1))
+    inertia = np.array(
+        [kmeans(a, k, n_init=n_init, seed=seed, threads=threads).inertia for k in ks]
+    )
+    if scale == "log":
+        if np.any(inertia <= 0.0):
+            raise ValueError(
+                "a fit has inertia 0 (k reaches the number of distinct rows): lower k_max"
+            )
+        curve = np.log(inertia)
+    else:
+        curve = inertia
+    found = find_knees(np.array(ks, dtype=np.float64), -curve, sensitivity=sensitivity)
+    best = int(np.argmax(found.difference))
+    return ElbowResult(
+        ks=ks,
+        inertia=inertia,
+        difference=found.difference,
+        k=ks[best],
+        is_knee=best in found.indices,
+        knees=tuple(ks[i] for i in found.indices),
+        inertia_rises=int(np.count_nonzero(np.diff(inertia) > 0)),
+        scale=scale,
+        sensitivity=sensitivity,
+    )
 
 
 CovarianceKind = Literal["full", "diag", "spherical"]

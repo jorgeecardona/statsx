@@ -11,7 +11,14 @@ needs:
       - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/25"}
       - {kind: secondary, date: 2026-11-11, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/30"}
       - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/24"}
-    proofs: []
+    proofs:
+      - "test:tests/test_clustering.py::test_find_knees_reproduces_figure_2_of_the_kneedle_paper"
+      - "test:tests/test_clustering.py::test_find_knees_equals_the_algorithm_on_random_curves"
+      - "test:tests/test_clustering.py::test_find_knees_checks_its_input"
+      - "test:tests/test_clustering.py::test_the_elbow_finds_planted_clusters_for_any_seed"
+      - "test:tests/test_clustering.py::test_the_elbow_result_holds_the_curve_it_used"
+      - "test:tests/test_clustering.py::test_the_elbow_picks_a_k_for_uniform_data_which_has_no_clusters"
+      - "test:tests/test_clustering.py::test_the_elbow_checks_its_input"
     must: false
 
   - id: MG-2

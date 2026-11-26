@@ -19,11 +19,13 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `kmeans(x, k)` | `statsx.clustering.kmeans(x, k)` |
 | `cluster(x, method="kmeans", n_clusters=k)` | `kmeans(x, k).labels` |
 | `cluster(x, method="hdbscan")` | `hdbscan(x).labels` |
-| `cluster(x)` with no number of clusters | wait for MG-1 |
+| `cluster(x)` with no number of clusters | `kmeans(x, elbow_k(x).k).labels` |
 | `assign_clusters(new, centroids)` after a statsx fit | `fit.predict(new)` |
 | `dbscan(x, eps=...)` | `statsx.clustering.dbscan(x, eps)` |
 | `hdbscan(x, min_cluster_size=...)` | `statsx.clustering.hdbscan(x, min_cluster_size)` |
 | `neighbor_overlap(x, y, k)` | `neighbor_preservation(x, y, k)` |
+| `choose_k(x)` (the elbow) | `elbow_k(x).k` |
+| `choose_k(x, return_evidence=True)` | `elbow_k(x)`: `ks`, `inertia`, `inertia_rises` |
 
 Files saved by `fastumap` do not load in `statsx`. Fit again and save.
 
@@ -36,6 +38,8 @@ again after the switch.
 - k-means: full Lloyd iterations in float64 with 10 starts. `fastumap` uses one start by default.
 - HDBSCAN and DBSCAN: exact distances over all pairs. `fastumap` uses a graph of 30 neighbours.
 - `eps` has no default in `dbscan`. Use `k_distances` to choose it.
+- `choose_k` means another thing: in `statsx` it is the gap statistic. The elbow is `elbow_k`.
+  It takes no `max_samples`: sample the rows first if you need to.
 - `transform`: see [Place new points in a map](methods/embedding.md#place-new-points-in-a-map).
 
 ## Planned
@@ -44,7 +48,6 @@ In this order.
 
 | Need | fastumap | Status in statsx |
 |---|---|---|
-| MG-1 | `choose_k` (elbow) | `choose_k` is the gap statistic, which can pick another k |
 | MG-2 | `metric="cosine"` in clustering | UMAP only |
 | MG-3 | `assign_clusters` with your centroids, `max_distance` | `predict` of a statsx fit only |
 | MG-4 | per-cluster `dispersion` | sizes only |

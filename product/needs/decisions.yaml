@@ -1899,3 +1899,27 @@ decisions:
   consequences: 'A loaded fit has every array equal to the saved one and places new points with the same
     result. The file is as large as the data. Two edits that keep the file consistent load without a
     warning, and the docs say so.'
+
+- id: D-70
+  text: 'statsx gets the elbow of the k-means inertia after all, as elbow_k, next to the gap statistic. D-63
+    left it out because it has no null model; fastumap callers choose k with it, and the move needs it.
+    find_knees is the Kneedle algorithm of Satopaa, Albrecht, Irwin and Raghavan (2011), steps 2 to 6,
+    offline: scale to the unit square, take y - x, take each local maximum, and declare a knee when the
+    difference falls below maximum - S / (n - 1) before it rises again. elbow_k applies it to the inertia
+    curve turned upside down and returns the candidate with the largest difference, which is the rule of
+    fastumap, with is_knee saying whether the paper declares a knee there. Choices that are not in the
+    paper: no smoothing spline (one value per k); the logarithm of the inertia by default, as fastumap
+    does (fastumap issue 30); k from 2 by default; n_init 5. The docs say that an elbow never answers 1
+    and bends on uniform data too, and point to choose_k.'
+  needs:
+  - MG-1
+  alternatives:
+  - 'Return only a knee that Kneedle declares, and nothing otherwise: not used; callers of fastumap get a k
+    every time. is_knee and knees carry what the paper says.'
+  - 'The rule of fastumap alone (the largest difference), without the threshold of the paper: not used; it
+    answers for a straight line and cannot say that no knee was found.'
+  - 'Replace the gap statistic in choose_k: not used; it can answer one cluster, and callers of statsx use
+    it.'
+  consequences: 'Figure 2 of the paper is reproduced: the knee at x = 0.22. 3, 5 and 7 planted clusters are
+    found for 3 seeds each. On uniform data elbow_k picks a k above 1 where choose_k answers 1. The answers
+    need not equal those of fastumap: k-means here is full Lloyd in float64 with 5 starts.'

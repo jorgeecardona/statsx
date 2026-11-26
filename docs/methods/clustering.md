@@ -78,6 +78,49 @@ print(gap.k, gap.found, np.round(gap.gap, 2).tolist())
 A pick of `k = 1` says the data are not more clustered than uniform data. It does not say they are one
 round cluster. If no `k` meets the rule, `found` is False and the pick is the largest `k` tried.
 
+## The elbow of the inertia curve
+
+Use `elbow_k(x, k_max)` when you want the number of clusters where more clusters stop making them
+much tighter. It runs k-means for each `k` from `k_min` (2) to `k_max`, and applies the Kneedle
+algorithm (Satopaa, Albrecht, Irwin and Raghavan 2011) to the logarithm of the inertia.
+
+```python
+from statsx.clustering import elbow_k
+
+elbow = elbow_k(x, 8, seed=0)
+print(elbow.k, elbow.is_knee, elbow.inertia_rises)
+```
+
+```text
+3 True 0
+```
+
+The curve is scaled to the unit square and turned so that it rises. The `difference` is how far it
+is above the straight line from the first candidate to the last. `k` is the candidate with the
+largest difference. `is_knee` says that the algorithm's threshold declares a knee there: after the
+peak, the difference falls by more than `sensitivity / (number of candidates - 1)` before it rises
+again.
+
+An elbow cannot tell you that there are no clusters. It never answers 1, and the curve of uniform
+data bends too. Here the elbow picks a `k` for uniform noise, and the gap statistic answers 1:
+
+```python
+flat = np.random.default_rng(0).uniform(size=(500, 5))
+print(elbow_k(flat, 10).k > 1, choose_k(flat, 6).k)
+```
+
+```text
+True 1
+```
+
+Read `inertia_rises`. The best possible inertia never rises with `k`, so a value above 0 means
+that a fit missed it: raise `n_init`. `scale="linear"` uses the inertia itself. The logarithm is
+the default because large early drops can hide the bend on the raw values; it is a choice taken
+from fastumap, not part of the paper. The paper also smooths the data with a spline. `elbow_k` does
+not smooth: it has one value per `k`.
+
+`find_knees(x, y)` is the algorithm alone, for any curve that rises and bends downwards.
+
 ## Gaussian mixtures
 
 `gaussian_mixture(x, k)` fits a mixture of `k` Gaussians by expectation maximization, EM (Dempster,
@@ -393,6 +436,10 @@ proves that the clusters are real: they say how well separated the partition is.
 - The fit reaches the best partition, found by trying all assignments, on 10 points with 3 clusters.
 - The result is identical with 1 and with 4 threads, bit for bit.
 - The silhouette equals its definition computed by hand on random data.
+- `find_knees` reproduces Figure 2 of the Kneedle paper (the knee at `x = 0.22`) and equals the
+  steps of the paper, written out in the test, on 300 random curves and 3 sensitivities.
+- `elbow_k` found 3, 5 and 7 planted clusters for each of 3 seeds, and picked a `k` for uniform
+  data, where `choose_k` answered 1.
 - Three planted blobs gave `k = 3` in 40 of 40 runs of `choose_k`. Uniform data gave `k = 1` in 38
   of 40 runs, and `k = 2` in the others.
 - The mixture log-likelihood never decreases, for full, diagonal and spherical covariances.
@@ -418,6 +465,10 @@ proves that the clusters are real: they say how well separated the partition is.
 - 200,000 points in 32 dimensions with `k = 20` took 4.8 s for 300 iterations on 4 threads.
 
 ## References
+
+- Satopaa, V., Albrecht, J., Irwin, D., and Raghavan, B. (2011). Finding a "Kneedle" in a haystack:
+  detecting knee points in system behavior. *31st International Conference on Distributed
+  Computing Systems Workshops*, pp. 166-171. <https://doi.org/10.1109/ICDCSW.2011.20>
 
 - Ester, M., Kriegel, H.-P., Sander, J., and Xu, X. (1996). A density-based algorithm for
   discovering clusters in large spatial databases with noise. *Proceedings of the 2nd International
