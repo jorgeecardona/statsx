@@ -201,6 +201,9 @@ class KMeansFit:
         converged: True when the kept run stopped because labels or centroids stopped moving,
             False when it hit ``max_iter``.
         n_init: Runs from different seeds; the kept one has the lowest inertia.
+        dispersion: The mean distance of the rows of each cluster to its centroid, shape (k,):
+            the Euclidean distance (not squared), or ``1 - cos``. A wide cluster has a larger
+            value than a tight one of the same size. ``nan`` for a cluster with no rows.
         metric: ``"euclidean"``, or ``"cosine"``: then each centroid has length 1, the labels
             are by the largest cosine, and ``inertia`` is the sum of ``1 - cos``.
     """
@@ -211,6 +214,7 @@ class KMeansFit:
     n_iter: int
     converged: bool
     n_init: int
+    dispersion: npt.NDArray[np.float64]
     metric: Metric = "euclidean"
 
     @property
@@ -271,6 +275,26 @@ class KMeansFit:
         return np.asarray(labels, dtype=np.int64), squared
 
 
+def _dispersion(
+    a: npt.NDArray[np.float64],
+    centroids: npt.NDArray[np.float64],
+    labels: npt.NDArray[np.int64],
+    metric: Metric,
+) -> npt.NDArray[np.float64]:
+    """Return the mean distance of the rows of each cluster to its centroid, ``nan`` if empty."""
+    distance = np.empty(a.shape[0])
+    for start in range(0, a.shape[0], _BLOCK):
+        rows = slice(start, start + _BLOCK)
+        gap = a[rows] - centroids[labels[rows]]
+        distance[rows] = np.sqrt(np.einsum("ij,ij->i", gap, gap))
+    if metric == "cosine":
+        distance = cosine_of_chord(distance)
+    k = centroids.shape[0]
+    sizes = np.bincount(labels, minlength=k)
+    sums = np.bincount(labels, weights=distance, minlength=k)
+    return np.divide(sums, sizes, out=np.full(k, np.nan), where=sizes > 0)
+
+
 def kmeans(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     k: int,
@@ -327,14 +351,17 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
     labels, centroids, inertia, n_iter, converged = _accel.kmeans_fit(
         a, k, max_iter, tol * scale, seed, n_init, spherical, resolve_threads(threads)
     )
+    centres = np.asarray(centroids, dtype=np.float64)
+    found = np.asarray(labels, dtype=np.int64)
     return KMeansFit(
-        np.asarray(centroids, dtype=np.float64),
-        np.asarray(labels, dtype=np.int64),
+        centres,
+        found,
         # for unit vectors |x - c|^2 = 2 (1 - cos)
         float(inertia) / 2.0 if spherical else float(inertia),
         int(n_iter),
         bool(converged),
         n_init,
+        _dispersion(a, centres, found, metric),
         metric,
     )
 

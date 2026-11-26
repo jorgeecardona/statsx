@@ -68,7 +68,9 @@ needs:
     sources:
       - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
       - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/28"}
-    proofs: []
+    proofs:
+      - "test:tests/test_clustering.py::test_the_dispersion_is_the_mean_distance_of_each_cluster_to_its_centre"
+      - "test:tests/test_clustering.py::test_a_wide_cluster_has_a_larger_dispersion_than_a_tight_one_of_the_same_size"
     must: false
 
   - id: MG-5

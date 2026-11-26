@@ -2010,3 +2010,17 @@ decisions:
   consequences: 'Assignment equals the definition from all pairs in both distances. kmeans, assignment and
     silhouette are unchanged for data moved to 1e8 and 1e11. The labels of fastumap cosine centres are
     reproduced with unit rows and the Euclidean distance, which the migration page says.'
+
+- id: D-75
+  text: 'KMeansFit.dispersion[c] is the mean distance of the rows labelled c to centroid c, Euclidean and not
+    squared, or 1 - cos, computed after the fit in blocks of rows; nan for a cluster with no rows. It is the
+    unit of Assignment.distances and of eps.'
+  needs:
+  - MG-4
+  alternatives:
+  - 'The mean squared distance, which sums to the inertia: not used; the callers compare it with distances
+    and limits, which are not squared.'
+  - 'Store the distance of every row in the fit: not done; fit.assign(x) returns them when needed.'
+  - 'A dispersion for DBSCAN and HDBSCAN clusters: not done; they have no centroid.'
+  consequences: 'dispersion equals the definition in both distances. A cosine dispersion is smaller than the
+    one of fastumap, which is a chord distance; the migration page says so.'

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A k-means fit has `dispersion`: the mean distance of each cluster's rows to its centroid.
 - `assign_clusters(rows, centroids)` and `fit.assign(rows)` give each row its nearest centre and
   distance, and label rows beyond `max_distance` -1.
 - `statsx.embedding.pca` reduces wide data to its principal components, with `transform` for new

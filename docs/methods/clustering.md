@@ -41,6 +41,23 @@ print((np.round(fit.centroids, 1) + 0.0).tolist())
 `fit.predict(new_points)` gives the nearest centroid of new rows, and `fit.distances(new_points)` also
 gives the squared distance to it. A large distance says the point is far from every cluster.
 
+## Size and spread of each cluster
+
+`fit.sizes` counts the rows of each cluster. `fit.dispersion` is the mean distance of those rows to
+their centroid: Euclidean (not squared), or `1 - cos`. A wide cluster and a tight one of the same
+size differ here. A wide cluster is a candidate to split, and is not proof that it holds two
+groups.
+
+```python
+uneven = np.vstack([rng.normal(0.0, 0.1, size=(200, 4)), rng.normal(20.0, 3.0, size=(200, 4))])
+wide = kmeans(uneven, 2)
+print(wide.sizes.tolist(), wide.dispersion.max() > 10 * wide.dispersion.min())
+```
+
+```text
+[200, 200] True
+```
+
 ## Assign new rows and mark the far ones
 
 Use `fit.assign(new_rows, max_distance=...)` when rows that arrive later may belong to no cluster.
@@ -555,6 +572,7 @@ proves that the clusters are real: they say how well separated the partition is.
 - `choose_k` picks the first `k` whose margin is 0 or more, and `decision_margin` is the smallest
   deciding margin in standard errors. On the flat curve above the pick changes with
   `n_reference` and every run has a margin below 1. With `k_min` the curve is the same, cut off.
+- `dispersion` equals the mean distance computed cluster by cluster, in both distances.
 - `assign_clusters` gives the nearest centre and its distance as computed from all pairs, in both
   distances; a row at the limit keeps its label, and a tie goes to the first centre.
 - `kmeans`, the assignment and the silhouette give the same result for data moved to 1e8 and 1e11

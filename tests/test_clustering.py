@@ -530,3 +530,27 @@ def test_assign_clusters_checks_its_input() -> None:
         assign_clusters(x, np.zeros((1, 2)), metric="cosine")
     with pytest.raises(ValueError, match="finite"):
         assign_clusters(x, np.full((1, 2), np.nan))
+
+
+@pytest.mark.parametrize("metric", ["euclidean", "cosine"])
+def test_the_dispersion_is_the_mean_distance_of_each_cluster_to_its_centre(metric: Metric) -> None:
+    x, _ = _rays(700, 6)  # more rows than one block
+    fit = kmeans(x, 3, metric=metric)
+    for c in range(3):
+        members = x[fit.labels == c]
+        centre = fit.centroids[c]
+        if metric == "euclidean":
+            distance = np.sqrt(((members - centre) ** 2).sum(axis=1))
+        else:
+            distance = 1.0 - (members @ centre) / np.sqrt((members**2).sum(axis=1))
+        assert fit.dispersion[c] == pytest.approx(float(distance.mean()), rel=1e-9)
+        assert fit.sizes[c] == len(members)
+
+
+def test_a_wide_cluster_has_a_larger_dispersion_than_a_tight_one_of_the_same_size() -> None:
+    rng = np.random.default_rng(0)
+    x = np.vstack([rng.normal(0.0, 0.1, size=(200, 4)), rng.normal(20.0, 3.0, size=(200, 4))])
+    fit = kmeans(x, 2)
+    tight, wide = int(fit.labels[0]), int(fit.labels[-1])
+    assert fit.sizes[tight] == fit.sizes[wide] == 200
+    assert fit.dispersion[wide] > 10 * fit.dispersion[tight]
