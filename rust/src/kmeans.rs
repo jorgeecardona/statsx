@@ -35,7 +35,11 @@ fn dist2(a: &[f64], b: &[f64]) -> f64 {
     s
 }
 
-/// Nearest centroid of each row of the block `x` (rows x dim), and the squared distance to it.
+/// Nearest centroid of each row of the block `x` (rows x dim), by one matrix product.
+///
+/// `x` and `centroids` must be shifted to near the origin: the expansion
+/// `|x - c|^2 = |x|^2 - 2 x.c + |c|^2` loses the difference between two centroids when the
+/// values are large against their distance.
 fn assign_block(
     x: &[f64],
     rows: usize,
@@ -44,7 +48,7 @@ fn assign_block(
     c_sq: &[f64],
     k: usize,
     scratch: &mut [f64],
-) -> Vec<(i64, f64)> {
+) -> Vec<usize> {
     // SAFETY: x is rows x dim and centroids is k x dim, both row-major and contiguous; scratch
     // holds at least rows * k values.
     unsafe {
@@ -77,24 +81,41 @@ fn assign_block(
                     best = j;
                 }
             }
-            // The exact distance, by differences: no cancellation in the reported inertia.
-            let d = dist2(&x[i * dim..i * dim + dim], &centroids[best * dim..best * dim + dim]);
-            (best as i64, d)
+            best
         })
         .collect()
 }
 
 fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (Vec<i64>, Vec<f64>) {
-    let c_sq: Vec<f64> = (0..k)
-        .map(|j| centroids[j * dim..j * dim + dim].iter().map(|v| v * v).sum())
-        .collect();
+    // Both sides are moved by the mean of the centroids before the product. A move changes no
+    // distance, and it keeps the digits that tell two centroids apart when the data are far
+    // from the origin.
+    let mut shift = vec![0.0; dim];
+    for c in centroids.chunks(dim) {
+        for d in 0..dim {
+            shift[d] += c[d] / k as f64;
+        }
+    }
+    let moved: Vec<f64> = centroids.iter().enumerate().map(|(i, v)| v - shift[i % dim]).collect();
+    let c_sq: Vec<f64> = moved.chunks(dim).map(|c| c.iter().map(|v| v * v).sum()).collect();
     let blocks: Vec<Vec<(i64, f64)>> = (0..n.div_ceil(BLOCK))
         .into_par_iter()
         .map(|b| {
             let start = b * BLOCK;
             let rows = BLOCK.min(n - start);
+            let raw = &x[start * dim..(start + rows) * dim];
+            let near: Vec<f64> = raw.iter().enumerate().map(|(i, v)| v - shift[i % dim]).collect();
             let mut scratch = vec![0.0; rows * k];
-            assign_block(&x[start * dim..(start + rows) * dim], rows, dim, centroids, &c_sq, k, &mut scratch)
+            assign_block(&near, rows, dim, &moved, &c_sq, k, &mut scratch)
+                .into_iter()
+                .enumerate()
+                .map(|(i, best)| {
+                    // The distance by differences of the values as given: no cancellation in
+                    // the reported inertia.
+                    let row = &raw[i * dim..(i + 1) * dim];
+                    (best as i64, dist2(row, &centroids[best * dim..(best + 1) * dim]))
+                })
+                .collect()
         })
         .collect();
     let mut labels = Vec::with_capacity(n);
@@ -422,5 +443,15 @@ mod tests {
         let mut zero = [0.0, 0.0];
         to_unit(&mut zero, &[0.0, 1.0]);
         assert_eq!(zero, [0.0, 1.0]);
+    }
+
+    #[test]
+    fn a_point_far_from_the_origin_still_goes_to_the_nearest_centroid() {
+        let offset = 1e9;
+        let centres = [offset, offset, offset + 2.0, offset];
+        let x = [offset + 0.4, offset, offset + 1.6, offset + 0.1, offset + 0.99, offset];
+        let (labels, dist) = assign_all(&x, 3, 2, &centres, 2);
+        assert_eq!(labels, vec![0, 1, 0]);
+        assert!((dist[0] - 0.16).abs() < 1e-6);
     }
 }

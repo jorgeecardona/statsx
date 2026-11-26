@@ -21,7 +21,8 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `cluster(x, method="kmeans", n_clusters=k)` | `kmeans(x, k).labels` |
 | `cluster(x, method="hdbscan")` | `hdbscan(x).labels` |
 | `cluster(x)` with no number of clusters | `kmeans(x, elbow_k(x).k).labels` |
-| `assign_clusters(new, centroids)` after a statsx fit | `fit.predict(new)` |
+| `assign_clusters(new, centroids)` | `assign_clusters(new, centroids).labels` |
+| `max_distance=r`, `return_distances=True` | the same argument; `.labels`, `.distances` |
 | `dbscan(x, eps=...)` | `statsx.clustering.dbscan(x, eps)` |
 | `hdbscan(x, min_cluster_size=...)` | `statsx.clustering.hdbscan(x, min_cluster_size)` |
 | `neighbor_overlap(x, y, k)` | `neighbor_preservation(x, y, k)` |
@@ -45,6 +46,9 @@ again after the switch.
   unit rows, so it can choose other clusters. Cosine `eps` is in `1 - cos` in both.
 - `pca_dim` in `fastumap` returns centres in the original columns. With `pca`, average the rows by
   label yourself. For the cosine distance, scale the rows to length 1 before `pca`.
+- Centres saved from a `fastumap` cosine fit: scale your rows to length 1 and call
+  `assign_clusters` with the Euclidean distance. That is what `fastumap` does, and `max_distance`
+  keeps its meaning. With `metric="cosine"` the limit is in `1 - cos`.
 - `eps` has no default in `dbscan`. Use `k_distances` to choose it.
 - `choose_k` means another thing: in `statsx` it is the gap statistic. The elbow is `elbow_k`.
   It takes no `max_samples`: sample the rows first if you need to. If you use the gap statistic,
@@ -57,7 +61,6 @@ In this order.
 
 | Need | fastumap | Status in statsx |
 |---|---|---|
-| MG-3 | `assign_clusters` with your centroids, `max_distance` | `predict` of a statsx fit only |
 | MG-4 | per-cluster `dispersion` | sizes only |
 | MG-5 | speed and memory at 1024 columns, `batch_size` | not measured |
 | MG-6 | thread cap in containers, thread safety | up to 4 threads from the CPU count of the host |

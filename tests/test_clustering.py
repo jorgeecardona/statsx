@@ -7,7 +7,15 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from statsx.clustering import choose_k, elbow_k, find_knees, kmeans, silhouette
+from statsx.clustering import (
+    Metric,
+    assign_clusters,
+    choose_k,
+    elbow_k,
+    find_knees,
+    kmeans,
+    silhouette,
+)
 
 F64 = npt.NDArray[np.float64]
 
@@ -442,3 +450,83 @@ def test_k_min_starts_the_gap_rule_later_on_the_same_curve() -> None:
         choose_k(x, 3, k_min=4)
     with pytest.raises(ValueError, match="k_min"):
         choose_k(x, 3, k_min=0)
+
+
+@pytest.mark.parametrize("offset", [1e8, 1e11])
+def test_kmeans_and_the_silhouette_are_unchanged_far_from_the_origin(offset: float) -> None:
+    rng = np.random.default_rng(0)
+    centres = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+    x = np.repeat(centres, 200, axis=0) + 0.3 * rng.normal(size=(600, 3))
+    near = kmeans(x, 3)
+    far = kmeans(x + offset, 3)
+    # the same partition, whatever the numbering
+    assert len(set(zip(near.labels.tolist(), far.labels.tolist(), strict=True))) == 3
+    assert far.inertia == pytest.approx(near.inertia, rel=1e-4)
+    truth = np.argmin(((x[:, None, :] - centres[None]) ** 2).sum(axis=2), axis=1)
+    found = assign_clusters(x + offset, centres + offset)
+    assert np.array_equal(found.nearest, truth)
+    assert silhouette(x + offset, near.labels).mean == pytest.approx(
+        silhouette(x, near.labels).mean, rel=1e-4
+    )
+
+
+@pytest.mark.parametrize("metric", ["euclidean", "cosine"])
+def test_assign_clusters_equals_the_nearest_centre_by_definition(metric: Metric) -> None:
+    rng = np.random.default_rng(1)
+    x = rng.normal(size=(500, 6)) + 0.5
+    centres = rng.normal(size=(7, 6)) * rng.uniform(0.1, 20.0, size=(7, 1))
+    if metric == "euclidean":
+        full = np.sqrt(((x[:, None, :] - centres[None]) ** 2).sum(axis=2))
+    else:
+        norms = np.sqrt((x * x).sum(axis=1))[:, None] * np.sqrt((centres**2).sum(axis=1))[None]
+        full = 1.0 - (x @ centres.T) / norms
+    limit = float(np.median(full.min(axis=1)))
+    found = assign_clusters(x, centres, metric=metric, max_distance=limit)
+    assert np.array_equal(found.nearest, np.argmin(full, axis=1))
+    assert np.allclose(found.distances, full.min(axis=1), rtol=0.0, atol=1e-12)
+    assert np.array_equal(found.labels, np.where(found.distances > limit, -1, found.nearest))
+    assert found.n_noise == int((found.distances > limit).sum()) > 0
+    assert found.metric == metric
+    assert found.max_distance == limit
+    without = assign_clusters(x, centres, metric=metric)
+    assert np.array_equal(without.labels, without.nearest)
+    assert without.n_noise == 0
+
+
+def test_a_row_at_the_limit_keeps_its_label_and_a_tie_goes_to_the_first_centre() -> None:
+    centres = np.array([[0.0, 0.0], [10.0, 0.0]])
+    x = np.array([[3.0, 4.0], [5.0, 0.0], [3.0, 4.000001]])
+    found = assign_clusters(x, centres, max_distance=5.0)
+    assert found.distances[0] == 5.0
+    assert found.labels.tolist() == [0, 0, -1]
+    assert assign_clusters(x[:1], centres[:1], max_distance=0.0).labels.tolist() == [-1]
+
+
+@pytest.mark.parametrize("metric", ["euclidean", "cosine"])
+def test_a_fit_assigns_in_its_own_distance(metric: Metric) -> None:
+    x, _ = _rays(60, 5)
+    fit = kmeans(x, 3, metric=metric)
+    again = fit.assign(x)
+    assert again.metric == metric
+    assert np.array_equal(again.labels, fit.labels)
+    assert np.array_equal(again.labels, fit.predict(x))
+    squared = fit.distances(x)[1]
+    expected = np.sqrt(squared) if metric == "euclidean" else squared
+    assert np.allclose(again.distances, expected, rtol=1e-9, atol=1e-12)
+    far = fit.assign(x, max_distance=float(np.quantile(again.distances, 0.9)))
+    assert 0 < far.n_noise <= len(x) // 10 + 1
+
+
+def test_assign_clusters_checks_its_input() -> None:
+    x = np.ones((3, 2))
+    with pytest.raises(ValueError, match="columns"):
+        assign_clusters(x, np.ones((2, 3)))
+    for bad in (-1.0, float("nan")):
+        with pytest.raises(ValueError, match="max_distance"):
+            assign_clusters(x, x, max_distance=bad)
+    with pytest.raises(ValueError, match="metric must be one of"):
+        assign_clusters(x, x, metric="manhattan")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="row of zeros"):
+        assign_clusters(x, np.zeros((1, 2)), metric="cosine")
+    with pytest.raises(ValueError, match="finite"):
+        assign_clusters(x, np.full((1, 2), np.nan))

@@ -41,6 +41,35 @@ print((np.round(fit.centroids, 1) + 0.0).tolist())
 `fit.predict(new_points)` gives the nearest centroid of new rows, and `fit.distances(new_points)` also
 gives the squared distance to it. A large distance says the point is far from every cluster.
 
+## Assign new rows and mark the far ones
+
+Use `fit.assign(new_rows, max_distance=...)` when rows that arrive later may belong to no cluster.
+Rows farther than the limit get the label -1. `assign_clusters(rows, centroids)` does the same for
+centres of your own, with no fit.
+
+```python
+from statsx.clustering import assign_clusters
+
+limit = float(np.quantile(fit.assign(x).distances, 0.99))
+new = np.array([[0.5, 0.2], [7.5, 0.4], [30.0, 30.0]])
+found = fit.assign(new, max_distance=limit)
+print((found.labels >= 0).tolist(), found.n_noise, found.distances[2] > limit)
+same = assign_clusters(new, fit.centroids, max_distance=limit)
+print(np.array_equal(same.labels, found.labels))
+```
+
+```text
+[True, True, False] 1 True
+True
+```
+
+The distances of `assign` are Euclidean (not squared), or `1 - cos` for a cosine fit. They differ
+from `fit.distances`, which returns the squared distance. `found.nearest` keeps the nearest centre
+of the rows labelled -1.
+
+A limit is a choice you make. The quantile above says "farther than 99% of the rows of the fit",
+so about 1 row in 100 of the same kind is marked too.
+
 ## The silhouette
 
 `silhouette(x, labels)` shows which points sit between clusters (Rousseeuw 1987). For a point, `a` is its
@@ -526,6 +555,10 @@ proves that the clusters are real: they say how well separated the partition is.
 - `choose_k` picks the first `k` whose margin is 0 or more, and `decision_margin` is the smallest
   deciding margin in standard errors. On the flat curve above the pick changes with
   `n_reference` and every run has a margin below 1. With `k_min` the curve is the same, cut off.
+- `assign_clusters` gives the nearest centre and its distance as computed from all pairs, in both
+  distances; a row at the limit keeps its label, and a tie goes to the first centre.
+- `kmeans`, the assignment and the silhouette give the same result for data moved to 1e8 and 1e11
+  from the origin.
 - `find_knees` reproduces Figure 2 of the Kneedle paper (the knee at `x = 0.22`) and equals the
   steps of the paper, written out in the test, on 300 random curves and 3 sensitivities.
 - `elbow_k` found 3, 5 and 7 planted clusters for each of 3 seeds, and picked a `k` for uniform

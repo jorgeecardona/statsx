@@ -114,6 +114,82 @@ _MIN_CURVE = 3
 
 
 @dataclass(frozen=True, slots=True)
+class Assignment:
+    """Rows assigned to their nearest centres.
+
+    Args:
+        labels: The centre of each row, or -1 when it is farther than ``max_distance``.
+        nearest: The nearest centre of each row, also for the rows labelled -1.
+        distances: The distance of each row to that centre: the Euclidean distance (not
+            squared), or ``1 - cos``.
+        metric: ``"euclidean"`` or ``"cosine"``.
+        max_distance: The limit used, or None.
+    """
+
+    labels: npt.NDArray[np.int64]
+    nearest: npt.NDArray[np.int64]
+    distances: npt.NDArray[np.float64]
+    metric: Metric
+    max_distance: float | None
+
+    @property
+    def n_noise(self) -> int:
+        """Return how many rows are labelled -1."""
+        return int(np.count_nonzero(self.labels < 0))
+
+
+def assign_clusters(
+    x: npt.ArrayLike,
+    centroids: npt.ArrayLike,
+    *,
+    metric: Metric = "euclidean",
+    max_distance: float | None = None,
+    threads: int | None = None,
+) -> Assignment:
+    """Assign each row of ``x`` to the nearest of ``centroids``, without fitting anything.
+
+    Use it for centres you already have: from a fit saved earlier, or chosen by you. A row at the
+    same distance from two centres goes to the first.
+
+    Every row has a nearest centre, however far it is. Set ``max_distance`` to label the rows
+    beyond it -1, the label that ``dbscan`` and ``hdbscan`` give to noise. Read the limit from
+    data, for instance a high quantile of ``distances`` on the rows of the fit.
+
+    Args:
+        x: The rows, shape (n, d), n >= 1, finite.
+        centroids: The centres, shape (k, d), k >= 1, finite. For the cosine distance only
+            their direction counts.
+        metric: ``"euclidean"`` or ``"cosine"``.
+        max_distance: Largest distance that keeps a label, at least 0, in the unit of
+            ``distances``. A row exactly at the limit keeps its label.
+        threads: Worker threads, as in ``kmeans``.
+
+    Raises:
+        ValueError: If the arrays are not finite 2-D arrays with the same columns, ``metric`` is
+            unknown, ``max_distance`` is negative or not a number, or ``metric`` is
+            ``"cosine"`` and a row or a centre is all zeros.
+    """
+    check_metric(metric)
+    if max_distance is not None and not max_distance >= 0.0:
+        raise ValueError(f"max_distance must be at least 0, got {max_distance}")
+    a = as_points(x, min_rows=1)
+    c = as_points(centroids, min_rows=1)
+    if a.shape[1] != c.shape[1]:
+        raise ValueError(f"x has {a.shape[1]} columns, the centroids have {c.shape[1]}")
+    if metric == "cosine":
+        a, c = unit_rows(a), unit_rows(c)
+    found, squared = _accel.kmeans_assign(a, c, resolve_threads(threads))
+    nearest = np.asarray(found, dtype=np.int64)
+    distances = np.sqrt(np.asarray(squared, dtype=np.float64))
+    if metric == "cosine":
+        distances = cosine_of_chord(distances)
+    labels = nearest.copy()
+    if max_distance is not None:
+        labels[distances > max_distance] = -1
+    return Assignment(labels, nearest, distances, metric, max_distance)
+
+
+@dataclass(frozen=True, slots=True)
 class KMeansFit:
     """A k-means fit.
 
@@ -155,6 +231,21 @@ class KMeansFit:
         """
         labels, _ = self.distances(x, threads=threads)
         return labels
+
+    def assign(
+        self, x: npt.ArrayLike, *, max_distance: float | None = None, threads: int | None = None
+    ) -> Assignment:
+        """Assign new rows to the centres of this fit, in its distance.
+
+        See ``assign_clusters``. The distances are Euclidean (not squared), or ``1 - cos``.
+        """
+        return assign_clusters(
+            x,
+            self.centroids,
+            metric=self.metric,
+            max_distance=max_distance,
+            threads=threads,
+        )
 
     def distances(
         self, x: npt.ArrayLike, *, threads: int | None = None
@@ -304,6 +395,8 @@ def silhouette(x: npt.ArrayLike, labels: npt.ArrayLike) -> Silhouette:
         raise ValueError("the silhouette needs at least 2 clusters")
     onehot = np.zeros((a.shape[0], k))
     onehot[np.arange(a.shape[0]), lab] = 1.0
+    # centred first: a move changes no distance, and the expansion below keeps its digits
+    a = a - a.mean(axis=0)
     sq = np.einsum("ij,ij->i", a, a)
     values = np.empty(a.shape[0])
     for start in range(0, a.shape[0], _BLOCK):

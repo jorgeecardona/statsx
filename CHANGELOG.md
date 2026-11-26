@@ -9,8 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.62] - 2026-11-20
 
+### Fixed
+
+- `kmeans`, its `predict`, and `silhouette` gave wrong results for data far from the origin (values
+  near 1e8 whose clusters are a few units apart): rows went to the wrong centre. Moving the data
+  now changes nothing.
+
 ### Added
 
+- `assign_clusters(rows, centroids)` and `fit.assign(rows)` give each row its nearest centre and
+  distance, and label rows beyond `max_distance` -1.
 - `statsx.embedding.pca` reduces wide data to its principal components, with `transform` for new
   rows. On embeddings it lets `elbow_k` find groups that it misses on all the columns.
 - `choose_k` says when its pick is decided by noise: `decision_margin` is the closest comparison

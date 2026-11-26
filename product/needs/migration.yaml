@@ -53,7 +53,12 @@ needs:
       - {kind: secondary, date: 2026-08-25, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/20"}
       - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/26"}
       - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/27"}
-    proofs: []
+    proofs:
+      - "test:tests/test_clustering.py::test_assign_clusters_equals_the_nearest_centre_by_definition"
+      - "test:tests/test_clustering.py::test_a_row_at_the_limit_keeps_its_label_and_a_tie_goes_to_the_first_centre"
+      - "test:tests/test_clustering.py::test_a_fit_assigns_in_its_own_distance"
+      - "test:tests/test_clustering.py::test_assign_clusters_checks_its_input"
+      - "test:tests/test_clustering.py::test_kmeans_and_the_silhouette_are_unchanged_far_from_the_origin"
     must: false
 
   - id: MG-4

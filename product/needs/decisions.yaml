@@ -1988,3 +1988,25 @@ decisions:
     is a published, tested one.'
   consequences: 'On 2000 rows of 256 columns with 8 groups the elbow on 8 components gives 8. PCA removes
     groups that differ along a small-variance direction; a test and the docs show it.'
+
+- id: D-74
+  text: 'assign_clusters(x, centroids, metric, max_distance) returns an Assignment: the labels with -1 beyond
+    max_distance, the nearest centre of every row, and its distance, Euclidean and not squared, or 1 - cos,
+    the units of eps in dbscan. A row at the limit keeps its label; ties go to the lower index. For the
+    cosine distance rows and centres are scaled to length 1. KMeansFit.assign calls it with the fit''s
+    centres and metric. predict and distances keep their meaning (distances is squared). The assignment
+    step of k-means now moves rows and centres by the mean of the centres before the matrix product, and
+    computes the distance from the values as given: without the move, |c|^2 - 2 x.c loses the difference
+    between centres when the values are large (55 of 600 rows were wrong at an offset of 1e8). silhouette
+    centres the data for the same reason.'
+  needs:
+  - MG-3
+  alternatives:
+  - 'Change KMeansFit.distances to return the distance and not its square: not done; it is released, and its
+    values are the terms of inertia.'
+  - 'A max_distance argument on predict: not done; predict returns labels only, and a caller who sets a
+    limit needs the distances to choose it.'
+  - 'Recompute every pair by differences: not used; the move keeps the matrix product and its speed.'
+  consequences: 'Assignment equals the definition from all pairs in both distances. kmeans, assignment and
+    silhouette are unchanged for data moved to 1e8 and 1e11. The labels of fastumap cosine centres are
+    reproduced with unit rows and the Euclidean distance, which the migration page says.'
