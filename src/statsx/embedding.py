@@ -307,7 +307,7 @@ class UMAPFit:
                 statsx.
             seed: Seed of the random sampling. Defaults to the seed of the fit.
             threads: Worker threads. Defaults to the CPUs the process may use, at most 4, or to
-            the ``STATSX_THREADS`` environment variable.
+                the ``STATSX_THREADS`` environment variable.
 
         Raises:
             ValueError: If ``x`` has a different number of columns than the fitted data, if
