@@ -1,0 +1,105 @@
+who: caller who replaces fastumap with statsx
+
+needs:
+
+  - id: MG-1
+    text: >
+      When the caller chose k in fastumap by the elbow, they can do it in statsx, see the inertia of every
+      candidate and the rule that picked k, and get the same k for another seed on data with a clear answer.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/25"}
+      - {kind: secondary, date: 2026-11-11, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/30"}
+      - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/24"}
+    proofs: []
+    must: false
+
+  - id: MG-2
+    text: >
+      When the caller clusters text embeddings by the cosine distance, they can use it in k-means, DBSCAN,
+      HDBSCAN and the choice of k.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/24"}
+      - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/26"}
+    proofs: []
+    must: false
+
+  - id: MG-3
+    text: >
+      When the caller assigns new points to existing centres, theirs or those of a fit, they get the distance
+      to the centre and can mark far points as noise, in the distance the fit used.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-25, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/20"}
+      - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/26"}
+      - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/27"}
+    proofs: []
+    must: false
+
+  - id: MG-4
+    text: >
+      When the caller fits clusters, they get the size and the spread of each cluster in the distance of the
+      fit.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/28"}
+    proofs: []
+    must: false
+
+  - id: MG-5
+    text: >
+      When the caller runs the calls of fastumap on 1024-column embeddings, at 5,000 points on half a CPU and
+      at 1,000,000 points, they know the time and memory of statsx against fastumap, and statsx is not
+      slower by a margin that stops the switch. float32 input is not copied to float64 without need.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-23, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/2"}
+      - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/6"}
+      - {kind: secondary, date: 2026-08-25, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/18"}
+      - {kind: secondary, date: 2026-11-11, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/29"}
+    proofs: []
+    must: false
+
+  - id: MG-6
+    text: >
+      When the caller runs statsx inside a CPU-limited container and from several threads, the default does
+      not start more workers than the container may use, concurrent calls are tested, and a second process
+      gives the same result.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-23, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/3"}
+      - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/10"}
+    proofs: []
+    must: false
+
+  - id: MG-7
+    text: >
+      When the caller refreshes a map, they can start the layout from earlier positions, without the input
+      array being changed, so that the two maps can be compared.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/12"}
+      - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/15"}
+      - {kind: secondary, date: 2026-08-25, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/16"}
+    proofs: []
+    must: false
+
+  - id: MG-8
+    text: >
+      When the caller has labels for some points, they can let the labels guide the map.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-24, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/13"}
+    proofs: []
+    must: false
+
+  - id: MG-9
+    text: >
+      When the caller maps or clusters more points than exact neighbours can handle in their time, they can
+      use approximate neighbours.
+    sources:
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
+      - {kind: secondary, date: 2026-08-25, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/17"}
+    proofs: []
+    must: false

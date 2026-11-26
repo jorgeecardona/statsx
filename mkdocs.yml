@@ -106,6 +106,7 @@ nav:
   - Recipes:
       - Compare two timing runs: recipes/compare-timings.md
       - Fit a short series, or a series with holes: recipes/short-and-gapped-series.md
+  - Move from fastumap: migrate-from-fastumap.md
   - API reference: api.md
   - Ideas and open questions: ideas.md
   - Changelog: changelog.md
