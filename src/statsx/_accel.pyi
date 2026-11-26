@@ -55,6 +55,7 @@ def kmeans_fit(
     tol: float,
     seed: int,
     n_init: int,
+    spherical: bool,
     threads: int,
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64], float, int, bool]: ...
 def kmeans_assign(
@@ -71,6 +72,7 @@ def hdbscan_fit(
     min_samples: int,
     min_cluster_size: int,
     allow_single_cluster: bool,
+    cosine: bool,
     threads: int,
 ) -> tuple[
     npt.NDArray[np.int64],

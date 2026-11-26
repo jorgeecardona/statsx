@@ -180,6 +180,25 @@ fn means(x: &[f64], n: usize, dim: usize, labels: &[i64], k: usize) -> (Vec<f64>
     (sums, counts)
 }
 
+/// Scale a centre to length 1. A centre of length 0 (its points cancel out) has no direction and
+/// is left as `fallback`.
+fn to_unit(centre: &mut [f64], fallback: &[f64]) {
+    let norm = centre.iter().map(|v| v * v).sum::<f64>().sqrt();
+    if norm > 0.0 {
+        for v in centre.iter_mut() {
+            *v /= norm;
+        }
+    } else {
+        centre.copy_from_slice(fallback);
+    }
+}
+
+/// With `spherical`, the rows of `x` must have length 1 and each centre is scaled to length 1
+/// after it is averaged: spherical k-means (Dhillon & Modha 2001, "Concept decompositions for
+/// large sparse text data using clustering", Machine Learning 42:143-175), which maximises the
+/// sum of cosines. For unit vectors `|x - c|^2 = 2 - 2 x.c`, so the nearest centre is the one
+/// with the largest cosine and the assignment step needs no change. Decision D-71.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn lloyd(
     x: &[f64],
     n: usize,
@@ -187,6 +206,7 @@ pub(crate) fn lloyd(
     k: usize,
     max_iter: usize,
     tol: f64,
+    spherical: bool,
     rng: &mut Rng,
 ) -> Fit {
     let mut centres = seed_centres(x, n, dim, k, rng);
@@ -209,11 +229,14 @@ pub(crate) fn lloyd(
                 continue;
             }
             let inv = 1.0 / counts[c] as f64;
+            let mut mean: Vec<f64> = (0..dim).map(|d| sums[c * dim + d] * inv).collect();
+            if spherical {
+                to_unit(&mut mean, &centres[c * dim..(c + 1) * dim]);
+            }
             for d in 0..dim {
-                let v = sums[c * dim + d] * inv;
-                let diff = v - centres[c * dim + d];
+                let diff = mean[d] - centres[c * dim + d];
                 shift += diff * diff;
-                centres[c * dim + d] = v;
+                centres[c * dim + d] = mean[d];
             }
         }
         if !empty.is_empty() {
@@ -239,9 +262,11 @@ pub(crate) fn lloyd(
     let mut out = centres;
     for c in 0..k {
         if counts[c] > 0 {
-            for d in 0..dim {
-                out[c * dim + d] = sums[c * dim + d] / counts[c] as f64;
+            let mut mean: Vec<f64> = (0..dim).map(|d| sums[c * dim + d] / counts[c] as f64).collect();
+            if spherical {
+                to_unit(&mut mean, &out[c * dim..(c + 1) * dim]);
             }
+            out[c * dim..(c + 1) * dim].copy_from_slice(&mean);
         }
     }
     let _ = labels;
@@ -270,6 +295,7 @@ pub fn kmeans_fit<'py>(
     tol: f64,
     seed: u64,
     n_init: usize,
+    spherical: bool,
     threads: usize,
 ) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray2<f64>>, f64, usize, bool)> {
     let shape = data.shape();
@@ -284,7 +310,7 @@ pub fn kmeans_fit<'py>(
             let mut best: Option<Fit> = None;
             for i in 0..n_init {
                 let mut rng = Rng::new(seed.wrapping_add((i as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)));
-                let fit = lloyd(&x, n, dim, k, max_iter, tol, &mut rng);
+                let fit = lloyd(&x, n, dim, k, max_iter, tol, spherical, &mut rng);
                 if best.as_ref().is_none_or(|b| fit.2 < b.2) {
                     best = Some(fit);
                 }
@@ -348,7 +374,7 @@ mod tests {
     fn three_blobs_are_found_and_inertia_matches_the_labels() {
         let (x, n) = blobs(50, 1);
         let mut rng = Rng::new(3);
-        let (labels, centres, inertia, _, converged) = lloyd(&x, n, 2, 3, 100, 1e-12, &mut rng);
+        let (labels, centres, inertia, _, converged) = lloyd(&x, n, 2, 3, 100, 1e-12, false, &mut rng);
         assert!(converged);
         for g in 0..3 {
             let first = labels[g * 50];
@@ -367,7 +393,7 @@ mod tests {
             let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
             pool.install(|| {
                 let mut rng = Rng::new(5);
-                lloyd(&x, n, 2, 3, 100, 1e-12, &mut rng)
+                lloyd(&x, n, 2, 3, 100, 1e-12, false, &mut rng)
             })
         };
         let (a, b) = (run(1), run(4));
@@ -380,7 +406,21 @@ mod tests {
     fn k_equal_to_n_gives_zero_inertia() {
         let x = vec![0.0, 1.0, 5.0, 9.0, 9.5, 20.0];
         let mut rng = Rng::new(1);
-        let (_, _, inertia, _, _) = lloyd(&x, 6, 1, 6, 50, 0.0, &mut rng);
+        let (_, _, inertia, _, _) = lloyd(&x, 6, 1, 6, 50, 0.0, false, &mut rng);
         assert!(inertia < 1e-12);
+    }
+
+    #[test]
+    fn spherical_centres_have_length_one_and_a_cancelled_centre_keeps_its_place() {
+        // Four unit vectors around two directions.
+        let x = [1.0, 0.0, 0.96, 0.28, 0.0, 1.0, 0.28, 0.96];
+        let mut rng = Rng::new(1);
+        let (_, centres, _, _, _) = lloyd(&x, 4, 2, 2, 100, 0.0, true, &mut rng);
+        for c in centres.chunks(2) {
+            assert!(((c[0] * c[0] + c[1] * c[1]).sqrt() - 1.0).abs() < 1e-15);
+        }
+        let mut zero = [0.0, 0.0];
+        to_unit(&mut zero, &[0.0, 1.0]);
+        assert_eq!(zero, [0.0, 1.0]);
     }
 }

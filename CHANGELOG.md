@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `kmeans`, `elbow_k`, `dbscan`, `k_distances` and `hdbscan` take `metric="cosine"`, the distance
+  `1 - cos`, for embeddings whose length means nothing. Cosine k-means is spherical k-means.
 - `statsx.clustering.elbow_k` picks the number of clusters at the elbow of the k-means inertia, by
   the Kneedle algorithm, and returns the curve it used. `find_knees` is the algorithm alone. The
   new page "Move from fastumap" maps each call of fastumap to statsx.

@@ -324,7 +324,7 @@ fn em_run(
     rng: &mut Rng,
 ) -> Option<Run> {
     let k = s.k;
-    let (labels, _, _, _, _) = lloyd(x, n, dim, k, start, 0.0, rng);
+    let (labels, _, _, _, _) = lloyd(x, n, dim, k, start, 0.0, false, rng);
     let mut resp = vec![0.0; n * k];
     for (i, &l) in labels.iter().enumerate() {
         resp[i * k + l as usize] = 1.0;

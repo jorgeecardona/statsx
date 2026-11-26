@@ -29,7 +29,19 @@ needs:
       - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
       - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/24"}
       - {kind: secondary, date: 2026-08-27, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/26"}
-    proofs: []
+    proofs:
+      - "test:tests/test_clustering.py::test_cosine_kmeans_reaches_the_best_partition_on_a_small_set"
+      - "test:tests/test_clustering.py::test_a_cosine_fit_has_unit_centres_and_labels_by_the_largest_cosine"
+      - "test:tests/test_clustering.py::test_cosine_kmeans_ignores_the_length_of_a_row_and_predicts_by_cosine"
+      - "test:tests/test_clustering.py::test_the_cosine_fit_does_not_depend_on_the_number_of_threads"
+      - "test:tests/test_clustering.py::test_the_cosine_elbow_finds_the_directions_whatever_the_lengths"
+      - "test:tests/test_clustering.py::test_cosine_kmeans_refuses_zero_rows_and_unknown_metrics"
+      - "test:tests/test_density_clustering.py::test_cosine_dbscan_equals_the_algorithm_on_cosine_distances"
+      - "test:tests/test_density_clustering.py::test_cosine_k_distances_equal_the_definition"
+      - "test:tests/test_density_clustering.py::test_cosine_hdbscan_equals_the_hierarchy_of_the_cosine_distance"
+      - "test:tests/test_density_clustering.py::test_cosine_densities_ignore_the_length_of_a_row"
+      - "test:tests/test_density_clustering.py::test_cosine_scaled_copies_are_at_distance_zero_and_stabilities_stay_finite"
+      - "test:tests/test_density_clustering.py::test_cosine_density_functions_refuse_zero_rows_and_unknown_metrics"
     must: false
 
   - id: MG-3

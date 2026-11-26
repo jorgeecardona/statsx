@@ -12,6 +12,11 @@ library saying it sees no structure. ``silhouette`` shows which points sit betwe
 ``elbow_k`` finds where the inertia curve bends (the Kneedle algorithm). It has no model of "no
 clusters": it picks a k for any data.
 
+``kmeans``, ``elbow_k``, ``dbscan``, ``k_distances`` and ``hdbscan`` take ``metric="cosine"``,
+the distance ``1 - cos`` of the angle between two rows, for rows whose direction carries the
+meaning. The gap statistic of ``choose_k`` does not: its reference data are uniform in a box,
+which says nothing about directions.
+
 ``gaussian_mixture`` fits a mixture of Gaussians by expectation maximization. Each point gets a
 probability for each component, and each component has its own mean and covariance. The model
 assumes the components are Gaussian. ``choose_components`` picks the number of components by BIC.
@@ -35,6 +40,9 @@ References:
     Rousseeuw, P. J. (1987). Silhouettes: a graphical aid to the interpretation and validation of
     cluster analysis. *Journal of Computational and Applied Mathematics* 20:53-65.
     https://doi.org/10.1016/0377-0427(87)90125-7.
+
+    Dhillon, I. S., & Modha, D. S. (2001). Concept decompositions for large sparse text data using
+    clustering. *Machine Learning* 42(1-2):143-175. https://doi.org/10.1023/A:1007612920971.
 
     Satopaa, V., Albrecht, J., Irwin, D., & Raghavan, B. (2011). Finding a "Kneedle" in a
     haystack: detecting knee points in system behavior. *2011 31st International Conference on
@@ -88,7 +96,15 @@ import numpy as np
 import numpy.typing as npt
 
 from statsx import _accel
-from statsx._arrays import MATRIX, as_points, resolve_threads
+from statsx._arrays import (
+    MATRIX,
+    Metric,
+    as_points,
+    check_metric,
+    cosine_of_chord,
+    resolve_threads,
+    unit_rows,
+)
 
 _BLOCK = 512
 """Rows per block of the silhouette distance matrix."""
@@ -109,6 +125,8 @@ class KMeansFit:
         converged: True when the kept run stopped because labels or centroids stopped moving,
             False when it hit ``max_iter``.
         n_init: Runs from different seeds; the kept one has the lowest inertia.
+        metric: ``"euclidean"``, or ``"cosine"``: then each centroid has length 1, the labels
+            are by the largest cosine, and ``inertia`` is the sum of ``1 - cos``.
     """
 
     centroids: npt.NDArray[np.float64]
@@ -117,6 +135,7 @@ class KMeansFit:
     n_iter: int
     converged: bool
     n_init: int
+    metric: Metric = "euclidean"
 
     @property
     def k(self) -> int:
@@ -140,18 +159,32 @@ class KMeansFit:
     def distances(
         self, x: npt.ArrayLike, *, threads: int | None = None
     ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]:
-        """Return the nearest centroid of each row of ``x`` and the squared distance to it."""
+        """Return the nearest centroid of each row of ``x`` and the distance to it.
+
+        The distance is the squared Euclidean distance, or ``1 - cos`` for a cosine fit: the
+        terms that ``inertia`` sums.
+
+        Raises:
+            ValueError: If ``x`` does not have the columns of the fit, or the fit used the cosine
+                distance and a row is all zeros.
+        """
         a = np.ascontiguousarray(x, dtype=np.float64)
         if a.ndim != MATRIX or a.shape[1] != self.centroids.shape[1]:
             raise ValueError(f"x must have {self.centroids.shape[1]} columns")
+        if self.metric == "cosine":
+            a = unit_rows(a)
         labels, dist = _accel.kmeans_assign(a, self.centroids, resolve_threads(threads))
-        return np.asarray(labels, dtype=np.int64), np.asarray(dist, dtype=np.float64)
+        squared = np.asarray(dist, dtype=np.float64)
+        if self.metric == "cosine":
+            squared = cosine_of_chord(np.sqrt(squared))
+        return np.asarray(labels, dtype=np.int64), squared
 
 
 def kmeans(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     k: int,
     *,
+    metric: Metric = "euclidean",
     n_init: int = 10,
     max_iter: int = 300,
     tol: float = 1e-4,
@@ -166,9 +199,16 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
     empty cluster moves onto the points worst served by their centroid. The run with the lowest
     inertia is kept. The same ``seed`` gives the same fit, for any ``threads``.
 
+    With ``metric="cosine"`` the fit is spherical k-means (Dhillon & Modha 2001): the rows are
+    scaled to length 1, each centre is the mean of its rows scaled to length 1, and a row joins
+    the centre with the largest cosine. It maximises the sum of cosines, so scaling a row changes
+    nothing. Clustering unit rows with the Euclidean distance is not the same: there a centre
+    keeps its length, which is below 1 and lower for a wider cluster.
+
     Args:
         x: The points, shape (n, d), finite.
         k: Number of clusters, from 1 to n.
+        metric: ``"euclidean"`` or ``"cosine"``.
         n_init: Runs from different seeds. One run can end in a poor local minimum.
         max_iter: Most Lloyd iterations per run.
         tol: Stop when the sum of squared centre moves is below ``tol`` times the mean variance of
@@ -179,25 +219,32 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
 
     Raises:
         ValueError: If ``x`` is not a finite (n, d) array with at least 2 rows, ``k`` is not in
-            [1, n], or ``n_init``, ``max_iter`` or ``tol`` are out of range.
+            [1, n], ``n_init``, ``max_iter`` or ``tol`` are out of range, ``metric`` is unknown,
+            or ``metric`` is ``"cosine"`` and a row is all zeros.
     """
+    check_metric(metric)
     a = as_points(x)
+    if metric == "cosine":
+        a = unit_rows(a)
     n = a.shape[0]
     if not 1 <= k <= n:
         raise ValueError(f"k must be between 1 and n = {n}, got {k}")
     if n_init < 1 or max_iter < 1 or tol < 0.0:
         raise ValueError("n_init and max_iter must be at least 1, and tol at least 0")
     scale = float(np.mean(np.var(a, axis=0)))
+    spherical = metric == "cosine"
     labels, centroids, inertia, n_iter, converged = _accel.kmeans_fit(
-        a, k, max_iter, tol * scale, seed, n_init, resolve_threads(threads)
+        a, k, max_iter, tol * scale, seed, n_init, spherical, resolve_threads(threads)
     )
     return KMeansFit(
         np.asarray(centroids, dtype=np.float64),
         np.asarray(labels, dtype=np.int64),
-        float(inertia),
+        # for unit vectors |x - c|^2 = 2 (1 - cos)
+        float(inertia) / 2.0 if spherical else float(inertia),
         int(n_iter),
         bool(converged),
         n_init,
+        metric,
     )
 
 
@@ -497,6 +544,7 @@ def elbow_k(  # noqa: PLR0913 (settings are keyword-only)
     k_max: int = 10,
     *,
     k_min: int = 2,
+    metric: Metric = "euclidean",
     n_init: int = 5,
     scale: ElbowScale = "log",
     sensitivity: float = 1.0,
@@ -517,12 +565,14 @@ def elbow_k(  # noqa: PLR0913 (settings are keyword-only)
     answers 1. ``choose_k`` (the gap statistic) can answer 1. Use it to ask whether there are
     clusters at all.
 
-    ``kmeans(x, result.k, n_init=n_init, seed=seed)`` gives the fit behind the chosen k.
+    ``kmeans(x, result.k, metric=metric, n_init=n_init, seed=seed)`` gives the fit behind the
+    chosen k.
 
     Args:
         x: The points, shape (n, d), finite.
         k_max: Largest number of clusters tried, at most n.
         k_min: Smallest number tried, at least 1. At least 3 candidates are needed.
+        metric: ``"euclidean"`` or ``"cosine"``, as in ``kmeans``.
         n_init: k-means runs per candidate.
         scale: ``"log"`` or ``"linear"``.
         sensitivity: ``S`` of the Kneedle threshold, at least 0.
@@ -534,6 +584,7 @@ def elbow_k(  # noqa: PLR0913 (settings are keyword-only)
             candidates or goes outside [1, n], ``scale`` is unknown, a fit with ``scale="log"``
             has inertia 0, or the inertia is the same for every k.
     """
+    check_metric(metric)
     a = as_points(x)
     if not (k_min >= 1 and k_min + _MIN_CURVE - 1 <= k_max <= a.shape[0]):
         raise ValueError(
@@ -543,7 +594,7 @@ def elbow_k(  # noqa: PLR0913 (settings are keyword-only)
         raise ValueError(f"scale must be 'log' or 'linear', got {scale!r}")
     ks = tuple(range(k_min, k_max + 1))
     inertia = np.array(
-        [kmeans(a, k, n_init=n_init, seed=seed, threads=threads).inertia for k in ks]
+        [kmeans(a, k, metric=metric, n_init=n_init, seed=seed, threads=threads).inertia for k in ks]
     )
     if scale == "log":
         if np.any(inertia <= 0.0):
@@ -899,14 +950,16 @@ class DBSCANFit:
     Args:
         labels: The cluster of each point, from 0, or -1 for noise.
         core_mask: True for the core points.
-        eps: The radius used.
+        eps: The radius used, in ``metric``.
         min_samples: The neighbourhood size used.
+        metric: ``"euclidean"``, or ``"cosine"`` for ``1 - cos``.
     """
 
     labels: npt.NDArray[np.int64]
     core_mask: npt.NDArray[np.bool_]
     eps: float
     min_samples: int
+    metric: Metric = "euclidean"
 
     @property
     def n_clusters(self) -> int:
@@ -932,12 +985,19 @@ class DBSCANFit:
 
 
 def dbscan(
-    x: npt.ArrayLike, eps: float, *, min_samples: int = 5, threads: int | None = None
+    x: npt.ArrayLike,
+    eps: float,
+    *,
+    min_samples: int = 5,
+    metric: Metric = "euclidean",
+    threads: int | None = None,
 ) -> DBSCANFit:
     """Return the DBSCAN clustering of the rows of ``x`` for radius ``eps``.
 
-    Distances are Euclidean and exact. The cost is O(n^2 d) time and O(n d) memory. The result
-    does not depend on the order of the rows (except that a border point shared by two clusters
+    Distances are exact. With ``metric="cosine"`` the distance is ``1 - cos``, in [0, 2], and
+    ``eps`` is in that unit. It is computed from the rows scaled to length 1, so a pair at
+    ``eps`` to within rounding can fall on either side. The cost is O(n^2 d) time and O(n d)
+    memory. The result does not depend on the order of the rows (except that a border point shared by two clusters
     goes to the one with the lowest-index core point) or on ``threads``.
 
     ``eps`` has no default: it sets the scale of what counts as dense. ``k_distances`` shows
@@ -948,40 +1008,57 @@ def dbscan(
         x: The points, shape (n, d), finite.
         eps: The radius, positive.
         min_samples: Points within ``eps``, the point itself included, that make a core point.
+        metric: ``"euclidean"`` or ``"cosine"``.
         threads: Worker threads, as in ``kmeans``.
 
     Raises:
-        ValueError: If ``x`` is not a finite (n, d) array, ``eps`` is not positive and finite, or
-            ``min_samples`` is below 1.
+        ValueError: If ``x`` is not a finite (n, d) array, ``eps`` is not positive and finite,
+            ``min_samples`` is below 1, ``metric`` is unknown, or ``metric`` is ``"cosine"`` and
+            a row is all zeros.
     """
+    check_metric(metric)
     a = as_points(x)
     if not (math.isfinite(eps) and eps > 0.0):
         raise ValueError(f"eps must be positive and finite, got {eps}")
     if min_samples < 1:
         raise ValueError(f"min_samples must be at least 1, got {min_samples}")
-    labels, core = _accel.dbscan_fit(a, float(eps), min_samples, resolve_threads(threads))
+    radius = float(eps)
+    if metric == "cosine":
+        # 1 - cos <= eps exactly when the unit rows are within sqrt(2 eps) of each other
+        a, radius = unit_rows(a), math.sqrt(2.0 * radius)
+    labels, core = _accel.dbscan_fit(a, radius, min_samples, resolve_threads(threads))
     return DBSCANFit(
         np.asarray(labels, dtype=np.int64),
         np.asarray(core, dtype=np.bool_),
         float(eps),
         min_samples,
+        metric,
     )
 
 
-def k_distances(x: npt.ArrayLike, k: int, *, threads: int | None = None) -> npt.NDArray[np.float64]:
+def k_distances(
+    x: npt.ArrayLike, k: int, *, metric: Metric = "euclidean", threads: int | None = None
+) -> npt.NDArray[np.float64]:
     """Return the distance from each row of ``x`` to its ``k``-th nearest other row.
 
     The sorted curve of these values is the sorted k-dist graph of Ester et al. (1996, section
     4.2). With ``min_samples = k + 1`` in ``dbscan`` (its count includes the point itself), a
     point is a core point exactly when its k-distance is at most ``eps``.
 
+    ``metric`` is ``"euclidean"`` or ``"cosine"``, as in ``dbscan``.
+
     Raises:
-        ValueError: If ``x`` is not a finite (n, d) array, or ``k`` is not in [1, n - 1].
+        ValueError: If ``x`` is not a finite (n, d) array, ``k`` is not in [1, n - 1],
+            ``metric`` is unknown, or ``metric`` is ``"cosine"`` and a row is all zeros.
     """
+    check_metric(metric)
     a = as_points(x)
     if not 1 <= k < a.shape[0]:
         raise ValueError(f"k must be between 1 and n - 1 = {a.shape[0] - 1}, got {k}")
-    return np.asarray(_accel.kth_distances(a, k + 1, resolve_threads(threads)), dtype=np.float64)
+    if metric == "cosine":
+        a = unit_rows(a)
+    found = np.asarray(_accel.kth_distances(a, k + 1, resolve_threads(threads)), dtype=np.float64)
+    return cosine_of_chord(found) if metric == "cosine" else found
 
 
 @dataclass(frozen=True, slots=True)
@@ -1027,6 +1104,8 @@ class HDBSCANFit:
         min_cluster_size: The smallest group that counts as a cluster.
         min_samples: The neighbourhood size of the core distance.
         allow_single_cluster: Whether the whole data set could be returned as one cluster.
+        metric: ``"euclidean"``, or ``"cosine"`` for ``1 - cos``. The core distances, the tree
+            weights and the densities are in that distance.
     """
 
     labels: npt.NDArray[np.int64]
@@ -1036,6 +1115,7 @@ class HDBSCANFit:
     min_cluster_size: int
     min_samples: int
     allow_single_cluster: bool
+    metric: Metric = "euclidean"
 
     @property
     def n_clusters(self) -> int:
@@ -1063,12 +1143,13 @@ class HDBSCANFit:
         return out
 
 
-def hdbscan(
+def hdbscan(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     min_cluster_size: int = 5,
     *,
     min_samples: int | None = None,
     allow_single_cluster: bool = False,
+    metric: Metric = "euclidean",
     threads: int | None = None,
 ) -> HDBSCANFit:
     """Return the HDBSCAN* clustering of the rows of ``x``.
@@ -1089,6 +1170,11 @@ def hdbscan(
     else comes back as noise: HDBSCAN then answers "which groups stand out from each other", not
     "is there a group here". This default is a choice of statsx (D-65), not a rule of the papers.
 
+    With ``metric="cosine"`` the distance is ``1 - cos`` of the angle between two rows. The
+    neighbours and the tree are those of the unit rows with the Euclidean distance, but the
+    densities ``1 / distance`` differ, so the chosen clusters can differ from a Euclidean fit of
+    rows you scaled yourself.
+
     The cost is O(n^2 d) time and O(n d) memory. The result does not depend on ``threads``.
 
     Args:
@@ -1097,13 +1183,18 @@ def hdbscan(
         min_samples: Neighbourhood size of the core distance. The default is
             ``min_cluster_size``. A larger value gives smoother density and more noise.
         allow_single_cluster: Let the root be chosen, so that the whole set can be one cluster.
+        metric: ``"euclidean"`` or ``"cosine"``.
         threads: Worker threads, as in ``kmeans``.
 
     Raises:
-        ValueError: If ``x`` is not a finite (n, d) array, ``min_cluster_size`` is below 2, or
-            ``min_samples`` is not in [1, n].
+        ValueError: If ``x`` is not a finite (n, d) array, ``min_cluster_size`` is below 2,
+            ``min_samples`` is not in [1, n], ``metric`` is unknown, or ``metric`` is
+            ``"cosine"`` and a row is all zeros.
     """
+    check_metric(metric)
     a = as_points(x)
+    if metric == "cosine":
+        a = unit_rows(a)
     n = a.shape[0]
     if min_cluster_size < 2:  # noqa: PLR2004
         raise ValueError(f"min_cluster_size must be at least 2, got {min_cluster_size}")
@@ -1111,7 +1202,12 @@ def hdbscan(
     if not 1 <= samples <= n:
         raise ValueError(f"min_samples must be between 1 and n = {n}, got {samples}")
     point, core, mst, parent, child, lam, size, stability, label = _accel.hdbscan_fit(
-        a, samples, min_cluster_size, allow_single_cluster, resolve_threads(threads)
+        a,
+        samples,
+        min_cluster_size,
+        allow_single_cluster,
+        metric == "cosine",
+        resolve_threads(threads),
     )
     tree = CondensedTree(
         n,
@@ -1130,4 +1226,5 @@ def hdbscan(
         min_cluster_size,
         samples,
         allow_single_cluster,
+        metric,
     )

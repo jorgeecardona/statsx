@@ -1923,3 +1923,27 @@ decisions:
   consequences: 'Figure 2 of the paper is reproduced: the knee at x = 0.22. 3, 5 and 7 planted clusters are
     found for 3 seeds each. On uniform data elbow_k picks a k above 1 where choose_k answers 1. The answers
     need not equal those of fastumap: k-means here is full Lloyd in float64 with 5 starts.'
+
+- id: D-71
+  text: 'kmeans, elbow_k, dbscan, k_distances and hdbscan take metric="cosine", the distance 1 - cos, computed
+    from the rows scaled to length 1; a row of zeros is refused. k-means with it is spherical k-means
+    (Dhillon & Modha 2001): after each mean, the centre is scaled to length 1 (a mean of length 0 keeps the
+    old centre), the assignment is unchanged because |x - c|^2 = 2 - 2 x.c for unit vectors, the seeding is
+    D^2 sampling on the unit rows (proportional to 1 - cos), and inertia is the sum of 1 - cos. DBSCAN
+    runs on the unit rows with the radius sqrt(2 eps), and k_distances returns e^2 / 2. HDBSCAN finds the
+    core distances and the spanning tree on the unit rows, then maps every weight e to e^2 / 2 before it
+    condenses the tree: the map rises, so the neighbours and the tree are unchanged, and lambda = 1 /
+    (1 - cos). Euclidean distances up to 1e-14 between unit rows count as 0. choose_k and silhouette keep
+    the Euclidean distance.'
+  needs:
+  - MG-2
+  alternatives:
+  - 'Euclidean k-means on unit rows, as fastumap does: not used; its centres are shorter than 1, more so for
+    a wide cluster, and it optimises no stated cosine objective.'
+  - 'HDBSCAN with the chord distance sqrt(2 (1 - cos)), which is a metric, as fastumap does: not used;
+    metric="cosine" means 1 - cos in every function, so eps, k-distances and densities share one unit.
+    Callers who want the chord scale the rows themselves.'
+  - 'A cosine gap statistic: not written; it needs a reference distribution on directions, and none was
+    taken from a paper.'
+  consequences: 'Cosine k-means reaches the exhaustive optimum on 10 points; DBSCAN and HDBSCAN equal their
+    definitions on the 1 - cos matrix. Labels can differ from fastumap, and the migration page says so.'

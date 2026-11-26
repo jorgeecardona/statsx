@@ -73,21 +73,20 @@ import os
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Literal
+from typing import IO
 
 import numpy as np
 import numpy.typing as npt
 
 from statsx import _accel
-from statsx._arrays import as_points, resolve_threads
-
-Metric = Literal["euclidean", "cosine"]
-"""The distances ``umap`` accepts for the points."""
-
-_METRICS = ("euclidean", "cosine")
-
-_SAME_DIRECTION = 1e-14
-"""Unit rows closer than this are one direction: it is rounding of the normalised coordinates."""
+from statsx._arrays import (
+    Metric,
+    as_points,
+    check_metric,
+    cosine_of_chord,
+    resolve_threads,
+    unit_rows,
+)
 
 _FORMAT = 1
 """Version of the ``.npz`` layout of ``UMAPFit.to_npz``. Raise it when the layout changes."""
@@ -403,7 +402,7 @@ class UMAPFit:
         reals = found["reals"].astype(np.float64)
         counts = found["counts"].astype(np.int64)
         metric = str(found["metric"])
-        _check_metric(metric)
+        check_metric(metric)
         fit = cls(
             embedding=_floats(found["embedding"], 2),
             graph=FuzzyGraph(
@@ -644,20 +643,6 @@ def _start(
     return start, n_components, random_points, converged
 
 
-def _unit_rows(a: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Return ``a`` with each row scaled to length 1, and refuse a row of zeros."""
-    scale = np.abs(a).max(axis=1)
-    if np.any(scale == 0.0):
-        raise ValueError("the cosine distance is undefined for a row of zeros")
-    scaled = a / scale[:, None]
-    return np.ascontiguousarray(scaled / np.sqrt(np.einsum("ij,ij->i", scaled, scaled))[:, None])
-
-
-def _check_metric(metric: str) -> None:
-    if metric not in _METRICS:
-        raise ValueError(f"metric must be one of {_METRICS}, got {metric!r}")
-
-
 def _neighbors(
     a: npt.NDArray[np.float64], k: int, metric: Metric, workers: int
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]:
@@ -669,8 +654,8 @@ def _neighbors(
     """
     if metric == "euclidean":
         return _accel.umap_knn(a, k, workers)
-    idx, euclid = _accel.umap_knn(_unit_rows(a), k, workers)
-    return idx, np.where(euclid <= _SAME_DIRECTION, 0.0, euclid * euclid / 2.0)
+    idx, euclid = _accel.umap_knn(unit_rows(a), k, workers)
+    return idx, cosine_of_chord(euclid)
 
 
 def _neighbors_between(
@@ -686,8 +671,8 @@ def _neighbors_between(
     """
     if metric == "euclidean":
         return _accel.umap_knn_between(reference, query, k, workers)
-    idx, euclid = _accel.umap_knn_between(_unit_rows(reference), _unit_rows(query), k, workers)
-    return idx, np.where(euclid <= _SAME_DIRECTION, 0.0, euclid * euclid / 2.0)
+    idx, euclid = _accel.umap_knn_between(unit_rows(reference), unit_rows(query), k, workers)
+    return idx, cosine_of_chord(euclid)
 
 
 def umap(  # noqa: PLR0913 (settings are keyword-only)
@@ -732,7 +717,7 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         ValueError: If ``n_neighbors`` is not in [2, n - 1], a setting is out of range, or
             ``metric`` is ``"cosine"`` and a row is all zeros.
     """
-    _check_metric(metric)
+    check_metric(metric)
     a = as_points(x)
     n = a.shape[0]
     if not _MIN_NEIGHBORS <= n_neighbors <= n - 1:
@@ -809,7 +794,7 @@ def neighbor_preservation(
         metric: The distance between rows of ``x``. The embedding always uses the Euclidean one.
         threads: Worker threads. The value does not depend on it.
     """
-    _check_metric(metric)
+    check_metric(metric)
     original = as_points(x)
     mapped = as_points(embedding)
     n = original.shape[0]

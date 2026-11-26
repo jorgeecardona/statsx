@@ -293,3 +293,101 @@ def test_the_elbow_checks_its_input() -> None:
     repeated = np.repeat(np.eye(3), 5, axis=0)
     with pytest.raises(ValueError, match="inertia 0"):
         elbow_k(repeated, 6)
+
+
+def _cosine_objective(x: F64, labels: npt.NDArray[np.int64], k: int) -> float:
+    """Sum of 1 - cos to the unit mean of each cluster: the objective of spherical k-means."""
+    unit = x / np.sqrt((x * x).sum(axis=1))[:, None]
+    total = 0.0
+    for c in range(k):
+        members = unit[labels == c]
+        if len(members) == 0:
+            continue
+        centre = members.sum(axis=0)
+        total += float(len(members) - np.sqrt(centre @ centre))
+    return total
+
+
+def _rays(n_per: int, seed: int) -> tuple[F64, npt.NDArray[np.int64]]:
+    """Rows around three directions, with lengths from 0.1 to 100."""
+    rng = np.random.default_rng(seed)
+    axes = np.eye(6)[:3]
+    x = np.vstack([a + rng.normal(0.0, 0.12, size=(n_per, 6)) for a in axes])
+    x = x * np.exp(rng.uniform(np.log(0.1), np.log(100.0), size=(len(x), 1)))
+    return x, np.repeat(np.arange(3), n_per)
+
+
+def test_cosine_kmeans_reaches_the_best_partition_on_a_small_set() -> None:
+    x = np.random.default_rng(4).standard_normal((10, 3))
+    best = min(
+        _cosine_objective(x, np.array(labels), 3)
+        for labels in itertools.product(range(3), repeat=10)
+    )
+    fit = kmeans(x, 3, metric="cosine", n_init=30)
+    assert fit.inertia == pytest.approx(best, rel=1e-9)
+
+
+def test_a_cosine_fit_has_unit_centres_and_labels_by_the_largest_cosine() -> None:
+    x, truth = _rays(80, 0)
+    fit = kmeans(x, 3, metric="cosine")
+    unit = x / np.sqrt((x * x).sum(axis=1))[:, None]
+    assert fit.metric == "cosine"
+    assert np.allclose(np.sqrt((fit.centroids**2).sum(axis=1)), 1.0, rtol=0.0, atol=1e-12)
+    cos = unit @ fit.centroids.T
+    assert np.array_equal(fit.labels, np.argmax(cos, axis=1))
+    for c in range(3):
+        mean = unit[fit.labels == c].sum(axis=0)
+        assert np.allclose(fit.centroids[c], mean / np.sqrt(mean @ mean), rtol=0.0, atol=1e-12)
+    assert fit.inertia == pytest.approx(_cosine_objective(x, fit.labels, 3), rel=1e-9)
+    # the planted directions, whatever the lengths
+    assert all(len(set(fit.labels[truth == c].tolist())) == 1 for c in range(3))
+
+
+def test_cosine_kmeans_ignores_the_length_of_a_row_and_predicts_by_cosine() -> None:
+    x, _ = _rays(50, 1)
+    unit = x / np.sqrt((x * x).sum(axis=1))[:, None]
+    long = kmeans(x, 3, metric="cosine")
+    short = kmeans(unit, 3, metric="cosine")
+    assert np.array_equal(long.labels, short.labels)
+    assert np.allclose(long.centroids, short.centroids, rtol=0.0, atol=1e-12)
+    new, _ = _rays(20, 2)
+    labels, distance = long.distances(new)
+    unit_new = new / np.sqrt((new * new).sum(axis=1))[:, None]
+    cos = unit_new @ long.centroids.T
+    assert np.array_equal(labels, np.argmax(cos, axis=1))
+    assert np.allclose(distance, 1.0 - cos.max(axis=1), rtol=0.0, atol=1e-12)
+    assert np.array_equal(long.predict(new * 1000.0), labels)
+
+
+def test_the_cosine_fit_does_not_depend_on_the_number_of_threads() -> None:
+    x, _ = _rays(1500, 3)
+    one = kmeans(x, 3, metric="cosine", threads=1)
+    four = kmeans(x, 3, metric="cosine", threads=4)
+    assert np.array_equal(one.labels, four.labels)
+    assert np.array_equal(one.centroids, four.centroids)
+    assert one.inertia == four.inertia
+
+
+def test_the_cosine_elbow_finds_the_directions_whatever_the_lengths() -> None:
+    x, _ = _rays(80, 4)
+    result = elbow_k(x, 9, metric="cosine")
+    assert result.k == 3
+    assert result.inertia[1] == kmeans(x, 3, metric="cosine", n_init=5).inertia
+    # by the Euclidean distance the lengths decide
+    assert elbow_k(x, 9, scale="linear").inertia[1] > 100.0 * result.inertia[1]
+
+
+def test_cosine_kmeans_refuses_zero_rows_and_unknown_metrics() -> None:
+    x, _ = _rays(10, 0)
+    with pytest.raises(ValueError, match="metric must be one of"):
+        kmeans(x, 2, metric="manhattan")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="metric must be one of"):
+        elbow_k(x, 5, metric="manhattan")  # type: ignore[arg-type]
+    fit = kmeans(x, 3, metric="cosine")
+    x[0] = 0.0
+    with pytest.raises(ValueError, match="row of zeros"):
+        kmeans(x, 2, metric="cosine")
+    with pytest.raises(ValueError, match="row of zeros"):
+        fit.predict(x)
+    # the Euclidean distance has no such problem
+    assert kmeans(x, 2).k == 2

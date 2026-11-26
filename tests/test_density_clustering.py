@@ -2,6 +2,7 @@
 
 import itertools
 from collections import deque
+from collections.abc import Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -38,10 +39,12 @@ def _partition(labels: Ints) -> frozenset[frozenset[int]]:
 # --- DBSCAN, as Ester et al. (1996) write the algorithm -------------------------------------
 
 
-def naive_dbscan(x: Floats, eps: float, min_pts: int) -> Ints:  # noqa: C901 (the paper's loop)
+def naive_dbscan(  # noqa: C901 (the paper's loop)
+    x: Floats, eps: float, min_pts: int, distances: Callable[[Floats], Floats] = _distances
+) -> Ints:
     """The sequential algorithm of the paper: scan the points, expand a cluster from each core."""
     n = len(x)
-    dist = _distances(x)
+    dist = distances(x)
     near = [np.flatnonzero(dist[i] <= eps).tolist() for i in range(n)]  # holds the point itself
     unclassified, noise = -2, -1
     label = [unclassified] * n
@@ -176,8 +179,10 @@ def test_dbscan_checks_its_arguments() -> None:
 # --- HDBSCAN*, as Campello et al. (2013) and McInnes and Healy (2017) define it --------------
 
 
-def _mutual_reachability(x: Floats, k: int) -> tuple[Floats, Floats]:
-    dist = _distances(x)
+def _mutual_reachability(
+    x: Floats, k: int, distances: Callable[[Floats], Floats] = _distances
+) -> tuple[Floats, Floats]:
+    dist = distances(x)
     core = np.sort(dist, axis=1)[:, k - 1]  # the point itself is the first
     reach = np.maximum(np.maximum(core[:, None], core[None, :]), dist)
     np.fill_diagonal(reach, 0.0)
@@ -269,10 +274,15 @@ def _select(cluster: _Cluster, *, root: bool, allow_single: bool) -> tuple[float
 
 
 def naive_hdbscan(
-    x: Floats, m: int, k: int, *, allow_single: bool = False
+    x: Floats,
+    m: int,
+    k: int,
+    *,
+    allow_single: bool = False,
+    distances: Callable[[Floats], Floats] = _distances,
 ) -> tuple[frozenset[frozenset[int]], list[float], float]:
     """Return the chosen groups, their stabilities, and the total weight of the tree."""
-    _, reach = _mutual_reachability(x, k)
+    _, reach = _mutual_reachability(x, k, distances)
     edges = _prim(reach)
     top = _grow(list(range(len(x))), edges, 0.0, m)
     _, chosen = _select(top, root=True, allow_single=allow_single)
@@ -447,3 +457,89 @@ def test_a_small_min_cluster_size_finds_clusters_in_one_gaussian_cloud() -> None
         )
 
     assert (with_a_cluster(10), with_a_cluster(20), with_a_cluster(30)) == (192, 2, 0)
+
+
+# --- The cosine distance --------------------------------------------------------------------
+
+
+def _cosine(x: Floats) -> Floats:
+    """1 - cos for every pair, from the definition, with 0 on the diagonal."""
+    norms = np.sqrt((x * x).sum(axis=1))
+    out: Floats = np.maximum(0.0, 1.0 - (x @ x.T) / (norms[:, None] * norms[None, :]))
+    np.fill_diagonal(out, 0.0)
+    return out
+
+
+def _directions(seed: int) -> Floats:
+    """Rows around two close directions and one wide one, plus scattered ones, any length."""
+    rng = np.random.default_rng(seed)
+    axes = np.array([[1.0, 0, 0, 0], [1.0, 0.35, 0, 0], [0, 0, 1.0, 0]])
+    spread = (0.04, 0.04, 0.2)
+    groups = [a + s * rng.standard_normal((70, 4)) for a, s in zip(axes, spread, strict=True)]
+    x = np.vstack([*groups, rng.standard_normal((25, 4))])
+    return x * rng.uniform(0.1, 50.0, size=(len(x), 1))
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_cosine_dbscan_equals_the_algorithm_on_cosine_distances(seed: int) -> None:
+    x = _directions(seed)
+    for eps, min_pts in [(0.004, 5), (0.02, 8), (0.2, 4)]:
+        fit = dbscan(x, eps, min_samples=min_pts, metric="cosine")
+        assert np.array_equal(fit.labels, naive_dbscan(x, eps, min_pts, _cosine))
+        assert fit.metric == "cosine"
+        assert fit.eps == eps
+
+
+def test_cosine_k_distances_equal_the_definition() -> None:
+    x = _directions(0)
+    expected = np.sort(_cosine(x), axis=1)[:, 6]  # the point itself is at position 0
+    assert np.allclose(k_distances(x, 6, metric="cosine"), expected, rtol=0.0, atol=1e-12)
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_cosine_hdbscan_equals_the_hierarchy_of_the_cosine_distance(seed: int) -> None:
+    x = _directions(seed)
+    for m, k in [(10, 10), (15, 5), (8, 8)]:
+        fit = hdbscan(x, m, min_samples=k, metric="cosine")
+        core, _ = _mutual_reachability(x, k, _cosine)
+        assert np.allclose(fit.core_distances, core, rtol=0.0, atol=1e-12)
+        groups, stability, weight = naive_hdbscan(x, m, k, distances=_cosine)
+        assert fit.mst[:, 2].sum() == pytest.approx(weight, abs=1e-10)
+        assert _partition(fit.labels) == groups
+        assert np.allclose(np.sort(fit.stabilities), stability, rtol=1e-6)
+
+
+def test_cosine_densities_ignore_the_length_of_a_row() -> None:
+    x = _directions(1)
+    unit = x / np.sqrt((x * x).sum(axis=1))[:, None]
+    long = hdbscan(x, 10, metric="cosine")
+    short = hdbscan(unit, 10, metric="cosine")
+    assert np.array_equal(long.labels, short.labels)
+    assert np.array_equal(
+        dbscan(x, 0.01, metric="cosine").labels, dbscan(unit, 0.01, metric="cosine").labels
+    )
+
+
+def test_cosine_scaled_copies_are_at_distance_zero_and_stabilities_stay_finite() -> None:
+    rng = np.random.default_rng(2)
+    base = rng.standard_normal((6, 5))
+    x = np.vstack([base * s for s in (1.0, 2.0, 3.0, 7.0, 11.0, 13.0)])
+    fit = hdbscan(x, 4, metric="cosine")
+    assert np.array_equal(fit.core_distances, np.zeros(len(x)))
+    assert np.all(np.isfinite(fit.stabilities))
+    assert fit.n_clusters == 6
+
+
+@pytest.mark.parametrize("function", ["dbscan", "hdbscan", "k_distances"])
+def test_cosine_density_functions_refuse_zero_rows_and_unknown_metrics(function: str) -> None:
+    x = _directions(0)
+    calls: dict[str, Callable[[Floats, str], object]] = {
+        "dbscan": lambda a, m: dbscan(a, 0.1, metric=m),  # type: ignore[arg-type]
+        "hdbscan": lambda a, m: hdbscan(a, metric=m),  # type: ignore[arg-type]
+        "k_distances": lambda a, m: k_distances(a, 3, metric=m),  # type: ignore[arg-type]
+    }
+    with pytest.raises(ValueError, match="metric must be one of"):
+        calls[function](x, "manhattan")
+    x[3] = 0.0
+    with pytest.raises(ValueError, match="row of zeros"):
+        calls[function](x, "cosine")

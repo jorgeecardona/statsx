@@ -405,6 +405,16 @@ struct Condensed {
     stability: Vec<f64>,
 }
 
+/// The cosine distance `1 - cos` of two unit vectors at Euclidean distance `e` is `e^2 / 2`.
+/// Distances up to 1e-14 are rounding of the normalised coordinates: the same direction.
+fn cosine_of_chord(e: f64) -> f64 {
+    if e <= 1e-14 {
+        0.0
+    } else {
+        e * e / 2.0
+    }
+}
+
 fn lambda_of(distance: f64) -> f64 {
     1.0 / distance.max(MIN_DISTANCE)
 }
@@ -648,6 +658,7 @@ pub fn hdbscan_fit<'py>(
     min_samples: usize,
     min_cluster_size: usize,
     allow_single_cluster: bool,
+    cosine: bool,
     threads: usize,
 ) -> PyResult<HdbscanOut<'py>> {
     let (n, dim) = (data.shape()[0], data.shape()[1]);
@@ -661,8 +672,19 @@ pub fn hdbscan_fit<'py>(
     let (core, edges, tree, label, point) = py.allow_threads(|| {
         pool.install(|| {
             let p = Points::new(&flat, n, dim);
-            let core = kth_distance(&p, min_samples);
-            let edges = prim(&p, &core);
+            let mut core = kth_distance(&p, min_samples);
+            let mut edges = prim(&p, &core);
+            if cosine {
+                // The rows are unit vectors. The map from the Euclidean to the cosine distance
+                // rises, so the neighbours, the mutual reachability order and the tree are the
+                // same; only the weights change, and with them the densities lambda = 1 / d.
+                for v in core.iter_mut() {
+                    *v = cosine_of_chord(*v);
+                }
+                for e in edges.iter_mut() {
+                    e.2 = cosine_of_chord(e.2);
+                }
+            }
             let tree = condense(n, &edges, min_cluster_size);
             let (label, point) = select(n, &tree, allow_single_cluster);
             (core, edges, tree, label, point)

@@ -121,6 +121,50 @@ not smooth: it has one value per `k`.
 
 `find_knees(x, y)` is the algorithm alone, for any curve that rises and bends downwards.
 
+## The cosine distance
+
+Pass `metric="cosine"` when the direction of a row carries the meaning and its length does not, as
+with text embeddings. The distance is `1 - cos` of the angle between two rows. `kmeans`,
+`elbow_k`, `dbscan`, `k_distances` and `hdbscan` take it. A row of zeros has no direction, and the
+functions refuse it.
+
+```python
+from statsx.clustering import dbscan, elbow_k, hdbscan, k_distances
+
+axes = np.eye(6)[:3]
+rays = np.vstack([a + rng.normal(0.0, 0.12, size=(80, 6)) for a in axes])
+rays *= np.exp(rng.uniform(np.log(0.1), np.log(100.0), size=(240, 1)))
+fit = kmeans(rays, 3, metric="cosine")
+print(fit.sizes.tolist(), elbow_k(rays, 9, metric="cosine").k)
+eps = float(np.quantile(k_distances(rays, 5, metric="cosine"), 0.95))
+print(dbscan(rays, eps, metric="cosine").n_clusters)
+print(hdbscan(rays, 15, metric="cosine").n_clusters)
+```
+
+```text
+[80, 80, 80] 3
+3
+3
+```
+
+The rows have lengths from 0.1 to 100, and the three groups are found by direction.
+
+For k-means this is spherical k-means (Dhillon and Modha 2001): each centre has length 1, a row
+joins the centre with the largest cosine, and `inertia` is the sum of `1 - cos`. `fit.distances`
+returns `1 - cos` to the centre. Scaling the rows yourself and calling `kmeans` without a metric
+is not the same: a Euclidean centre keeps its length, which is lower for a wider cluster, and the
+labels can differ.
+
+For DBSCAN, `eps` and `k_distances` are in `1 - cos`, from 0 to 2. For HDBSCAN the neighbours and
+the tree are those of the unit rows, and the densities are `1 / (1 - cos)`. So HDBSCAN on rows
+you scaled yourself can choose other clusters.
+
+`1 - cos` is not a metric: it breaks the triangle inequality. DBSCAN and HDBSCAN are defined for
+any distance between two points, and k-means with it is the objective of Dhillon and Modha.
+
+`choose_k` (the gap statistic) does not take a metric. Its reference data are uniform in a box,
+which says nothing about directions. `silhouette` uses the Euclidean distance.
+
 ## Gaussian mixtures
 
 `gaussian_mixture(x, k)` fits a mixture of `k` Gaussians by expectation maximization, EM (Dempster,
@@ -436,6 +480,11 @@ proves that the clusters are real: they say how well separated the partition is.
 - The fit reaches the best partition, found by trying all assignments, on 10 points with 3 clusters.
 - The result is identical with 1 and with 4 threads, bit for bit.
 - The silhouette equals its definition computed by hand on random data.
+- With `metric="cosine"`, k-means reaches the best partition found by trying all assignments on
+  10 points, its centres are the unit means and its labels the largest cosine. DBSCAN equals the
+  sequential algorithm and HDBSCAN the hierarchy read from the definitions, both on the `1 - cos`
+  matrix, on 4 random data sets and 3 settings. `k_distances` equals the same matrix. Scaling the
+  rows changes nothing, and the fit is identical with 1 and 4 threads.
 - `find_knees` reproduces Figure 2 of the Kneedle paper (the knee at `x = 0.22`) and equals the
   steps of the paper, written out in the test, on 300 random curves and 3 sensitivities.
 - `elbow_k` found 3, 5 and 7 planted clusters for each of 3 seeds, and picked a `k` for uniform
@@ -465,6 +514,9 @@ proves that the clusters are real: they say how well separated the partition is.
 - 200,000 points in 32 dimensions with `k = 20` took 4.8 s for 300 iterations on 4 threads.
 
 ## References
+
+- Dhillon, I. S., and Modha, D. S. (2001). Concept decompositions for large sparse text data using
+  clustering. *Machine Learning* 42(1-2):143-175. <https://doi.org/10.1023/A:1007612920971>
 
 - Satopaa, V., Albrecht, J., Irwin, D., and Raghavan, B. (2011). Finding a "Kneedle" in a haystack:
   detecting knee points in system behavior. *31st International Conference on Distributed

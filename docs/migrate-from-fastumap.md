@@ -17,6 +17,7 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `return_distances=True` | `fit.transform(new).distances[:, 0]` |
 | `model.to_npz`, `UMAPModel.from_npz` | `fit.to_npz`, `UMAPFit.from_npz` |
 | `kmeans(x, k)` | `statsx.clustering.kmeans(x, k)` |
+| `metric="cosine"` (clustering) | the same argument of `kmeans`, `dbscan`, `hdbscan`, `elbow_k` |
 | `cluster(x, method="kmeans", n_clusters=k)` | `kmeans(x, k).labels` |
 | `cluster(x, method="hdbscan")` | `hdbscan(x).labels` |
 | `cluster(x)` with no number of clusters | `kmeans(x, elbow_k(x).k).labels` |
@@ -37,6 +38,10 @@ again after the switch.
 - UMAP: other random draws and exact neighbours, so another map of the same data.
 - k-means: full Lloyd iterations in float64 with 10 starts. `fastumap` uses one start by default.
 - HDBSCAN and DBSCAN: exact distances over all pairs. `fastumap` uses a graph of 30 neighbours.
+- Cosine k-means is spherical k-means: the centres have length 1. In `fastumap` a centre is the
+  mean of the unit rows, which is shorter, so some labels differ.
+- Cosine HDBSCAN uses the densities of `1 - cos`. `fastumap` uses the Euclidean distance of the
+  unit rows, so it can choose other clusters. Cosine `eps` is in `1 - cos` in both.
 - `eps` has no default in `dbscan`. Use `k_distances` to choose it.
 - `choose_k` means another thing: in `statsx` it is the gap statistic. The elbow is `elbow_k`.
   It takes no `max_samples`: sample the rows first if you need to.
@@ -48,7 +53,6 @@ In this order.
 
 | Need | fastumap | Status in statsx |
 |---|---|---|
-| MG-2 | `metric="cosine"` in clustering | UMAP only |
 | MG-3 | `assign_clusters` with your centroids, `max_distance` | `predict` of a statsx fit only |
 | MG-4 | per-cluster `dispersion` | sizes only |
 | MG-5 | speed and memory at 1024 columns, `batch_size`, `pca_dim` | not measured |
