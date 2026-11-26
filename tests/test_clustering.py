@@ -2,6 +2,7 @@
 
 import itertools
 import math
+from dataclasses import replace
 
 import numpy as np
 import numpy.typing as npt
@@ -554,3 +555,31 @@ def test_a_wide_cluster_has_a_larger_dispersion_than_a_tight_one_of_the_same_siz
     tight, wide = int(fit.labels[0]), int(fit.labels[-1])
     assert fit.sizes[tight] == fit.sizes[wide] == 200
     assert fit.dispersion[wide] > 10 * fit.dispersion[tight]
+
+
+def test_kmeans_accepts_arrays_that_are_not_row_major() -> None:
+    # the Rust kernel reads the caller's rows where they are, so other layouts are converted first
+    x = _planted(3, 100, 12)
+    columns_first = np.asfortranarray(x)
+    every_other = np.repeat(x, 2, axis=0)[::2]
+    expected = kmeans(x, 3, seed=1)
+    for layout in (columns_first, every_other, x.astype(np.float32).astype(np.float64)):
+        fit = kmeans(layout, 3, seed=1)
+        assert np.array_equal(fit.labels, expected.labels)
+        assert fit.inertia == pytest.approx(expected.inertia, rel=1e-6)
+    assert np.array_equal(expected.predict(columns_first), expected.labels)
+    turned = replace(expected, centroids=np.asfortranarray(expected.centroids))
+    assert np.array_equal(turned.predict(x), expected.labels)
+    assert np.array_equal(assign_clusters(every_other, turned.centroids).labels, expected.labels)
+
+
+def test_the_distances_do_not_depend_on_how_the_columns_are_grouped() -> None:
+    # the squared distance is summed in blocks of eight columns; check widths around the block
+    rng = np.random.default_rng(2)
+    for width in (1, 7, 8, 9, 31, 1024):
+        x = rng.normal(size=(40, width))
+        centres = rng.normal(size=(3, width))
+        found = assign_clusters(x, centres)
+        squared = found.distances**2
+        full = ((x[:, None, :] - centres[None]) ** 2).sum(axis=2)
+        assert np.allclose(squared, full.min(axis=1), rtol=1e-12)

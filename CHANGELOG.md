@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   near 1e8 whose clusters are a few units apart): rows went to the wrong centre. Moving the data
   now changes nothing.
 
+### Changed
+
+- Faster `kmeans`, `hdbscan`, `dbscan` and `umap` on wide data: exact distances use vector
+  instructions, and `kmeans` no longer copies the data (about a third less memory). The last digits
+  of an inertia or a distance can differ from the previous release.
+
 ### Added
 
 - A k-means fit has `dispersion`: the mean distance of each cluster's rows to its centroid.

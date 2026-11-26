@@ -20,20 +20,12 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 
 use crate::rng::Rng;
+use crate::simd::dist2;
 
 /// Rows per block. Fixed, so that results do not depend on the thread count.
 const BLOCK: usize = 2048;
 
 pub(crate) type Fit = (Vec<i64>, Vec<f64>, f64, usize, bool);
-
-fn dist2(a: &[f64], b: &[f64]) -> f64 {
-    let mut s = 0.0;
-    for d in 0..a.len() {
-        let diff = a[d] - b[d];
-        s += diff * diff;
-    }
-    s
-}
 
 /// Nearest centroid of each row of the block `x` (rows x dim), by one matrix product.
 ///
@@ -86,6 +78,17 @@ fn assign_block(
         .collect()
 }
 
+/// Each row of `x` minus `shift`.
+fn shifted(x: &[f64], shift: &[f64]) -> Vec<f64> {
+    let mut out = x.to_vec();
+    for row in out.chunks_exact_mut(shift.len()) {
+        for (v, s) in row.iter_mut().zip(shift) {
+            *v -= s;
+        }
+    }
+    out
+}
+
 fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (Vec<i64>, Vec<f64>) {
     // Both sides are moved by the mean of the centroids before the product. A move changes no
     // distance, and it keeps the digits that tell two centroids apart when the data are far
@@ -96,7 +99,7 @@ fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (
             shift[d] += c[d] / k as f64;
         }
     }
-    let moved: Vec<f64> = centroids.iter().enumerate().map(|(i, v)| v - shift[i % dim]).collect();
+    let moved = shifted(centroids, &shift);
     let c_sq: Vec<f64> = moved.chunks(dim).map(|c| c.iter().map(|v| v * v).sum()).collect();
     let blocks: Vec<Vec<(i64, f64)>> = (0..n.div_ceil(BLOCK))
         .into_par_iter()
@@ -104,7 +107,7 @@ fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (
             let start = b * BLOCK;
             let rows = BLOCK.min(n - start);
             let raw = &x[start * dim..(start + rows) * dim];
-            let near: Vec<f64> = raw.iter().enumerate().map(|(i, v)| v - shift[i % dim]).collect();
+            let near = shifted(raw, &shift);
             let mut scratch = vec![0.0; rows * k];
             assign_block(&near, rows, dim, &moved, &c_sq, k, &mut scratch)
                 .into_iter()
@@ -181,8 +184,9 @@ fn means(x: &[f64], n: usize, dim: usize, labels: &[i64], k: usize) -> (Vec<f64>
             for i in start..end {
                 let c = labels[i] as usize;
                 counts[c] += 1;
-                for d in 0..dim {
-                    sums[c * dim + d] += x[i * dim + d];
+                let row = &x[i * dim..(i + 1) * dim];
+                for (s, v) in sums[c * dim..(c + 1) * dim].iter_mut().zip(row) {
+                    *s += v;
                 }
             }
             (sums, counts)
@@ -301,6 +305,14 @@ pub(crate) fn pool(threads: usize) -> PyResult<rayon::ThreadPool> {
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// The values of a row-major (C-contiguous) array, without a copy.
+fn rows<'a>(array: &'a PyReadonlyArray2<'_, f64>) -> PyResult<&'a [f64]> {
+    if !array.is_c_contiguous() {
+        return Err(PyValueError::new_err("the array must be C-contiguous"));
+    }
+    array.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
 /// Fit k-means `n_init` times and return the labels, centres, inertia, iterations and whether
 /// Lloyd's iteration stopped before `max_iter`, for the run with the lowest inertia.
 ///
@@ -324,14 +336,15 @@ pub fn kmeans_fit<'py>(
     if k == 0 || k > n || dim == 0 || n_init == 0 || max_iter == 0 {
         return Err(PyValueError::new_err("need 1 <= k <= n, dim >= 1, n_init >= 1, max_iter >= 1"));
     }
-    let x: Vec<f64> = data.as_array().iter().copied().collect();
+    // Read the caller's array where it is: a copy of a large data set doubles the memory.
+    let x = rows(&data)?;
     let pool = pool(threads)?;
     let best: Fit = py.allow_threads(|| {
         pool.install(|| {
             let mut best: Option<Fit> = None;
             for i in 0..n_init {
                 let mut rng = Rng::new(seed.wrapping_add((i as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)));
-                let fit = lloyd(&x, n, dim, k, max_iter, tol, spherical, &mut rng);
+                let fit = lloyd(x, n, dim, k, max_iter, tol, spherical, &mut rng);
                 if best.as_ref().is_none_or(|b| fit.2 < b.2) {
                     best = Some(fit);
                 }
@@ -364,10 +377,10 @@ pub fn kmeans_assign<'py>(
     if k == 0 || cdim != dim {
         return Err(PyValueError::new_err("centroids need at least one row and the data's columns"));
     }
-    let x: Vec<f64> = data.as_array().iter().copied().collect();
-    let c: Vec<f64> = centroids.as_array().iter().copied().collect();
+    let x = rows(&data)?;
+    let c = rows(&centroids)?;
     let pool = pool(threads)?;
-    let (labels, dist) = py.allow_threads(|| pool.install(|| assign_all(&x, n, dim, &c, k)));
+    let (labels, dist) = py.allow_threads(|| pool.install(|| assign_all(x, n, dim, c, k)));
     Ok((
         Array1::from_vec(labels).into_pyarray_bound(py),
         Array1::from_vec(dist).into_pyarray_bound(py),

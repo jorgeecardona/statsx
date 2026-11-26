@@ -2024,3 +2024,28 @@ decisions:
   - 'A dispersion for DBSCAN and HDBSCAN clusters: not done; they have no centroid.'
   consequences: 'dispersion equals the definition in both distances. A cosine dispersion is smaller than the
     one of fastumap, which is a chord distance; the migration page says so.'
+
+- id: D-76
+  text: 'The exact squared distance of two rows (k-means seeding, assignment and inertia; the recomputation of
+    neighbours; the spanning tree of HDBSCAN) is summed in eight fixed lanes in rust/src/simd.rs, with an
+    AVX2 build chosen at run time on x86_64 and no fused multiply-add. Value i goes to lane i mod 8, the
+    lanes are added in a fixed tree and the last values one by one, so every processor gives the same bits,
+    and below eight columns the result is the plain running sum. The k-means kernel reads the caller''s
+    array without a copy (it must be C-contiguous, which the Python layer ensures), and the tolerance scale
+    is computed in blocks of rows. Measured against fastumap 0.3.3 at 1024 columns (MG-5): statsx is
+    faster for UMAP (1.1 s against 4.0 s at 1,000 rows) and after PCA to 16 columns, and slower on all
+    columns for HDBSCAN (17 s against 3.2 s at 5,000 rows) and k-means (205 s against 27 s at 250,000
+    rows), with less memory for k-means.'
+  needs:
+  - MG-5
+  alternatives:
+  - 'Mini-batch k-means (Sculley 2010) to close the gap at large n: not written yet; it is the next step if
+    the full-width timings stop the switch.'
+  - 'An approximate neighbour graph for HDBSCAN, as fastumap uses: not written; statsx keeps exact results
+    here (D-65), and PCA first is faster than fastumap and exact on the reduced data.'
+  - 'Float32 kernels: not written; they would halve the memory traffic, and exact float64 distances are what
+    the tests check.'
+  - 'Fused multiply-add: not used; results would differ between processors.'
+  consequences: 'A test checks that the vector and the scalar code give the same bits for widths from 0 to
+    1031. HDBSCAN on 5,000 x 1024 went from 17 s to 10 s and k-means on 100,000 x 1024 used 1.35 GB instead
+    of 2.13 GB on the same machine.'

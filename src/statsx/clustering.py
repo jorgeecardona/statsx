@@ -268,11 +268,22 @@ class KMeansFit:
             raise ValueError(f"x must have {self.centroids.shape[1]} columns")
         if self.metric == "cosine":
             a = unit_rows(a)
-        labels, dist = _accel.kmeans_assign(a, self.centroids, resolve_threads(threads))
+        centres = np.ascontiguousarray(self.centroids, dtype=np.float64)
+        labels, dist = _accel.kmeans_assign(a, centres, resolve_threads(threads))
         squared = np.asarray(dist, dtype=np.float64)
         if self.metric == "cosine":
             squared = cosine_of_chord(np.sqrt(squared))
         return np.asarray(labels, dtype=np.int64), squared
+
+
+def _mean_variance(a: npt.NDArray[np.float64]) -> float:
+    """Return the mean over the columns of their variance, reading the data a block at a time."""
+    mean = a.mean(axis=0)
+    total = 0.0
+    for start in range(0, a.shape[0], _BLOCK):
+        gap = a[start : start + _BLOCK] - mean
+        total += float(np.einsum("ij,ij->", gap, gap))
+    return total / a.size
 
 
 def _dispersion(
@@ -346,7 +357,7 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
         raise ValueError(f"k must be between 1 and n = {n}, got {k}")
     if n_init < 1 or max_iter < 1 or tol < 0.0:
         raise ValueError("n_init and max_iter must be at least 1, and tol at least 0")
-    scale = float(np.mean(np.var(a, axis=0)))
+    scale = _mean_variance(a)
     spherical = metric == "cosine"
     labels, centroids, inertia, n_iter, converged = _accel.kmeans_fit(
         a, k, max_iter, tol * scale, seed, n_init, spherical, resolve_threads(threads)
@@ -974,7 +985,7 @@ def gaussian_mixture(  # noqa: PLR0913 (settings are keyword-only)
         raise ValueError(f"k must be between 1 and n = {n}, got {k}")
     if n_init < 1 or max_iter < 1 or tol < 0.0 or reg < 0.0:
         raise ValueError("n_init and max_iter must be at least 1, and tol and reg at least 0")
-    scale = float(np.mean(np.var(a, axis=0)))
+    scale = _mean_variance(a)
     min_count = float(d + 1) if covariance == "full" else 2.0
     weights, means, covs, resp, log_lik, n_iter, converged, trace, dropped = _accel.gmm_fit(
         a, k, code, max_iter, tol, reg * scale, min_count, seed, n_init, resolve_threads(threads)

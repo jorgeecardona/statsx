@@ -58,13 +58,40 @@ again after the switch.
   read `decision_margin`: on embeddings the curve can be flat.
 - `transform`: see [Place new points in a map](methods/embedding.md#place-new-points-in-a-map).
 
+## Speed and memory
+
+`statsx` is faster for UMAP and when you reduce the columns first. It is slower for k-means and
+HDBSCAN on all 1024 columns. Use `pca` first for wide data.
+
+| Call, 1024 columns, 4 threads | fastumap | statsx |
+|---|---|---|
+| UMAP, 1,000 rows | 4.0 s | 1.1 s |
+| UMAP, 5,000 rows | 24 s | 11 s |
+| PCA to 16, then HDBSCAN, 20,000 rows | 78 s | 30 s |
+| PCA to 16, then k-means (k=40), 250,000 rows | 52 s, 5.1 GB | 33 s, 3.3 GB |
+| HDBSCAN, 5,000 rows | 3.2 s | 17 s |
+| elbow, k up to 10, 5,000 rows | 6.8 s | 15 s |
+| k-means (k=40), 100,000 rows | 35 s, 2.0 GB | 64 s, 1.4 GB |
+| k-means (k=40), 250,000 rows | 27 s, 4.4 GB | 205 s, 3.3 GB |
+
+Measured on 2026-11-26 with `fastumap` 0.3.3 and a `statsx` build with the changes of 0.1.77, on
+8 separated Gaussian groups, one run each, with other work on the machine (load 8 to 18 on 16
+cores). Read the ratios, not the seconds. The quality was the same: equal purity and k-means
+inertia within 0.05%, and UMAP kept as many neighbours or a few more.
+
+Why `statsx` is slower on all columns: HDBSCAN computes every pair exactly, where `fastumap` uses
+30 neighbours. k-means runs full Lloyd iterations until it converges, where `fastumap` uses
+mini-batches for large inputs. `max_iter` limits the iterations of `kmeans`.
+
+With half a CPU, UMAP on 5,000 rows took 37 to 45 s in `statsx` and 47 s in `fastumap`.
+
 ## Planned
 
 In this order.
 
 | Need | fastumap | Status in statsx |
 |---|---|---|
-| MG-5 | speed and memory at 1024 columns, `batch_size` | not measured |
+| MG-5 | `batch_size` (mini-batch k-means), float32 input | measured below; not added |
 | MG-6 | thread cap in containers, thread safety | up to 4 threads from the CPU count of the host |
 | MG-7 | `init=` | not there |
 | MG-8 | `y=` (supervised) | not there |

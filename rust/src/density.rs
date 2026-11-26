@@ -32,6 +32,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+use crate::simd::dist2;
 use crate::kmeans::pool;
 
 /// Rows per block and columns per tile of the distance matrix. Fixed.
@@ -80,13 +81,7 @@ impl Points {
     }
 
     pub(crate) fn exact_d2(&self, i: usize, j: usize) -> f64 {
-        let (a, b) = (self.row(i), self.row(j));
-        let mut s = 0.0;
-        for d in 0..self.dim {
-            let t = a[d] - b[d];
-            s += t * t;
-        }
-        s
+        dist2(self.row(i), self.row(j))
     }
 
     /// Inner products of `rows` rows from `r0` with `cols` rows from `c0`, into `out`.
@@ -353,13 +348,7 @@ fn prim(p: &Points, core: &[f64]) -> Vec<(usize, usize, f64)> {
                 }
                 let lower = cu.max(core[v]);
                 if lower < b[k] {
-                    let vrow = p.row(v);
-                    let mut s = 0.0;
-                    for d in 0..p.dim {
-                        let t = urow[d] - vrow[d];
-                        s += t * t;
-                    }
-                    let w = lower.max(s.sqrt());
+                    let w = lower.max(dist2(urow, p.row(v)).sqrt());
                     if w < b[k] {
                         b[k] = w;
                         f[k] = u;
