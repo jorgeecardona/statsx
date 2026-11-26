@@ -1947,3 +1947,23 @@ decisions:
     taken from a paper.'
   consequences: 'Cosine k-means reaches the exhaustive optimum on 10 points; DBSCAN and HDBSCAN equal their
     definitions on the 1 - cos matrix. Labels can differ from fastumap, and the migration page says so.'
+
+- id: D-72
+  text: 'choose_k keeps the rule of Tibshirani, Walther & Hastie (2001), the smallest k with gap(k) >= gap(k+1)
+    - se(k+1), and reports how close it was. GapResult.margins is gap(k) - (gap(k+1) - se(k+1)) for each
+    pair; decision_margin is the smallest |margin| / se over the comparisons that decided the pick (each k
+    passed over and the k taken), a statsx quantity that is not in the paper. k_min (default 1) starts the
+    search and the rule at a larger k. The docstring says that se does not shrink with n_reference (it is
+    the spread of the reference log W_k, poorly estimated from 2 or 3 sets) and states the number of
+    k-means fits, (k_max - k_min + 1) (n_reference + 1) n_init.'
+  needs:
+  - CL-8
+  alternatives:
+  - 'A flag with a fixed threshold, such as found = False below one standard error: not used; found keeps its
+    meaning (some k met the rule), and the caller can set the threshold on a number.'
+  - 'Change the rule, for instance take the largest gap or the first local maximum: not used; it would no
+    longer be the published rule, and a flat curve would still be decided by noise.'
+  - 'Raise the smallest n_reference: not done; 2 is valid, only noisy, and the margin shows it.'
+  consequences: 'On 600 unit rows in 128 dimensions with 8 centres the pick moves between 1 and 2 as
+    n_reference goes through 2, 3, 5 and 10, and every run has a decision_margin below 1. On three well
+    separated groups the margin is above 1.'

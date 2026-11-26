@@ -124,3 +124,16 @@ needs:
       - "test:tests/test_umap.py::test_a_file_that_is_not_a_fit_of_this_version_is_refused"
       - "test:tests/test_umap.py::test_a_file_with_values_a_fit_cannot_have_is_refused"
     must: false
+
+  - id: CL-8
+    text: >
+      When the caller lets the gap statistic choose k, they can see whether the pick was decided
+      by noise, start the search above one cluster, and read how many fits a call costs.
+    sources:
+      - {kind: secondary, date: 2026-11-26, locator: "https://gitlab.com/cardona-oss/statsx/-/work_items/17"}
+      - {kind: primary, date: 2026-11-26, who: maintainer, quote: "I want the elbow I need it, there is maybe a new gitlab issue"}
+    proofs:
+      - "test:tests/test_clustering.py::test_the_gap_margins_are_the_rule_and_the_pick_is_the_first_that_meets_it"
+      - "test:tests/test_clustering.py::test_a_flat_gap_curve_has_a_pick_that_moves_and_a_small_decision_margin"
+      - "test:tests/test_clustering.py::test_k_min_starts_the_gap_rule_later_on_the_same_curve"
+    must: false

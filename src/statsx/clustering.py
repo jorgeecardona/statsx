@@ -336,7 +336,7 @@ class GapResult:
     the data are more tightly clustered at ``k`` than uniform data are.
 
     Args:
-        ks: The cluster counts tried, from 1.
+        ks: The cluster counts tried, from ``k_min``.
         gap: The gap at each k.
         se: The standard error of the reference ``log W_k``, times ``sqrt(1 + 1/B)``.
         log_inertia: ``log W_k`` of the data at each k.
@@ -345,6 +345,8 @@ class GapResult:
         found: True when a k met the rule.
         reference: ``"pca"`` or ``"box"``.
         n_reference: Number of reference data sets.
+        margins: ``gap[i] - (gap[i + 1] - se[i + 1])`` for each pair of neighbouring ks, one
+            fewer than ``ks``. The rule picks the first k whose margin is 0 or more.
     """
 
     ks: tuple[int, ...]
@@ -355,6 +357,26 @@ class GapResult:
     found: bool
     reference: ReferenceKind
     n_reference: int
+    margins: npt.NDArray[np.float64]
+
+    @property
+    def decision_margin(self) -> float:
+        """Return how close the pick came to being another one, in standard errors.
+
+        It is the smallest ``|margins[i]| / se[i + 1]`` over the comparisons that decided the
+        pick: each k that was passed over and the k that was taken. Below 1, one of them would
+        go the other way if one side moved by one standard error, so treat the pick as
+        unsettled. It is ``nan`` when only one k was tried, and ``inf`` when every deciding
+        ``se`` is 0.
+        """
+        if self.margins.size == 0:
+            return math.nan
+        last = self.ks.index(self.k) + 1 if self.found else self.margins.size
+        margin = np.abs(self.margins[:last])
+        error = self.se[1 : last + 1]
+        ratio = np.divide(margin, error, out=np.full(margin.shape, math.inf), where=error > 0)
+        ratio[(error == 0) & (margin == 0)] = 0.0
+        return float(ratio.min())
 
 
 def _reference(
@@ -377,13 +399,14 @@ def choose_k(  # noqa: PLR0913 (settings are keyword-only)
     x: npt.ArrayLike,
     k_max: int = 10,
     *,
+    k_min: int = 1,
     n_reference: int = 20,
     n_init: int = 5,
     reference: ReferenceKind = "pca",
     seed: int = 0,
     threads: int | None = None,
 ) -> GapResult:
-    """Return the gap statistic for ``k = 1 .. k_max`` and the k it picks.
+    """Return the gap statistic for ``k = k_min .. k_max`` and the k it picks.
 
     Each k-means fit uses ``n_init`` runs. The reference data sets are uniform over the range of
     the data: ``"pca"`` aligns the box with the principal axes (the version Tibshirani, Walther
@@ -394,9 +417,22 @@ def choose_k(  # noqa: PLR0913 (settings are keyword-only)
     does not say the data are one round cluster. Clusters that touch, or that differ a lot in
     spread, may not be found. The gap compares with one null model; look at ``silhouette`` too.
 
+    A pick can be decided by noise. In many dimensions ``log W_k`` of the data and of the
+    reference can fall at nearly the same rate, so the gap curve is flat and neighbouring values
+    differ by about ``se``. ``found`` is True there all the same. Read ``decision_margin``.
+    ``se`` does not shrink as ``n_reference`` grows: it is the spread of the reference
+    ``log W_k``, and with 2 or 3 references that spread is itself poorly estimated, so the pick
+    can change with ``n_reference``.
+
+    The call runs ``(k_max - k_min + 1) * (n_reference + 1) * n_init`` k-means fits, which is
+    1050 with the defaults: about a thousand times the cost of one fit.
+
     Args:
         x: The points, shape (n, d), finite.
         k_max: Largest number of clusters tried, at most n.
+        k_min: Smallest number tried, 1 by default. With a larger value the rule starts there,
+            for a caller who has decided that fewer clusters are no answer; the result can then
+            never say that there is one cluster.
         n_reference: Reference data sets, at least 2.
         n_init: k-means runs per fit.
         reference: ``"pca"`` or ``"box"``.
@@ -404,18 +440,21 @@ def choose_k(  # noqa: PLR0913 (settings are keyword-only)
         threads: Worker threads, as in ``kmeans``.
 
     Raises:
-        ValueError: If ``x`` is not a finite (n, d) array, ``k_max`` is not in [1, n],
-            ``n_reference`` is below 2, or ``reference`` is unknown.
+        ValueError: If ``x`` is not a finite (n, d) array, ``k_min`` and ``k_max`` are not
+            ``1 <= k_min <= k_max <= n``, ``n_reference`` is below 2, or ``reference`` is
+            unknown.
     """
     a = as_points(x)
     if not 1 <= k_max <= a.shape[0]:
         raise ValueError(f"k_max must be between 1 and n = {a.shape[0]}, got {k_max}")
+    if not 1 <= k_min <= k_max:
+        raise ValueError(f"k_min must be between 1 and k_max = {k_max}, got {k_min}")
     if n_reference < 2:  # noqa: PLR2004
         raise ValueError(f"n_reference must be at least 2, got {n_reference}")
     if reference not in ("pca", "box"):
         raise ValueError(f"reference must be 'pca' or 'box', got {reference!r}")
     rng = np.random.default_rng(seed)
-    ks = tuple(range(1, k_max + 1))
+    ks = tuple(range(k_min, k_max + 1))
 
     def log_w(points: npt.NDArray[np.float64], salt: int) -> npt.NDArray[np.float64]:
         out = np.empty(len(ks))
@@ -428,12 +467,11 @@ def choose_k(  # noqa: PLR0913 (settings are keyword-only)
     refs = np.vstack([log_w(_reference(a, reference, rng), 1 + b) for b in range(n_reference)])
     gap = refs.mean(axis=0) - observed
     se = refs.std(axis=0, ddof=0) * math.sqrt(1.0 + 1.0 / n_reference)
-    pick, found = ks[-1], False
-    for i in range(len(ks) - 1):
-        if gap[i] >= gap[i + 1] - se[i + 1]:
-            pick, found = ks[i], True
-            break
-    return GapResult(ks, gap, se, observed, pick, found, reference, n_reference)
+    margins = gap[:-1] - (gap[1:] - se[1:])
+    met = np.flatnonzero(margins >= 0)
+    found = met.size > 0
+    pick = ks[int(met[0])] if found else ks[-1]
+    return GapResult(ks, gap, se, observed, pick, found, reference, n_reference, margins)
 
 
 @dataclass(frozen=True, slots=True)

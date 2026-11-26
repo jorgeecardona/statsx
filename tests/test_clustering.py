@@ -1,6 +1,7 @@
 """CL-1: k-means, the silhouette and the gap statistic."""
 
 import itertools
+import math
 
 import numpy as np
 import numpy.typing as npt
@@ -391,3 +392,53 @@ def test_cosine_kmeans_refuses_zero_rows_and_unknown_metrics() -> None:
         fit.predict(x)
     # the Euclidean distance has no such problem
     assert kmeans(x, 2).k == 2
+
+
+def test_the_gap_margins_are_the_rule_and_the_pick_is_the_first_that_meets_it() -> None:
+    x = _planted(3, 80, 4)
+    result = choose_k(x, 6, n_reference=10, seed=1)
+    expected = [
+        result.gap[i] - (result.gap[i + 1] - result.se[i + 1]) for i in range(len(result.ks) - 1)
+    ]
+    assert np.array_equal(result.margins, expected)
+    first = next(i for i, m in enumerate(expected) if m >= 0)
+    assert result.found
+    assert result.k == result.ks[first] == 3
+    closest = min(abs(expected[i]) / result.se[i + 1] for i in range(first + 1))
+    assert result.decision_margin == closest
+    assert result.decision_margin > 1.0  # well separated: no comparison was close
+
+
+def test_a_flat_gap_curve_has_a_pick_that_moves_and_a_small_decision_margin() -> None:
+    # fastumap and statsx issue 17: unit vectors in many dimensions, 8 planted centres
+    rng = np.random.default_rng(0)
+    centres = rng.normal(size=(8, 128))
+    centres /= np.linalg.norm(centres, axis=1, keepdims=True)
+    x = centres[rng.integers(0, 8, size=600)] + 0.35 * rng.normal(size=(600, 128))
+    x /= np.linalg.norm(x, axis=1, keepdims=True)
+    results = [
+        choose_k(x, 6, n_reference=b, n_init=1, reference="box", seed=0) for b in (2, 3, 5, 10)
+    ]
+    assert len({r.k for r in results}) > 1  # the pick depends on n_reference
+    assert all(r.found for r in results)
+    assert all(r.decision_margin < 1.0 for r in results)  # and each result says so
+
+
+def test_k_min_starts_the_gap_rule_later_on_the_same_curve() -> None:
+    x = _planted(3, 60, 4)
+    full = choose_k(x, 7, n_reference=8, seed=2)
+    later = choose_k(x, 7, k_min=4, n_reference=8, seed=2)
+    assert later.ks == (4, 5, 6, 7)
+    assert np.array_equal(later.gap, full.gap[3:])
+    assert np.array_equal(later.se, full.se[3:])
+    assert np.array_equal(later.margins, full.margins[3:])
+    met = [k for k, m in zip(later.ks, later.margins, strict=False) if m >= 0]
+    assert later.k == (met[0] if met else 7)
+    single = choose_k(x, 3, k_min=3, n_reference=2)
+    assert single.k == 3
+    assert not single.found
+    assert math.isnan(single.decision_margin)
+    with pytest.raises(ValueError, match="k_min"):
+        choose_k(x, 3, k_min=4)
+    with pytest.raises(ValueError, match="k_min"):
+        choose_k(x, 3, k_min=0)

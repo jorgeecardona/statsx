@@ -44,7 +44,8 @@ again after the switch.
   unit rows, so it can choose other clusters. Cosine `eps` is in `1 - cos` in both.
 - `eps` has no default in `dbscan`. Use `k_distances` to choose it.
 - `choose_k` means another thing: in `statsx` it is the gap statistic. The elbow is `elbow_k`.
-  It takes no `max_samples`: sample the rows first if you need to.
+  It takes no `max_samples`: sample the rows first if you need to. If you use the gap statistic,
+  read `decision_margin`: on embeddings the curve can be flat.
 - `transform`: see [Place new points in a map](methods/embedding.md#place-new-points-in-a-map).
 
 ## Planned

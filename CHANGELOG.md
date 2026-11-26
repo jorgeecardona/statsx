@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `choose_k` says when its pick is decided by noise: `decision_margin` is the closest comparison
+  in standard errors, and `margins` holds each one. `k_min` starts the search above 1. The
+  docstring states how many k-means fits a call runs. (#17)
 - `kmeans`, `elbow_k`, `dbscan`, `k_distances` and `hdbscan` take `metric="cosine"`, the distance
   `1 - cos`, for embeddings whose length means nothing. Cosine k-means is spherical k-means.
 - `statsx.clustering.elbow_k` picks the number of clusters at the elbow of the k-means inertia, by

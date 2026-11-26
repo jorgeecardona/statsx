@@ -78,6 +78,39 @@ print(gap.k, gap.found, np.round(gap.gap, 2).tolist())
 A pick of `k = 1` says the data are not more clustered than uniform data. It does not say they are one
 round cluster. If no `k` meets the rule, `found` is False and the pick is the largest `k` tried.
 
+### A pick that is decided by noise
+
+Read `gap.decision_margin` before you use `gap.k`. It says how far the closest comparison on the way
+to the pick was from going the other way, in standard errors. Below 1, treat the pick as
+unsettled. `gap.margins` holds `gap[k] - (gap[k+1] - se[k+1])` for each `k`.
+
+In many dimensions the gap curve can be flat: `log W_k` falls at nearly the same rate for the data
+and for the reference. Here are 8 groups of directions in 128 dimensions:
+
+```python
+draw = np.random.default_rng(0)
+centres = draw.normal(size=(8, 128))
+centres /= np.linalg.norm(centres, axis=1, keepdims=True)
+flat = centres[draw.integers(0, 8, size=600)] + 0.35 * draw.normal(size=(600, 128))
+flat /= np.linalg.norm(flat, axis=1, keepdims=True)
+runs = [choose_k(flat, 6, n_reference=b, n_init=1, reference="box") for b in (2, 5, 10)]
+print(all(r.found for r in runs), all(r.decision_margin < 1 for r in runs))
+```
+
+```text
+True True
+```
+
+`found` is True for each run, and each says that its pick is unsettled. More references do not make
+`se` smaller: it is the spread of the reference `log W_k`, and with 2 or 3 references that spread
+is poorly estimated. When the margin is small, use `elbow_k` or decide on other grounds.
+
+`k_min` starts the rule at a larger `k`, if one cluster is no answer for you. The result can then
+never say 1.
+
+A call runs `(k_max - k_min + 1) * (n_reference + 1) * n_init` k-means fits, 1050 with the defaults.
+Lower `n_init` or `k_max` before you lower `n_reference` below 10.
+
 ## The elbow of the inertia curve
 
 Use `elbow_k(x, k_max)` when you want the number of clusters where more clusters stop making them
@@ -485,6 +518,9 @@ proves that the clusters are real: they say how well separated the partition is.
   sequential algorithm and HDBSCAN the hierarchy read from the definitions, both on the `1 - cos`
   matrix, on 4 random data sets and 3 settings. `k_distances` equals the same matrix. Scaling the
   rows changes nothing, and the fit is identical with 1 and 4 threads.
+- `choose_k` picks the first `k` whose margin is 0 or more, and `decision_margin` is the smallest
+  deciding margin in standard errors. On the flat curve above the pick changes with
+  `n_reference` and every run has a margin below 1. With `k_min` the curve is the same, cut off.
 - `find_knees` reproduces Figure 2 of the Kneedle paper (the knee at `x = 0.22`) and equals the
   steps of the paper, written out in the test, on 300 random curves and 3 sensitivities.
 - `elbow_k` found 3, 5 and 7 planted clusters for each of 3 seeds, and picked a `k` for uniform
