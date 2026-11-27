@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.62] - 2026-11-20
+## [0.1.81] - 2026-11-26
+
+### Added
+
+- `umap(x, neighbors=table)` takes neighbours that you computed, for example with an approximate
+  library, and `nearest_neighbors` builds the exact table once for several maps.
+  `neighbor_recall` and `fit.neighbor_recall()` measure a table on a sample of rows, and
+  `neighbor_preservation` takes `sample` to check large maps.
+
+## [0.1.80] - 2026-11-26
+
+### Added
+
+- `umap(x, init=positions)` refreshes a map: the layout starts at your positions, which are not
+  changed, so the new map can be compared with the old one. `learning_rate` sets the first step
+  size: 1.0 without `init` and 0.1 with it. A fit records both, and files saved before still load.
+
+## [0.1.79] - 2026-11-26
+
+### Changed
+
+- The default number of threads follows the CPU limit of the process (containers, `taskset`), and
+  not only the CPUs of the host. `STATSX_THREADS` sets the default, for hosts that hide the limit.
+
+## [0.1.77] - 2026-11-26
+
+### Changed
+
+- Faster `kmeans`, `hdbscan`, `dbscan` and `umap` on wide data: exact distances use vector
+  instructions, and `kmeans` no longer copies the data (about a third less memory). The last digits
+  of an inertia or a distance can differ from the previous release.
+
+## [0.1.76] - 2026-11-26
+
+### Added
+
+- A k-means fit has `dispersion`: the mean distance of each cluster's rows to its centroid.
+
+## [0.1.75] - 2026-11-26
 
 ### Fixed
 
@@ -15,60 +53,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   near 1e8 whose clusters are a few units apart): rows went to the wrong centre. Moving the data
   now changes nothing.
 
-### Changed
+### Added
 
-- The default number of threads follows the CPU limit of the process (containers, `taskset`), and
-  not only the CPUs of the host. `STATSX_THREADS` sets the default, for hosts that hide the limit.
-- Faster `kmeans`, `hdbscan`, `dbscan` and `umap` on wide data: exact distances use vector
-  instructions, and `kmeans` no longer copies the data (about a third less memory). The last digits
-  of an inertia or a distance can differ from the previous release.
+- `assign_clusters(rows, centroids)` and `fit.assign(rows)` give each row its nearest centre and
+  distance, and label rows beyond `max_distance` -1.
+
+## [0.1.74] - 2026-11-26
 
 ### Added
 
-- `umap(x, init=positions)` refreshes a map: the layout starts at your positions, which are not
-  changed, so the new map can be compared with the old one. `learning_rate` sets the first step
-  size: 1.0 without `init` and 0.1 with it. A fit records both, and files saved before still load.
-- `umap(x, neighbors=table)` takes neighbours that you computed, for example with an approximate
-  library, and `nearest_neighbors` builds the exact table once for several maps.
-  `neighbor_recall` and `fit.neighbor_recall()` measure a table on a sample of rows, and
-  `neighbor_preservation` takes `sample` to check large maps.
-- A k-means fit has `dispersion`: the mean distance of each cluster's rows to its centroid.
-- `assign_clusters(rows, centroids)` and `fit.assign(rows)` give each row its nearest centre and
-  distance, and label rows beyond `max_distance` -1.
 - `statsx.embedding.pca` reduces wide data to its principal components, with `transform` for new
   rows. On embeddings it lets `elbow_k` find groups that it misses on all the columns.
+
+## [0.1.73] - 2026-11-26
+
+### Added
+
 - `choose_k` says when its pick is decided by noise: `decision_margin` is the closest comparison
   in standard errors, and `margins` holds each one. `k_min` starts the search above 1. The
   docstring states how many k-means fits a call runs. (#17)
+
+## [0.1.72] - 2026-11-26
+
+### Added
+
 - `kmeans`, `elbow_k`, `dbscan`, `k_distances` and `hdbscan` take `metric="cosine"`, the distance
   `1 - cos`, for embeddings whose length means nothing. Cosine k-means is spherical k-means.
+
+## [0.1.71] - 2026-11-26
+
+### Added
+
 - `statsx.clustering.elbow_k` picks the number of clusters at the elbow of the k-means inertia, by
   the Kneedle algorithm, and returns the curve it used. `find_knees` is the algorithm alone. The
   new page "Move from fastumap" maps each call of fastumap to statsx.
+
+## [0.1.70] - 2026-11-24
+
+### Added
+
 - `UMAPFit.to_npz` and `UMAPFit.from_npz` save and load a UMAP fit as a NumPy file with no
   pickled objects. A loaded fit places new points exactly as the saved one does, and the load
   refuses a file that is damaged or from another version.
+
+## [0.1.69] - 2026-11-24
+
+### Added
+
 - `UMAPFit.transform(x)` places new points in a finished UMAP map without changing it, from
   their exact nearest training points. No paper describes this step; the docs say which
   description it follows. `UMAPFit` now keeps the fitted data.
+
+## [0.1.68] - 2026-11-22
+
+### Added
+
 - `umap(x, metric="cosine")` maps rows by the angle between them, for embeddings whose length
   means nothing. `neighbor_preservation` takes the same `metric`.
+
+## [0.1.67] - 2026-11-22
+
+### Added
+
 - `statsx.embedding.umap`: UMAP from the paper, in Rust. It builds the weighted neighbour graph,
   starts from the eigenvectors of its Laplacian, and lays it out by sampled gradient descent. The
   neighbours are exact. The map is the same for any thread count. `neighbor_preservation` says how
   many neighbours a map keeps, and `UMAPFit.cross_entropy` gives the objective. No library besides
   NumPy.
+
+## [0.1.66] - 2026-11-21
+
+### Added
+
 - `statsx.clustering.dbscan`, `hdbscan` and `k_distances`: density clustering from the papers, in
   Rust, with exact distances. Groups have any shape, points in no group are noise (-1), and no
   number of clusters is given. HDBSCAN also finds groups of different density. No library besides
   NumPy.
+
+## [0.1.65] - 2026-11-21
+
+### Added
+
 - `statsx.clustering.gaussian_mixture`: a Gaussian mixture fitted by EM (full, diagonal or spherical
   covariance), with a probability for each point, `predict_proba`, `score_samples` and `sample`. It
   drops runs where a component collapses onto a few points. `choose_components` picks the number of
   components by BIC or AIC. No library besides NumPy.
+
+## [0.1.64] - 2026-11-21
+
+### Added
+
 - `statsx.clustering`: `kmeans` (k-means++ seeds, Lloyd iteration, a Rust kernel that gives the same
   fit for any thread count), `silhouette`, and `choose_k` by the gap statistic. No library besides
   NumPy.
+
+## [0.1.62] - 2026-11-20
+
+### Added
+
 - `Forecast.rates` divides each count draw by the exposure of its month. The docs now say that a
   forecast at exposure 1 gives a rate as `mean` but a band of counts that is nearly all 0 (GitLab
   issue #16).
