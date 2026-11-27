@@ -221,6 +221,32 @@ fn fuzzy_union(n: usize, k: usize, idx: &[usize], w: &[f64]) -> Csr {
     (indptr, indices, data)
 }
 
+/// The labels of section 7 on the directed weights: the weight between two labelled points with
+/// different labels is multiplied by `q`, then each row is divided by its largest weight. A label
+/// below 0 means no label. Returns the share of the weight between labelled points that joined
+/// different labels, before the factor; NaN when no two labelled points are neighbours.
+fn apply_labels(k: usize, idx: &[usize], w: &mut [f64], labels: &[i64], q: f64) -> f64 {
+    let (mut cross, mut between) = (0.0, 0.0);
+    for (i, row) in w.chunks_mut(k).enumerate() {
+        for (e, v) in row.iter_mut().enumerate() {
+            let (a, b) = (labels[i], labels[idx[i * k + e]]);
+            if a >= 0 && b >= 0 {
+                between += *v;
+                if a != b {
+                    cross += *v;
+                    *v *= q;
+                }
+            }
+        }
+        // The nearest neighbour has weight 1 before the factor, and q > 0, so `top` is above 0.
+        let top = row.iter().copied().fold(0.0, f64::max);
+        for v in row.iter_mut() {
+            *v /= top;
+        }
+    }
+    cross / between
+}
+
 /// Connected components, numbered by the lowest index they hold.
 fn components(indptr: &[usize], indices: &[usize]) -> Vec<i64> {
     let n = indptr.len() - 1;
@@ -763,18 +789,28 @@ type FuzzyOut<'py> = (
     Bound<'py, PyArray1<i64>>,
     Bound<'py, PyArray1<i64>>,
     Bound<'py, PyArray1<f64>>,
+    f64,
 );
 
-/// `rho`, `sigma` and the symmetric graph (compressed rows) from the neighbour table.
+/// `rho`, `sigma` and the symmetric graph (compressed rows) from the neighbour table. With
+/// `labels` the directed weights go through `apply_labels` first, and the last value is its share;
+/// without them it is NaN and `q` is not used.
 #[pyfunction]
+#[pyo3(signature = (idx, dist, labels, q))]
 pub fn umap_fuzzy<'py>(
     py: Python<'py>,
     idx: PyReadonlyArray2<'py, i64>,
     dist: PyReadonlyArray2<'py, f64>,
+    labels: Option<PyReadonlyArray1<'py, i64>>,
+    q: f64,
 ) -> PyResult<FuzzyOut<'py>> {
     let (n, k) = (idx.shape()[0], idx.shape()[1]);
     if dist.shape() != [n, k] || k < 2 {
         return Err(PyValueError::new_err("need matching (n, k) tables with k >= 2"));
+    }
+    let labels: Option<Vec<i64>> = labels.map(|l| l.as_array().iter().copied().collect());
+    if labels.as_ref().is_some_and(|l| l.len() != n) || !(q > 0.0 && q <= 1.0) {
+        return Err(PyValueError::new_err("need n labels and q in (0, 1]"));
     }
     let table: Vec<usize> = idx
         .as_array()
@@ -795,6 +831,7 @@ pub fn umap_fuzzy<'py>(
             weight[i * k + e] = (-(dj - r).max(0.0) / s).exp();
         }
     }
+    let cross = labels.map_or(f64::NAN, |l| apply_labels(k, &table, &mut weight, &l, q));
     let (indptr, indices, data) = fuzzy_union(n, k, &table, &weight);
     Ok((
         Array1::from_vec(rho).into_pyarray_bound(py),
@@ -802,6 +839,7 @@ pub fn umap_fuzzy<'py>(
         to_i64(indptr).into_pyarray_bound(py),
         to_i64(indices).into_pyarray_bound(py),
         Array1::from_vec(data).into_pyarray_bound(py),
+        cross,
     ))
 }
 

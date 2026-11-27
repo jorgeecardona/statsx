@@ -18,6 +18,7 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `umap_project(x, 2, init=previous)` | `umap(x, init=previous).embedding` |
 | `initial_alpha=a` | `learning_rate=a` |
 | `precomputed_knn=(indices, distances)` | `umap(x, neighbors=(indices, distances))` |
+| `y=y`, `target_weight=t` | `umap(x, labels=y, label_weight=w)` |
 | `model.to_npz`, `UMAPModel.from_npz` | `fit.to_npz`, `UMAPFit.from_npz` |
 | `kmeans(x, k)` | `statsx.clustering.kmeans(x, k)` |
 | `metric="cosine"` (clustering) | the same argument of `kmeans`, `dbscan`, `hdbscan`, `elbow_k` |
@@ -66,6 +67,10 @@ again after the switch.
   with an approximate library and pass it as `neighbors`; see
   [Bring your own neighbours](methods/embedding.md#bring-your-own-neighbours). Pass Euclidean
   distances (the square root of what faiss returns for L2) or only the row numbers.
+- Labels: start from `label_weight = 1 - exp(-2.5 / (1 - target_weight))`, so 0.5 becomes 0.993.
+  The maps differ: `fastumap` merges the two directions of the graph a second time, so even one
+  class changes its map. `statsx` does not, and a row labelled -1 keeps its weights. See
+  [Let labels guide a map](methods/embedding.md#let-labels-guide-a-map).
 - `transform`: see [Place new points in a map](methods/embedding.md#place-new-points-in-a-map).
 
 ## Speed and memory
@@ -102,7 +107,6 @@ In this order.
 | Need | fastumap | Status in statsx |
 |---|---|---|
 | MG-5 | `batch_size` (mini-batch k-means), float32 input | measured below; not added |
-| MG-8 | `y=` (supervised) | not there |
 | MG-9 | `knn="approx"` or `"auto"` | exact search, or bring a table with `neighbors=` |
 
 ## Containers

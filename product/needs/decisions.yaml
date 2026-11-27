@@ -2143,3 +2143,35 @@ decisions:
     hdbscan and dbscan take no table, so a caller who clusters that many points reduces the columns
     with pca first.'
 
+- id: D-80
+  text: 'umap(x, labels=, label_weight=) lets labels change the graph. No paper specifies this: the UMAP
+    paper names it as future work (section 7: one fuzzy simplicial set per view, intersected) and gives
+    no label set, no t-norm and no weight. statsx takes the label view with membership 1 for equal
+    labels and q = 1 - label_weight for different ones, intersects by the product (the dual of the
+    probabilistic sum of section 3.1) on the directed weights, divides each row by its largest weight,
+    which recomputes rho under the distance d + sigma ln(1/q) (eq. 3 of de Ridder et al. 2003 with a
+    local offset), and runs the union once. Sigma is kept. A point without a label (-1) has membership 1
+    with every point. label_weight is in [0, 1), required, with no default. transform is unchanged and
+    takes no labels. The fit records the labels, the weight and the share of neighbour weight between
+    different labels; npz format 4, which reads 1 to 3. label_agreement measures the share of nearest
+    neighbours with the label of a row, in the data or in a map. This is a statsx construction and not a
+    published algorithm, and the docs say so.'
+  needs:
+  - MG-8
+  alternatives:
+  - 'A port of umap-learn 0.5.12: not used; its reset runs the union twice, so one class does not give
+    the unsupervised graph (measured on 300 points: 1.47 times the weight), and its constants 2.5 and
+    1.0 have no source.'
+  - 'Eq. 3 of de Ridder et al. as it stands: not used; its scale is global, it has no rule for a point
+    without a label, and it changes the neighbours.'
+  - 'One-hot columns added to the data: not used; unlabelled rows would attract each other, and every new
+    row would be shifted.'
+  - 'label_weight = 1: refused; a point whose neighbours all have other labels would lose every edge.'
+  - 'A default label_weight: not given; no source gives one.'
+  - 'Continuous targets, text labels and labels in transform: not written.'
+  - 'Decline the need and colour an unsupervised map by label: not used; the maintainer asked to finish
+    the missing features.'
+  consequences: 'Measured on 3 overlapping classes in 10 columns at weight 0.99: label agreement of held
+    out rows rose from 0.51 to 0.68, and of the training positions from 0.50 to 0.99, while kept
+    neighbours fell from 0.30 to 0.23. With random labels held out rows stayed at 0.36 and the training
+    positions reached 0.99.'

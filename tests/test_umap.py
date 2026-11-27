@@ -534,6 +534,7 @@ def _same_fit(a: UMAPFit, b: UMAPFit) -> bool:
         "learning_rate",
         "start",
         "neighbor_source",
+        "supervision",
     )
     return (
         all(np.array_equal(getattr(a, f), getattr(b, f)) for f in arrays)

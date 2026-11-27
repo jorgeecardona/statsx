@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.82] - 2026-11-27
+
+### Added
+
+- `umap(x, labels=y, label_weight=w)` lets known classes guide a map; -1 marks a row without a
+  label. A map built with labels is not evidence that the classes are separate: `label_agreement`
+  measures what the data supports. Saved fits have a new format, and files saved before still load.
+
 ## [0.1.81] - 2026-11-26
 
 ### Added

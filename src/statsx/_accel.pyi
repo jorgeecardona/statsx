@@ -139,13 +139,17 @@ def umap_place(
     threads: int,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
 def umap_fuzzy(
-    idx: npt.NDArray[np.int64], dist: npt.NDArray[np.float64]
+    idx: npt.NDArray[np.int64],
+    dist: npt.NDArray[np.float64],
+    labels: npt.NDArray[np.int64] | None,
+    q: float,
 ) -> tuple[
     npt.NDArray[np.float64],
     npt.NDArray[np.float64],
     npt.NDArray[np.int64],
     npt.NDArray[np.int64],
     npt.NDArray[np.float64],
+    float,
 ]: ...
 def umap_components(
     indptr: npt.NDArray[np.int64], indices: npt.NDArray[np.int64]

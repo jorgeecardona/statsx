@@ -6,7 +6,7 @@
 # Build wheels:  maturin build --release
 [package]
 name = "statsx"
-version = "0.1.81"
+version = "0.1.82"
 edition = "2021"
 description = "Native accelerator for statsx (built into the package)."
 license = "MIT"

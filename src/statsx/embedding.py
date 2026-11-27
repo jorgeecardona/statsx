@@ -42,7 +42,13 @@ first value as a parameter. The start decides the large-scale arrangement of a m
 Linderman 2021), so two maps that share a start can be compared point by point. A point whose data
 did not change still moves a little.
 
-Not in the paper, so not here: supervised maps.
+Known labels can guide a map: ``umap(x, labels=y, label_weight=w)`` lowers the weight between
+neighbours with different labels. The paper names this as future work (section 7) and no paper
+specifies it, so it is a statsx construction: the label view with weight 1 for equal labels and
+``1 - w`` for different ones, intersected with the graph of the data by the product, before the
+union. de Ridder et al. (2003, eq. 3) add to the distance between classes in another method, which
+is the nearest published idea. A map built with labels is not evidence that the data separates
+them: see ``label_agreement``.
 
 ``pca`` projects points onto the directions along which they vary most (Pearson 1901; Hotelling
 1933). The projection is the linear one with the smallest squared reconstruction error. It is
@@ -70,6 +76,11 @@ References:
     LOBPCG. *SIAM Journal on Scientific Computing* 40(5):C655-C676.
     https://doi.org/10.1137/17M1129830.
 
+    de Ridder, D., Kouropteva, O., Okun, O., Pietikäinen, M., & Duin, R. P. W. (2003). Supervised
+    locally linear embedding. *Artificial Neural Networks and Neural Information Processing,
+    ICANN/ICONIP 2003*, Lecture Notes in Computer Science 2714:333-341.
+    https://doi.org/10.1007/3-540-44989-2_40.
+
     Kobak, D., & Linderman, G. C. (2021). Initialization is critical for preserving global data
     structure in both t-SNE and UMAP. *Nature Biotechnology* 39:156-157.
     https://doi.org/10.1038/s41587-020-00809-z.
@@ -95,6 +106,7 @@ References:
 
 from __future__ import annotations
 
+import math
 import os
 import zipfile
 from dataclasses import dataclass, field
@@ -117,7 +129,7 @@ from statsx._arrays import (
 _PCA_BLOCK = 4096
 """Rows per block of ``pca``, so that no second copy of the data is held."""
 
-_FORMAT = 3
+_FORMAT = 4
 """Version of the ``.npz`` layout of ``UMAPFit.to_npz``. Raise it when the layout changes."""
 
 _PAPER_RATE = 1.0
@@ -180,6 +192,9 @@ _FARTHEST = 1e100
 _MIN_NEIGHBORS = 2
 """Fewest neighbours: the weights of one neighbour always sum to 1, so sigma is undefined."""
 
+_UNLABELLED = -1
+"""The label of a point that has none."""
+
 
 @dataclass(frozen=True, slots=True)
 class FuzzyGraph:
@@ -238,6 +253,24 @@ class Neighbors:
 
 NeighborTable = npt.ArrayLike | tuple[npt.ArrayLike, npt.ArrayLike]
 """Neighbours that the caller brings: row numbers (n, k), or row numbers and distances."""
+
+
+@dataclass(frozen=True, slots=True)
+class Supervision:
+    """The labels that changed the graph of a map.
+
+    Args:
+        labels: The label of each point, shape (n,): 0 or above, and -1 for a point without one.
+        label_weight: The share taken from the weight of a neighbour with another label, in
+            [0, 1). 0 leaves the graph as it is without labels.
+        cross_label_share: Of the neighbour weight between two labelled points, before the labels
+            changed it, the share that joined different labels: how mixed the labels are among
+            neighbours in the data. None when no two labelled points are neighbours.
+    """
+
+    labels: npt.NDArray[np.int64] = field(repr=False)
+    label_weight: float
+    cross_label_share: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,6 +364,9 @@ class UMAPFit:
         start: ``"spectral"``, or ``"init"`` when the caller gave the start positions.
         neighbor_source: ``"exact"``, or ``"given"`` when the caller gave the neighbours. A
             given table has the quality that ``neighbor_recall`` measures and no other claim.
+        supervision: The labels given to ``umap`` and what they changed, or None for a map of
+            the data alone. With it, ``graph`` is not the graph of the data: ``neighbors``,
+            ``distances``, ``rho`` and ``sigma`` still are.
     """
 
     embedding: npt.NDArray[np.float64]
@@ -353,6 +389,7 @@ class UMAPFit:
     learning_rate: float
     start: Start
     neighbor_source: NeighborSource
+    supervision: Supervision | None
 
     @property
     def n_points(self) -> int:
@@ -482,6 +519,13 @@ class UMAPFit:
             "start": np.array(self.start),
             "neighbor_source": np.array(self.neighbor_source),
         }
+        if self.supervision is not None:
+            share = self.supervision.cross_label_share
+            arrays["labels"] = self.supervision.labels
+            arrays["label_weight"] = np.asarray(self.supervision.label_weight, np.float64)
+            arrays["cross_label_share"] = np.asarray(
+                math.nan if share is None else share, np.float64
+            )
         if isinstance(file, (str, os.PathLike)):
             with Path(file).open("wb") as handle:
                 np.savez(handle, **arrays)  # type: ignore[arg-type]
@@ -494,7 +538,8 @@ class UMAPFit:
 
         A file of format version 1 holds no ``learning_rate`` and no ``start``: every such fit
         used 1.0 and a spectral start, and loads with those values. A file of version 1 or 2
-        holds no ``neighbor_source``: every such fit searched its own neighbours.
+        holds no ``neighbor_source``: every such fit searched its own neighbours. No file of
+        version 1 to 3 had labels.
 
         The arrays are checked before they are used: their shapes agree, the neighbours and the
         graph point at existing rows, and the values are finite. A file of another format
@@ -515,7 +560,8 @@ class UMAPFit:
         if version is None or version not in range(1, _FORMAT + 1):
             raise ValueError(f"the file has format version {version}, this reads 1 to {_FORMAT}")
         added = ("start", "neighbor_source")[: version - 1]
-        fields = (*_FIELDS, *added)
+        supervised = version >= _FIRST_LABELLED and any(name in found for name in _LABEL_FIELDS)
+        fields = (*_FIELDS, *added, *(_LABEL_FIELDS if supervised else ()))
         missing = sorted(set(fields) - set(found))
         if missing:
             raise ValueError(f"the file lacks {missing}")
@@ -552,6 +598,7 @@ class UMAPFit:
             learning_rate=_PAPER_RATE if version == 1 else float(reals[3]),
             start=start,  # type: ignore[arg-type]
             neighbor_source=source,  # type: ignore[arg-type]
+            supervision=_loaded_supervision(found) if supervised else None,
         )
         _check_fit(fit)
         fit.data.flags.writeable = False
@@ -619,6 +666,12 @@ _FIELDS = (
 )
 """The arrays that a saved fit holds besides its format version."""
 
+_LABEL_FIELDS = ("labels", "label_weight", "cross_label_share")
+"""The arrays that a fit with labels holds besides those."""
+
+_FIRST_LABELLED = 4
+"""The first format version that can hold labels."""
+
 
 def _numeric(value: npt.NDArray[np.generic], ndim: int) -> None:
     """Raise ``ValueError`` unless ``value`` is a numeric array with ``ndim`` dimensions."""
@@ -636,6 +689,34 @@ def _ints(value: npt.NDArray[np.generic], ndim: int) -> npt.NDArray[np.int64]:
     """Return ``value`` as a C-contiguous integer array of ``ndim`` dimensions."""
     _numeric(value, ndim)
     return np.ascontiguousarray(value, dtype=np.int64)
+
+
+def _loaded_supervision(found: dict[str, npt.NDArray[np.generic]]) -> Supervision:
+    """Return the labels of a saved fit; ``_check_fit`` checks their values."""
+    labels = found["labels"]
+    if labels.ndim != 1 or labels.dtype.kind not in "iu":
+        raise ValueError("the labels in the file are not a list of integers")
+    weight, share = found["label_weight"], found["cross_label_share"]
+    _numeric(weight, 0)
+    _numeric(share, 0)
+    return Supervision(
+        labels=np.ascontiguousarray(labels, dtype=np.int64),
+        label_weight=float(weight),
+        cross_label_share=None if math.isnan(float(share)) else float(share),
+    )
+
+
+def _sound_supervision(supervision: Supervision | None, n: int) -> bool:
+    """Whether the labels of a loaded fit are ones that ``umap`` can have recorded."""
+    if supervision is None:
+        return True
+    share = supervision.cross_label_share
+    return (
+        supervision.labels.shape == (n,)
+        and bool(np.all(supervision.labels >= _UNLABELLED))
+        and 0.0 <= supervision.label_weight < 1.0
+        and (share is None or 0.0 <= share <= 1.0)
+    )
 
 
 def _check_fit(fit: UMAPFit) -> None:
@@ -684,7 +765,8 @@ def _check_fit(fit: UMAPFit) -> None:
         and fit.neighbor_source in {"exact", "given"}
         and (fit.start == "spectral" or fit.n_random_start == 0)
     )
-    if not (finite and sound_graph and sound_neighbors and sound_settings):
+    sound_labels = _sound_supervision(fit.supervision, n)
+    if not (finite and sound_graph and sound_neighbors and sound_settings and sound_labels):
         raise ValueError("the file holds values that a UMAPFit cannot have")
 
 
@@ -939,6 +1021,35 @@ def _check_stated(
     )
 
 
+def _labels(labels: npt.ArrayLike, n: int, lowest: int, name: str) -> npt.NDArray[np.int64]:
+    """Return ``n`` integer labels of at least ``lowest`` as a new read-only array."""
+    given = np.asarray(labels)
+    if given.shape != (n,):
+        raise ValueError(f"{name} must have shape ({n},), got {given.shape}")
+    if given.dtype.kind not in "iu":
+        raise ValueError(f"{name} must be integers, got {given.dtype}: encode the classes as 0, 1")
+    out = np.array(given, dtype=np.int64)
+    if np.any(out < lowest):
+        raise ValueError(f"{name} must be {lowest} or above")
+    out.flags.writeable = False
+    return out
+
+
+def _supervision_settings(
+    labels: npt.ArrayLike | None, label_weight: float | None, n: int
+) -> tuple[npt.NDArray[np.int64], float] | None:
+    """Return the checked labels and weight, or None when neither is given."""
+    if labels is None:
+        if label_weight is not None:
+            raise ValueError("label_weight needs labels")
+        return None
+    if label_weight is None:
+        raise ValueError("labels needs label_weight, from 0 (no effect) to below 1")
+    if not 0.0 <= label_weight < 1.0:
+        raise ValueError(f"label_weight must be at least 0 and below 1, got {label_weight}")
+    return _labels(labels, n, _UNLABELLED, "labels"), float(label_weight)
+
+
 def nearest_neighbors(
     x: npt.ArrayLike, k: int, *, metric: Metric = "euclidean", threads: int | None = None
 ) -> Neighbors:
@@ -1055,6 +1166,8 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     init: npt.ArrayLike | None = None,
     learning_rate: float | None = None,
     neighbors: NeighborTable | None = None,
+    labels: npt.ArrayLike | None = None,
+    label_weight: float | None = None,
     seed: int = 0,
     threads: int | None = None,
 ) -> UMAPFit:
@@ -1087,6 +1200,15 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     uses the first ``n_neighbors``. The map is then as good as the table: measure it with
     ``fit.neighbor_recall()``. Build the table from the same rows and the same ``metric``.
 
+    ``labels`` lets known classes change the graph, and with it the map. The weight of a
+    neighbour with another label is multiplied by ``1 - label_weight``, then each row of weights
+    is divided by its largest, so every point keeps one neighbour at weight 1; the two directions
+    are then merged as usual. A point labelled -1 has no label: its weights do not change. The
+    paper names supervised maps as future work (section 7, one graph per view, intersected) and
+    no paper specifies this step: it is a statsx construction. Groups that are apart on such a map
+    are not evidence that the data separates them; ``label_agreement`` measures what the data
+    supports. ``transform`` takes no labels.
+
     Args:
         x: The points, shape (n, d), finite.
         n_neighbors: Neighbours per point, from 2 to n - 1. Small values keep fine structure and
@@ -1108,6 +1230,10 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
             ``n_neighbors`` besides the row itself, or ``(indices, distances)``. Given distances
             are only checked against the data: pass Euclidean distances, not squared ones, and
             ``1 - cos`` for the cosine metric.
+        labels: The label of each row, shape (n,): integers, 0 or above, and -1 for a row
+            without a label.
+        label_weight: How much of the weight between different labels is taken away, from 0 (no
+            effect) to below 1. Required with ``labels``, with no default: no source gives one.
         seed: Seed of the start and the layout.
         threads: Worker threads. Defaults to the CPUs the process may use, at most 4, or to
             the ``STATSX_THREADS`` environment variable.
@@ -1116,7 +1242,8 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         ValueError: If ``n_neighbors`` is not in [2, n - 1], a setting is out of range,
             ``metric`` is ``"cosine"`` and a row is all zeros, or ``init`` has another shape, is
             not finite, or has all its rows in fewer than ``dimensions`` dimensions, or
-            ``neighbors`` is not a table of enough different rows with the distances of ``x``.
+            ``neighbors`` is not a table of enough different rows with the distances of ``x``, or
+            only one of ``labels`` and ``label_weight`` is given, or either is out of range.
     """
     check_metric(metric)
     a = as_points(x)
@@ -1137,6 +1264,7 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
     if not 0.0 < rate <= _PAPER_RATE:
         raise ValueError(f"learning_rate must be above 0 and at most 1, got {rate}")
     given = None if init is None else _given_start(init, n, dimensions)
+    supervised = _supervision_settings(labels, label_weight, n)
     curve_a, curve_b = fit_curve(min_dist)
     workers = resolve_threads(threads)
 
@@ -1144,8 +1272,22 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         idx, dist = _neighbors(a, n_neighbors, metric, workers)
     else:
         idx, dist = _given_neighbors(a, neighbors, n_neighbors, metric, workers)
-    rho, sigma, indptr, indices, weights = _accel.umap_fuzzy(idx, dist)
+    kernel_labels, factor = (
+        (None, 1.0) if supervised is None else (supervised[0], 1.0 - supervised[1])
+    )
+    rho, sigma, indptr, indices, weights, share = _accel.umap_fuzzy(
+        idx, dist, kernel_labels, factor
+    )
     graph = FuzzyGraph(indptr, indices, weights)
+    supervision = (
+        None
+        if supervised is None
+        else Supervision(
+            labels=supervised[0],
+            label_weight=supervised[1],
+            cross_label_share=None if math.isnan(share) else share,
+        )
+    )
     if given is None:
         start, n_components, n_random, converged = _start(graph, dimensions, seed, workers)
     else:
@@ -1191,7 +1333,66 @@ def umap(  # noqa: PLR0913 (settings are keyword-only)
         learning_rate=float(rate),
         start="spectral" if given is None else "init",
         neighbor_source="exact" if neighbors is None else "given",
+        supervision=supervision,
     )
+
+
+def label_agreement(  # noqa: PLR0913 (settings are keyword-only)
+    x: npt.ArrayLike,
+    labels: npt.ArrayLike,
+    k: int = 15,
+    *,
+    query: npt.ArrayLike | None = None,
+    query_labels: npt.ArrayLike | None = None,
+    metric: Metric = "euclidean",
+    threads: int | None = None,
+) -> float:
+    """Return the mean share of the nearest neighbours of a row that carry its label.
+
+    Without ``query`` each row of ``x`` is compared with its ``k`` nearest other rows of ``x``.
+    With ``query`` each row of ``query`` is compared with its ``k`` nearest rows of ``x``: use
+    rows that are not in ``x``. 1 means every neighbour has the label of the row; labels that have
+    nothing to do with the positions give about the sum of the squared class shares.
+
+    It shows how much of the separation on a map with labels comes from the labels. Compare three
+    values: held-out rows against training rows in the data (what the data supports), held-out
+    rows placed by ``transform`` against the training positions (what the map kept without their
+    labels), and the training positions against themselves (what the picture shows). The measure
+    is a choice of statsx and comes from no paper.
+
+    Args:
+        x: Reference points, shape (n, d), finite.
+        labels: Their labels, shape (n,), integers 0 or above. Leave out rows without a label.
+        k: Neighbours per row, from 1 to n - 1, or to n with ``query``.
+        query: Rows to score, shape (m, d). The default is ``x`` itself.
+        query_labels: Their labels, shape (m,). Required with ``query``.
+        metric: The distance between rows.
+        threads: Worker threads. The value does not depend on it.
+
+    Raises:
+        ValueError: If a shape, a label or ``k`` is wrong, only one of ``query`` and
+            ``query_labels`` is given, or ``metric`` is ``"cosine"`` and a row is all zeros.
+    """
+    check_metric(metric)
+    a = as_points(x)
+    n = a.shape[0]
+    reference = _labels(labels, n, 0, "labels")
+    if (query is None) != (query_labels is None):
+        raise ValueError("query and query_labels go together")
+    most = n - 1 if query is None else n
+    if not 1 <= k <= most:
+        raise ValueError(f"k must be in [1, {most}], got {k}")
+    workers = resolve_threads(threads)
+    if query is None or query_labels is None:
+        near, _ = _neighbors(a, k, metric, workers)
+        own = reference
+    else:
+        new = as_points(query, min_rows=1)
+        if new.shape[1] != a.shape[1]:
+            raise ValueError(f"query has {new.shape[1]} columns, x has {a.shape[1]}")
+        own = _labels(query_labels, new.shape[0], 0, "query_labels")
+        near, _ = _neighbors_between(a, new, k, metric, workers)
+    return float((reference[near] == own[:, None]).mean())
 
 
 def neighbor_preservation(  # noqa: PLR0913 (settings are keyword-only)

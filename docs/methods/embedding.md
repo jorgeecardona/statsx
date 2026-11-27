@@ -265,6 +265,89 @@ print(np.median(steps) > 0.0)
 True
 ```
 
+## Let labels guide a map
+
+Use `umap(x, labels=y, label_weight=w)` when some rows have a known class and you want the map to
+arrange them by it. Then measure what the picture shows that the data does not, with
+`label_agreement`.
+
+A map built with labels is not evidence that the classes are separate. Here the data is one cloud
+and the labels are random, and the map still separates them:
+
+```python
+from statsx.embedding import label_agreement
+
+draw = np.random.default_rng(1)
+cloud, classes = draw.standard_normal((600, 10)), draw.integers(0, 3, 600)
+held, held_classes = draw.standard_normal((200, 10)), draw.integers(0, 3, 200)
+
+guided = umap(cloud, labels=classes, label_weight=0.99)
+placed = guided.transform(held).embedding
+picture = label_agreement(guided.embedding, classes)
+new_rows = label_agreement(guided.embedding, classes, query=placed, query_labels=held_classes)
+print(picture > 0.9, new_rows < 0.45)
+```
+
+```text
+True True
+```
+
+`picture` says that more than 90% of each point's neighbours on the map have its class. `new_rows`
+says that rows placed without their labels agree about as often as chance (1 in 3).
+
+### What the labels do
+
+- The weight of a neighbour with another label is multiplied by `1 - label_weight`.
+- Each row of weights is then divided by its largest, so every point keeps one neighbour at weight
+  1. The two directions are merged as usual. `sigma` is not solved again, so a row's weights no
+  longer sum to `log2(n_neighbors)`.
+- A row labelled -1 has no label. No weight to or from it is multiplied.
+- `fit.neighbors`, `fit.distances`, `fit.rho` and `fit.sigma` stay those of the data. Only
+  `fit.graph` changes.
+- `label_weight` is from 0 to below 1, and has no default. 0, one class, or all rows -1 give the
+  same bytes as a map without labels.
+- `transform` takes no labels: new rows are placed by their neighbours in the data.
+
+No paper specifies this. The UMAP paper names supervised maps as future work: one graph per view,
+intersected (section 7). `statsx` intersects the graph of the data with a graph of the labels, whose
+weight is 1 for equal labels and `1 - label_weight` for different ones, by the product. de Ridder
+et al. (2003) add to the distance between classes in another method, the nearest published idea.
+
+### Measure what the labels added
+
+Compare three values of `label_agreement`:
+
+1. A: held-out rows against training rows, in the data. What the data supports.
+2. B: held-out rows placed by `transform` against the training positions. What holds for rows whose
+   labels the map did not see.
+3. C: the training positions against themselves. What the picture shows.
+
+C minus B is separation that is in the picture only. `neighbor_preservation(x, fit.embedding)` says
+how many neighbours of the data the map gave up for it. `fit.cross_entropy()` is measured against
+the changed graph, so do not compare it with a map without labels.
+
+`fit.supervision.cross_label_share` says how mixed the labels are in the data: the share of the
+neighbour weight between labelled rows that joined different labels, before the change.
+
+Measured on 3 classes in 10 columns, 900 training rows and 300 held-out rows, mean of 3 seeds. In
+the first data the labels are random; in the second each class is moved by 1.2 along its own column.
+
+| Labels | `label_weight` | A | B | C | Neighbours kept |
+|---|---|---|---|---|---|
+| random | no labels | 0.35 | 0.35 | 0.32 | 0.29 |
+| random | 0.5 | 0.35 | 0.34 | 0.35 | 0.29 |
+| random | 0.9 | 0.35 | 0.36 | 0.55 | 0.24 |
+| random | 0.99 | 0.35 | 0.36 | 0.99 | 0.19 |
+| overlapping | no labels | 0.53 | 0.51 | 0.50 | 0.30 |
+| overlapping | 0.5 | 0.53 | 0.53 | 0.55 | 0.29 |
+| overlapping | 0.9 | 0.53 | 0.62 | 0.82 | 0.25 |
+| overlapping | 0.99 | 0.53 | 0.68 | 0.99 | 0.23 |
+
+On the overlapping classes B rises above A: the training labels also helped to place rows that they
+did not include. C rises much more, to 0.99, and that part holds only for the training rows. No
+`label_weight` is the right one. Labels that a model predicted from `x` give a picture of that
+model.
+
 ## Bring your own neighbours
 
 Use `umap(x, neighbors=table)` when the exact search is too slow, with a table from an approximate
@@ -359,7 +442,7 @@ The file is a NumPy `.npz` with no pickled objects, so loading it runs no code. 
 stored exactly. It keeps the fitted data, so it is as large as the data. A path is written as you
 give it, and no `.npz` is added.
 
-The format has version 3. `from_npz` also reads versions 1 and 2, written by older releases.
+The format has version 4. `from_npz` also reads versions 1 to 3, written by older releases.
 
 `from_npz` checks the file before it uses it. It refuses an unknown format version, a missing array,
 shapes that do not fit together, a neighbour or a graph entry that points to a row that does not
@@ -417,20 +500,22 @@ the eigenvector. The layout still runs.
 
 Checked: the points are a finite (n, d) array, `metric` is known and no row is zero for the cosine
 distance, `n_neighbors` is from 2 to n - 1, `min_dist` is in [0, 1], and the counts are in range.
-A table of `neighbors` is checked as [above](#what-statsx-does-with-a-table).
+A table of `neighbors` is checked as [above](#what-statsx-does-with-a-table). `labels` are integers,
+-1 or above, one per row, and `label_weight` is from 0 to below 1.
 
 Reported: the number of graph pieces, the points with a random start, whether the spectral
-start converged, where the start came from (`fit.start`), `fit.learning_rate` and
-`fit.neighbor_source`.
+start converged, where the start came from (`fit.start`), `fit.learning_rate`,
+`fit.neighbor_source` and `fit.supervision`.
 
 Not checked: that the layout reached the best map. It is a stochastic search for a local minimum.
-Not checked: that the map shows real groups. See above.
+Not checked: that the map shows real groups, or that the labels mean anything. See above.
 
 ## Not included
 
 - A published algorithm for mapping new points. There is none (section 7 of the paper), so
   `transform` follows the description in the uwot article on embedding new data.
-- Other distances than the Euclidean and cosine ones, and supervised maps.
+- Other distances than the Euclidean and cosine ones.
+- Continuous targets, and labels in `transform`.
 - An approximate neighbour search. `umap` takes the table of one: see
   [Bring your own neighbours](#bring-your-own-neighbours).
 
@@ -466,7 +551,12 @@ Not checked: that the map shows real groups. See above.
   it is read-only, a start turned by 90 degrees gives a turned map, rows with one start position
   come apart, the result is identical with 1 and with 3 threads, and a moving window keeps as many
   neighbours (within 0.03) as a cold fit while its shared rows move under 0.3 as far.
-- A saved version 1 file loads with `learning_rate` 1.0 and a spectral start.
+- A saved version 1 file loads with `learning_rate` 1.0 and a spectral start, and a version 3 file
+  loads without labels.
+- With `labels`: the graph equals the formula computed in NumPy, every row keeps a weight of 1, one
+  class, no labelled row or weight 0 give the bytes of a map without labels, random labels separate
+  the map but not held-out rows, and the result is identical with 1 and with 3 threads.
+- `label_agreement` equals its definition computed from the full distance matrix.
 - The cross entropy equals Definition 10 summed over all pairs, written out in the test.
 - The layout reaches the cross entropy of Algorithm 5 run one point at a time, within 30%, on
   random starts (the ratio was 0.84 to 1.10 on two machines). The two differ in one way: a point
@@ -500,6 +590,10 @@ Not checked: that the map shows real groups. See above.
   data. *Proceedings of the 25th International Conference on World Wide Web*, pp. 287-297.
   <https://doi.org/10.1145/2872427.2883041>. It writes the linear schedule of the step size with
   its first value as a parameter.
+- de Ridder, D., Kouropteva, O., Okun, O., Pietikäinen, M., and Duin, R. P. W. (2003). Supervised
+  locally linear embedding. *Artificial Neural Networks and Neural Information Processing,
+  ICANN/ICONIP 2003*, Lecture Notes in Computer Science 2714:333-341.
+  <https://doi.org/10.1007/3-540-44989-2_40>
 - Kobak, D., and Linderman, G. C. (2021). Initialization is critical for preserving global data
   structure in both t-SNE and UMAP. *Nature Biotechnology* 39:156-157.
   <https://doi.org/10.1038/s41587-020-00809-z>
