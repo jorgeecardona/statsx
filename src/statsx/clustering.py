@@ -99,8 +99,11 @@ from statsx import _accel
 from statsx._arrays import (
     MATRIX,
     Metric,
+    Rows,
     as_points,
+    as_rows,
     check_metric,
+    contiguous,
     cosine_of_chord,
     resolve_threads,
     unit_rows,
@@ -172,12 +175,12 @@ def assign_clusters(
     check_metric(metric)
     if max_distance is not None and not max_distance >= 0.0:
         raise ValueError(f"max_distance must be at least 0, got {max_distance}")
-    a = as_points(x, min_rows=1)
+    a = as_rows(x, min_rows=1)
     c = as_points(centroids, min_rows=1)
     if a.shape[1] != c.shape[1]:
         raise ValueError(f"x has {a.shape[1]} columns, the centroids have {c.shape[1]}")
     if metric == "cosine":
-        a, c = unit_rows(a), unit_rows(c)
+        a, c = unit_rows(as_points(a, min_rows=1)), unit_rows(c)
     found, squared = _accel.kmeans_assign(a, c, resolve_threads(threads))
     nearest = np.asarray(found, dtype=np.int64)
     distances = np.sqrt(np.asarray(squared, dtype=np.float64))
@@ -263,11 +266,11 @@ class KMeansFit:
             ValueError: If ``x`` does not have the columns of the fit, or the fit used the cosine
                 distance and a row is all zeros.
         """
-        a = np.ascontiguousarray(x, dtype=np.float64)
+        a = contiguous(x)
         if a.ndim != MATRIX or a.shape[1] != self.centroids.shape[1]:
             raise ValueError(f"x must have {self.centroids.shape[1]} columns")
         if self.metric == "cosine":
-            a = unit_rows(a)
+            a = unit_rows(np.ascontiguousarray(a, dtype=np.float64))
         centres = np.ascontiguousarray(self.centroids, dtype=np.float64)
         labels, dist = _accel.kmeans_assign(a, centres, resolve_threads(threads))
         squared = np.asarray(dist, dtype=np.float64)
@@ -276,9 +279,9 @@ class KMeansFit:
         return np.asarray(labels, dtype=np.int64), squared
 
 
-def _mean_variance(a: npt.NDArray[np.float64]) -> float:
+def _mean_variance(a: Rows) -> float:
     """Return the mean over the columns of their variance, reading the data a block at a time."""
-    mean = a.mean(axis=0)
+    mean = a.mean(axis=0, dtype=np.float64)
     total = 0.0
     for start in range(0, a.shape[0], _BLOCK):
         gap = a[start : start + _BLOCK] - mean
@@ -287,7 +290,7 @@ def _mean_variance(a: npt.NDArray[np.float64]) -> float:
 
 
 def _dispersion(
-    a: npt.NDArray[np.float64],
+    a: Rows,
     centroids: npt.NDArray[np.float64],
     labels: npt.NDArray[np.int64],
     metric: Metric,
@@ -350,9 +353,7 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
             or ``metric`` is ``"cosine"`` and a row is all zeros.
     """
     check_metric(metric)
-    a = as_points(x)
-    if metric == "cosine":
-        a = unit_rows(a)
+    a = as_rows(x) if metric == "euclidean" else unit_rows(as_points(x))
     n = a.shape[0]
     if not 1 <= k <= n:
         raise ValueError(f"k must be between 1 and n = {n}, got {k}")

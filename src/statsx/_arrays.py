@@ -148,11 +148,42 @@ def resolve_threads(threads: int | None) -> int:
     return threads
 
 
+Rows = npt.NDArray[np.float32] | npt.NDArray[np.float64]
+"""Points in the type the kernels read where they are."""
+
+_CHECK_BLOCK = 4096
+"""Rows checked for finite values at a time, so the check needs little memory."""
+
+
+def _check_points(a: npt.NDArray[np.floating], min_rows: int) -> None:
+    """Raise ``ValueError`` unless ``a`` is finite, (n, d), with n >= ``min_rows`` and d >= 1."""
+    if a.ndim != MATRIX or a.shape[0] < min_rows or a.shape[1] < 1:
+        raise ValueError(f"x must have shape (n, d) with at least {min_rows} rows and 1 column")
+    for start in range(0, a.shape[0], _CHECK_BLOCK):
+        if not np.all(np.isfinite(a[start : start + _CHECK_BLOCK])):
+            raise ValueError("x must be finite")
+
+
 def as_points(x: npt.ArrayLike, *, min_rows: int = MATRIX) -> npt.NDArray[np.float64]:
     """Return ``x`` as a C-contiguous float array of shape (n, d), n >= ``min_rows``, finite."""
     a = np.ascontiguousarray(x, dtype=np.float64)
-    if a.ndim != MATRIX or a.shape[0] < min_rows or a.shape[1] < 1:
-        raise ValueError(f"x must have shape (n, d) with at least {min_rows} rows and 1 column")
-    if not np.all(np.isfinite(a)):
-        raise ValueError("x must be finite")
+    _check_points(a, min_rows)
+    return a
+
+
+def contiguous(x: npt.ArrayLike) -> Rows:
+    """Return ``x`` as a C-contiguous array: float32 when it is float32, else float64.
+
+    A C-contiguous array of either type is returned as it is, not copied.
+    """
+    given = np.asarray(x)
+    if given.dtype == np.float32:
+        return np.ascontiguousarray(given, dtype=np.float32)
+    return np.ascontiguousarray(given, dtype=np.float64)
+
+
+def as_rows(x: npt.ArrayLike, *, min_rows: int = MATRIX) -> Rows:
+    """``as_points`` that keeps float32 data as float32."""
+    a = contiguous(x)
+    _check_points(a, min_rows)
     return a

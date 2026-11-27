@@ -15,14 +15,14 @@
 //! would move the last bits of a centroid, and with them a label.
 
 use numpy::ndarray::{Array1, Array2};
-use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray2, PyUntypedArrayMethods};
+use numpy::{Element as ArrayElement, IntoPyArray, PyArray1, PyArray2, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
 use crate::rng::Rng;
 use crate::screen::{exact, screened, Element, Moved};
-use crate::simd::dist2;
+use crate::simd::{dist2, Value};
 
 /// Rows per block. Fixed, so that results do not depend on the thread count.
 const BLOCK: usize = 2048;
@@ -36,11 +36,11 @@ const SINGLE_COLUMNS: usize = 256;
 pub(crate) type Fit = (Vec<i64>, Vec<f64>, f64, usize, bool);
 
 /// `nearest` on each block of rows, the results in block order.
-fn in_blocks(
-    x: &[f64],
+fn in_blocks<V: Value>(
+    x: &[V],
     n: usize,
     dim: usize,
-    nearest: impl Fn(&[f64]) -> Vec<(usize, f64)> + Sync,
+    nearest: impl Fn(&[V]) -> Vec<(usize, f64)> + Sync,
 ) -> Vec<Vec<(usize, f64)>> {
     (0..n.div_ceil(BLOCK))
         .into_par_iter()
@@ -52,8 +52,8 @@ fn in_blocks(
         .collect()
 }
 
-fn assign_screened<E: Element + Sync>(
-    x: &[f64],
+fn assign_screened<V: Value, E: Element + Sync>(
+    x: &[V],
     n: usize,
     dim: usize,
     centroids: &[f64],
@@ -73,13 +73,13 @@ fn assign_screened<E: Element + Sync>(
 
 /// The nearest centroid of each row by `dist2`, ties to the lower index, and that distance. Which
 /// way the centroids are ruled out depends on the shape; the result does not (D-81).
-fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (Vec<i64>, Vec<f64>) {
+fn assign_all<V: Value>(x: &[V], n: usize, dim: usize, centroids: &[f64], k: usize) -> (Vec<i64>, Vec<f64>) {
     let blocks = if k <= EXACT_CENTRES {
         in_blocks(x, n, dim, |block| exact(block, centroids, dim))
     } else if dim >= SINGLE_COLUMNS {
-        assign_screened::<f32>(x, n, dim, centroids, k)
+        assign_screened::<V, f32>(x, n, dim, centroids, k)
     } else {
-        assign_screened::<f64>(x, n, dim, centroids, k)
+        assign_screened::<V, f64>(x, n, dim, centroids, k)
     };
     let mut labels = Vec::with_capacity(n);
     let mut dist = Vec::with_capacity(n);
@@ -92,12 +92,19 @@ fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (
     (labels, dist)
 }
 
+/// A row as a centre, in float64.
+fn widen_into<V: Value>(centre: &mut [f64], row: &[V]) {
+    for (c, v) in centre.iter_mut().zip(row) {
+        *c = v.wide();
+    }
+}
+
 /// k-means++: the first centre uniformly, each next one with probability proportional to the
 /// squared distance to the nearest centre chosen so far.
-fn seed_centres(x: &[f64], n: usize, dim: usize, k: usize, rng: &mut Rng) -> Vec<f64> {
+fn seed_centres<V: Value>(x: &[V], n: usize, dim: usize, k: usize, rng: &mut Rng) -> Vec<f64> {
     let mut centres = vec![0.0; k * dim];
     let first = rng.below(n as u64) as usize;
-    centres[..dim].copy_from_slice(&x[first * dim..first * dim + dim]);
+    widen_into(&mut centres[..dim], &x[first * dim..first * dim + dim]);
     let mut closest: Vec<f64> = (0..n)
         .into_par_iter()
         .map(|i| dist2(&x[i * dim..i * dim + dim], &centres[..dim]))
@@ -122,7 +129,7 @@ fn seed_centres(x: &[f64], n: usize, dim: usize, k: usize, rng: &mut Rng) -> Vec
             // Every point sits on a centre already: any distinct draw is as good as another.
             rng.below(n as u64) as usize
         };
-        centres[c * dim..c * dim + dim].copy_from_slice(&x[chosen * dim..chosen * dim + dim]);
+        widen_into(&mut centres[c * dim..c * dim + dim], &x[chosen * dim..chosen * dim + dim]);
         let fresh = centres[c * dim..c * dim + dim].to_vec();
         closest
             .par_iter_mut()
@@ -133,7 +140,7 @@ fn seed_centres(x: &[f64], n: usize, dim: usize, k: usize, rng: &mut Rng) -> Vec
 }
 
 /// Cluster means, summed block by block and combined in block order.
-fn means(x: &[f64], n: usize, dim: usize, labels: &[i64], k: usize) -> (Vec<f64>, Vec<usize>) {
+fn means<V: Value>(x: &[V], n: usize, dim: usize, labels: &[i64], k: usize) -> (Vec<f64>, Vec<usize>) {
     let parts: Vec<(Vec<f64>, Vec<usize>)> = (0..n.div_ceil(BLOCK))
         .into_par_iter()
         .map(|b| {
@@ -146,7 +153,7 @@ fn means(x: &[f64], n: usize, dim: usize, labels: &[i64], k: usize) -> (Vec<f64>
                 counts[c] += 1;
                 let row = &x[i * dim..(i + 1) * dim];
                 for (s, v) in sums[c * dim..(c + 1) * dim].iter_mut().zip(row) {
-                    *s += v;
+                    *s += v.wide();
                 }
             }
             (sums, counts)
@@ -184,8 +191,8 @@ fn to_unit(centre: &mut [f64], fallback: &[f64]) {
 /// sum of cosines. For unit vectors `|x - c|^2 = 2 - 2 x.c`, so the nearest centre is the one
 /// with the largest cosine and the assignment step needs no change. Decision D-71.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn lloyd(
-    x: &[f64],
+pub(crate) fn lloyd<V: Value>(
+    x: &[V],
     n: usize,
     dim: usize,
     k: usize,
@@ -231,7 +238,7 @@ pub(crate) fn lloyd(
             order.sort_by(|&a, &b| dist[b].total_cmp(&dist[a]).then(a.cmp(&b)));
             for (slot, &c) in empty.iter().enumerate() {
                 let i = order[slot.min(n - 1)];
-                centres[c * dim..c * dim + dim].copy_from_slice(&x[i * dim..i * dim + dim]);
+                widen_into(&mut centres[c * dim..c * dim + dim], &x[i * dim..i * dim + dim]);
             }
             continue;
         }
@@ -265,24 +272,26 @@ pub(crate) fn pool(threads: usize) -> PyResult<rayon::ThreadPool> {
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// The data of a caller, in the type it is stored in.
+#[derive(FromPyObject)]
+pub enum Points<'py> {
+    Double(PyReadonlyArray2<'py, f64>),
+    Single(PyReadonlyArray2<'py, f32>),
+}
+
 /// The values of a row-major (C-contiguous) array, without a copy.
-fn rows<'a>(array: &'a PyReadonlyArray2<'_, f64>) -> PyResult<&'a [f64]> {
+fn rows<'a, V: ArrayElement>(array: &'a PyReadonlyArray2<'_, V>) -> PyResult<&'a [V]> {
     if !array.is_c_contiguous() {
         return Err(PyValueError::new_err("the array must be C-contiguous"));
     }
     array.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// Fit k-means `n_init` times and return the labels, centres, inertia, iterations and whether
-/// Lloyd's iteration stopped before `max_iter`, for the run with the lowest inertia.
-///
-/// `tol` is an absolute bound on the sum of squared centre moves; the caller scales it by the
-/// variance of the data.
-#[pyfunction]
+/// `kmeans_fit` on rows of one type.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub fn kmeans_fit<'py>(
+fn fit_rows<'py, V: Value + ArrayElement>(
     py: Python<'py>,
-    data: PyReadonlyArray2<'py, f64>,
+    data: &PyReadonlyArray2<'py, V>,
     k: usize,
     max_iter: usize,
     tol: f64,
@@ -297,7 +306,7 @@ pub fn kmeans_fit<'py>(
         return Err(PyValueError::new_err("need 1 <= k <= n, dim >= 1, n_init >= 1, max_iter >= 1"));
     }
     // Read the caller's array where it is: a copy of a large data set doubles the memory.
-    let x = rows(&data)?;
+    let x = rows(data)?;
     let pool = pool(threads)?;
     let best: Fit = py.allow_threads(|| {
         pool.install(|| {
@@ -324,12 +333,40 @@ pub fn kmeans_fit<'py>(
     ))
 }
 
-/// The nearest centroid of each row, and the squared distance to it.
+/// Fit k-means `n_init` times and return the labels, centres, inertia, iterations and whether
+/// Lloyd's iteration stopped before `max_iter`, for the run with the lowest inertia.
+///
+/// `tol` is an absolute bound on the sum of squared centre moves; the caller scales it by the
+/// variance of the data.
 #[pyfunction]
-pub fn kmeans_assign<'py>(
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn kmeans_fit<'py>(
     py: Python<'py>,
-    data: PyReadonlyArray2<'py, f64>,
-    centroids: PyReadonlyArray2<'py, f64>,
+    data: Points<'py>,
+    k: usize,
+    max_iter: usize,
+    tol: f64,
+    seed: u64,
+    n_init: usize,
+    spherical: bool,
+    threads: usize,
+) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray2<f64>>, f64, usize, bool)> {
+    match data {
+        Points::Double(a) => {
+            fit_rows(py, &a, k, max_iter, tol, seed, n_init, spherical, threads)
+        }
+        Points::Single(a) => {
+            fit_rows(py, &a, k, max_iter, tol, seed, n_init, spherical, threads)
+        }
+    }
+}
+
+/// `kmeans_assign` on rows of one type.
+#[allow(clippy::type_complexity)]
+fn assign_rows<'py, V: Value + ArrayElement>(
+    py: Python<'py>,
+    data: &PyReadonlyArray2<'py, V>,
+    centroids: &PyReadonlyArray2<'py, f64>,
     threads: usize,
 ) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray1<f64>>)> {
     let (n, dim) = (data.shape()[0], data.shape()[1]);
@@ -337,14 +374,29 @@ pub fn kmeans_assign<'py>(
     if k == 0 || cdim != dim {
         return Err(PyValueError::new_err("centroids need at least one row and the data's columns"));
     }
-    let x = rows(&data)?;
-    let c = rows(&centroids)?;
+    let x = rows(data)?;
+    let c = rows(centroids)?;
     let pool = pool(threads)?;
     let (labels, dist) = py.allow_threads(|| pool.install(|| assign_all(x, n, dim, c, k)));
     Ok((
         Array1::from_vec(labels).into_pyarray_bound(py),
         Array1::from_vec(dist).into_pyarray_bound(py),
     ))
+}
+
+/// The nearest centroid of each row, and the squared distance to it.
+#[pyfunction]
+#[allow(clippy::type_complexity)]
+pub fn kmeans_assign<'py>(
+    py: Python<'py>,
+    data: Points<'py>,
+    centroids: PyReadonlyArray2<'py, f64>,
+    threads: usize,
+) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray1<f64>>)> {
+    match data {
+        Points::Double(a) => assign_rows(py, &a, &centroids, threads),
+        Points::Single(a) => assign_rows(py, &a, &centroids, threads),
+    }
 }
 
 #[cfg(test)]

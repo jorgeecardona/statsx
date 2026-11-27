@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.84] - 2026-11-27
+
+### Changed
+
+- `kmeans`, `assign_clusters`, `predict` and `assign` read float32 data without a float64 copy,
+  with the same results: half the memory for embeddings stored in float32. The cosine distance
+  still copies.
+
 ## [0.1.83] - 2026-11-27
 
 ### Changed

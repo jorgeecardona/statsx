@@ -20,7 +20,7 @@
 //! One bound serves a block of rows, from its longest row and the longest centre. When a product
 //! could overflow, every distance of the block is computed.
 
-use crate::simd::dist2;
+use crate::simd::{dist2, Value};
 
 /// Unit roundoff of float64.
 const U64: f64 = f64::EPSILON / 2.0;
@@ -111,7 +111,7 @@ pub(crate) struct Moved<E> {
 
 impl<E: Element> Moved<E> {
     /// The rows of `x` (row-major, `shift.len()` columns) minus `shift`.
-    pub(crate) fn new(x: &[f64], shift: &[f64]) -> Self {
+    pub(crate) fn new<V: Value>(x: &[V], shift: &[f64]) -> Self {
         let dim = shift.len();
         let mut values = vec![E::rounded(0.0); x.len()];
         let norm_sq = values
@@ -120,7 +120,7 @@ impl<E: Element> Moved<E> {
             .map(|(out, row)| {
                 let mut sum = 0.0;
                 for ((o, v), s) in out.iter_mut().zip(row).zip(shift) {
-                    *o = E::rounded(v - s);
+                    *o = E::rounded(v.wide() - s);
                     sum += o.widened() * o.widened();
                 }
                 sum
@@ -181,7 +181,7 @@ fn smallest<E: Element>(values: &mut [f64], norm_sq: &[f64], product: &[E]) -> (
 
 /// The nearest of the centres `candidates` to `row` by `dist2`, the first of those at the same
 /// distance.
-fn choose(row: &[f64], c: &[f64], candidates: impl Iterator<Item = usize>) -> (usize, f64) {
+fn choose<V: Value>(row: &[V], c: &[f64], candidates: impl Iterator<Item = usize>) -> (usize, f64) {
     let dim = row.len();
     let mut best: Option<(usize, f64)> = None;
     for j in candidates {
@@ -195,7 +195,7 @@ fn choose(row: &[f64], c: &[f64], candidates: impl Iterator<Item = usize>) -> (u
 
 /// For each row of `x`, the index of the nearest row of `c` and the squared distance to it, from
 /// every distance.
-pub(crate) fn exact(x: &[f64], c: &[f64], dim: usize) -> Vec<(usize, f64)> {
+pub(crate) fn exact<V: Value>(x: &[V], c: &[f64], dim: usize) -> Vec<(usize, f64)> {
     let k = c.len() / dim;
     x.chunks_exact(dim).map(|row| choose(row, c, 0..k)).collect()
 }
@@ -205,8 +205,8 @@ pub(crate) fn exact(x: &[f64], c: &[f64], dim: usize) -> Vec<(usize, f64)> {
 ///
 /// `x` and `c` are the values as given, row-major with `shift.len()` columns; `centres` is `c`
 /// moved by the same `shift`.
-pub(crate) fn screened<E: Element>(
-    x: &[f64],
+pub(crate) fn screened<V: Value, E: Element>(
+    x: &[V],
     c: &[f64],
     centres: &Moved<E>,
     shift: &[f64],
@@ -306,6 +306,24 @@ mod tests {
     fn found<E: Element>(x: &[f64], c: &[f64], dim: usize) -> Vec<(usize, f64)> {
         let shift = mean(c, dim);
         screened(x, c, &Moved::<E>::new(c, &shift), &shift)
+    }
+
+    #[test]
+    fn float32_rows_get_the_answer_of_their_float64_copy() {
+        for kind in ["plain", "far", "ties"] {
+            for dim in [1usize, 9, 300] {
+                let (x, c) = case(kind, dim, 5);
+                let single: Vec<f32> = x.iter().map(|&v| v as f32).collect();
+                let copy: Vec<f64> = single.iter().map(|&v| f64::from(v)).collect();
+                let shift = mean(&c, dim);
+                let truth = exact(&copy, &c, dim);
+                assert_eq!(exact(&single, &c, dim), truth);
+                let narrow = Moved::<f32>::new(&c, &shift);
+                assert_eq!(screened(&single, &c, &narrow, &shift), truth, "{kind} {dim}");
+                let double = Moved::<f64>::new(&c, &shift);
+                assert_eq!(screened(&single, &c, &double, &shift), truth, "{kind} {dim}");
+            }
+        }
     }
 
     #[test]

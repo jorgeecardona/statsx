@@ -2200,3 +2200,21 @@ decisions:
     and 300 centroids; at 256 columns 0.51 to 1.12; at 16 and 2 columns 0.92 to 1.62, slowest at 10 and
     40 centroids. A whole fit gains less: seeding and the means read the data as before. A few labels of
     rows at a near tie can differ from earlier releases.'
+
+- id: D-82
+  text: 'A C-contiguous float32 array is read where it is by kmeans (Euclidean), assign_clusters and
+    KMeansFit.predict, assign and distances. Each value is widened to float64, which is exact, inside
+    the same fixed lanes of dist2 (D-76), so the results have the bytes of the same call on the float64
+    copy of the array. Results are float64. The mean variance behind tol and the dispersion are summed
+    in float64.'
+  needs:
+  - MG-5
+  alternatives:
+  - 'float32 sums, centres and distances: not used; the results would differ from those of float64
+    input.'
+  - 'Unit rows computed on the fly for the cosine distance: not written; the cosine distance copies the
+    rows to float64.'
+  - 'The same for hdbscan, dbscan, umap and pca: not written; MG-5 names the calls on wide data, and
+    their kernels read float64.'
+  consequences: 'A test holds the peak memory of a fit and two assignments on 200,000 x 256 float32
+    rows below half the size of the data above the data itself.'

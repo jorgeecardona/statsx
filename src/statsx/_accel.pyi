@@ -49,7 +49,7 @@ def fit_structural(
     tuple[float, float, float, float, float, float, float],
 ]: ...
 def kmeans_fit(
-    data: npt.NDArray[np.float64],
+    data: npt.NDArray[np.float32] | npt.NDArray[np.float64],
     k: int,
     max_iter: int,
     tol: float,
@@ -59,7 +59,9 @@ def kmeans_fit(
     threads: int,
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64], float, int, bool]: ...
 def kmeans_assign(
-    data: npt.NDArray[np.float64], centroids: npt.NDArray[np.float64], threads: int
+    data: npt.NDArray[np.float32] | npt.NDArray[np.float64],
+    centroids: npt.NDArray[np.float64],
+    threads: int,
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64]]: ...
 def dbscan_fit(
     data: npt.NDArray[np.float64], eps: float, min_samples: int, threads: int

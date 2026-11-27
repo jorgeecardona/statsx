@@ -46,6 +46,15 @@ print((np.round(fit.centroids, 1) + 0.0).tolist())
 `fit.predict(new_points)` gives the nearest centroid of new rows, and `fit.distances(new_points)` also
 gives the squared distance to it. A large distance says the point is far from every cluster.
 
+### float32 data
+
+`kmeans`, `assign_clusters`, `predict`, `assign` and `distances` read a C-contiguous float32 array
+where it is, without a float64 copy, and return the same results as for that copy. Embeddings stored
+in float32 then need half the memory. The results are float64.
+
+`metric="cosine"` still makes a float64 copy of the rows, scaled to length 1. So do the other
+functions of this page.
+
 ## Size and spread of each cluster
 
 `fit.sizes` counts the rows of each cluster. `fit.dispersion` is the mean distance of those rows to
@@ -585,6 +594,8 @@ proves that the clusters are real: they say how well separated the partition is.
 - The assignment equals the smallest distance over all centroids, label for label, on data with many
   ties, far from the origin, beyond the range of float32 and on 1,100 columns, and its bound never
   rules out that centroid.
+- float32 input gives the same bytes as its float64 copy, and a fit and an assignment on 200,000
+  rows of 256 columns raise the peak memory by less than half the size of the data.
 - `find_knees` reproduces Figure 2 of the Kneedle paper (the knee at `x = 0.22`) and equals the
   steps of the paper, written out in the test, on 300 random curves and 3 sensitivities.
 - `elbow_k` found 3, 5 and 7 planted clusters for each of 3 seeds, and picked a `k` for uniform
