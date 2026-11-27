@@ -72,6 +72,7 @@ fn _accel(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(umap::umap_cross_entropy, m)?)?;
     m.add_function(wrap_pyfunction!(kmeans::kmeans_fit, m)?)?;
     m.add_function(wrap_pyfunction!(kmeans::kmeans_assign, m)?)?;
+    m.add_function(wrap_pyfunction!(kmeans::kmeans_minibatch, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_beta, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_gamma, m)?)?;
     m.add_function(wrap_pyfunction!(sample::sample_normal, m)?)?;

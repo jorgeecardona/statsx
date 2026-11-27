@@ -23,6 +23,7 @@ Both libraries are written for the same use: UMAP and clustering with no compile
 | `kmeans(x, k)` | `statsx.clustering.kmeans(x, k)` |
 | `metric="cosine"` (clustering) | the same argument of `kmeans`, `dbscan`, `hdbscan`, `elbow_k` |
 | `cluster(x, method="kmeans", n_clusters=k)` | `kmeans(x, k).labels` |
+| `batch_size=b` (mini-batch) | `minibatch_kmeans(x, k, batch_size=b)` |
 | `cluster(x, method="hdbscan")` | `hdbscan(x).labels` |
 | `cluster(x)` with no number of clusters | `kmeans(x, elbow_k(x).k).labels` |
 | `assign_clusters(new, centroids)` | `assign_clusters(new, centroids).labels` |
@@ -44,6 +45,8 @@ again after the switch.
 
 - UMAP: other random draws and exact neighbours, so another map of the same data.
 - k-means: full Lloyd iterations in float64 with 10 starts. `fastumap` uses one start by default.
+  `fastumap` switches to mini-batches by itself on large inputs; `statsx` never does. Call
+  `minibatch_kmeans` for that.
 - HDBSCAN and DBSCAN: exact distances over all pairs. `fastumap` uses a graph of 30 neighbours.
 - Cosine k-means is spherical k-means: the centres have length 1. In `fastumap` a centre is the
   mean of the unit rows, which is shorter, so some labels differ.
@@ -106,7 +109,7 @@ In this order.
 
 | Need | fastumap | Status in statsx |
 |---|---|---|
-| MG-5 | `batch_size` (mini-batch k-means), float32 input | measured below; not added |
+| MG-5 | speed on wide data | measured below; being improved |
 | MG-9 | `knn="approx"` or `"auto"` | exact search, or bring a table with `neighbors=` |
 
 ## Containers

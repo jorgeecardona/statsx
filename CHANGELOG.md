@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.85] - 2026-11-27
+
+### Added
+
+- `minibatch_kmeans(x, k)` clusters many rows from random batches (Sculley 2010). It is much
+  faster than `kmeans` on large data and ends at a slightly higher inertia; the fit says
+  `method="minibatch"`.
+
 ## [0.1.84] - 2026-11-27
 
 ### Changed

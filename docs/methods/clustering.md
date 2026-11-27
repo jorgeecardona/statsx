@@ -55,6 +55,42 @@ in float32 then need half the memory. The results are float64.
 `metric="cosine"` still makes a float64 copy of the rows, scaled to length 1. So do the other
 functions of this page.
 
+## Many rows: mini-batch k-means
+
+Use `minibatch_kmeans(x, k)` when `kmeans` is too slow for your rows. It is an approximation:
+compare the two on a sample first. It is Algorithm 1 of Sculley (2010).
+
+```python
+from statsx.clustering import minibatch_kmeans
+
+many = np.vstack([c + 0.7 * rng.standard_normal((20_000, 2)) for c in centres])
+full = kmeans(many, 3, n_init=1)
+part = minibatch_kmeans(many, 3, batch_size=1000)
+print(part.method, part.converged, part.inertia < 1.01 * full.inertia)
+```
+
+```text
+minibatch False True
+```
+
+What it does:
+
+1. Starts the centres by k-means++ on a first random sample of `max(batch_size, 3 k)` rows. The
+   paper starts from random rows.
+2. `n_batches` times: draws `batch_size` rows with replacement, finds the nearest centre of each,
+   then moves that centre towards the row by 1 over the number of rows it has had.
+3. Gives every row its nearest centre.
+
+The result is a `KMeansFit` with `method="minibatch"`. Its centres are not the means of their rows,
+and nothing tests that it converged. `predict`, `assign` and `dispersion` work as for `kmeans`.
+There is no cosine distance here.
+
+The defaults, 10,000 rows and 30 batches, are choices of `statsx`. On 100,000 rows of 1,024
+columns in 8 groups, with `k = 40` on 4 threads, the defaults took 5 s and ended with an inertia
+0.05% above `kmeans` with `n_init=1`, which took 52 s (on a busier machine). 100 batches of 1,000
+rows took 2 s and ended 0.18% above. On 6 data sets of 64 columns in 40 groups, the defaults ended
+on average 1.3% above the best of three `kmeans` runs, and 5.5% above in the worst of 18 runs.
+
 ## Size and spread of each cluster
 
 `fit.sizes` counts the rows of each cluster. `fit.dispersion` is the mean distance of those rows to
@@ -594,6 +630,9 @@ proves that the clusters are real: they say how well separated the partition is.
 - The assignment equals the smallest distance over all centroids, label for label, on data with many
   ties, far from the origin, beyond the range of float32 and on 1,100 columns, and its bound never
   rules out that centroid.
+- The mini-batch kernel gives the bytes of Algorithm 1 written out in a test, with the same draws.
+  `minibatch_kmeans` gives the same bytes for 1 and 3 threads and for float32, each row gets its
+  nearest centre, and on 8 separate groups the inertia is within 2% of `kmeans`.
 - float32 input gives the same bytes as its float64 copy, and a fit and an assignment on 200,000
   rows of 256 columns raise the peak memory by less than half the size of the data.
 - `find_knees` reproduces Figure 2 of the Kneedle paper (the knee at `x = 0.22`) and equals the
@@ -626,6 +665,8 @@ proves that the clusters are real: they say how well separated the partition is.
 
 ## References
 
+- Sculley, D. (2010). Web-scale k-means clustering. *Proceedings of the 19th International
+  Conference on World Wide Web*, pp. 1177-1178. <https://doi.org/10.1145/1772690.1772862>
 - Higham, N. J. (2002). *Accuracy and Stability of Numerical Algorithms*, 2nd ed. SIAM.
   <https://doi.org/10.1137/1.9780898718027>. Section 3.1 gives the error bound of an inner product.
 - Dhillon, I. S., and Modha, D. S. (2001). Concept decompositions for large sparse text data using

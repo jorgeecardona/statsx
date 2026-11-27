@@ -112,6 +112,15 @@ from statsx._arrays import (
 _BLOCK = 512
 """Rows per block of the silhouette distance matrix."""
 
+KMeansMethod = Literal["lloyd", "minibatch"]
+"""How a ``KMeansFit`` was found."""
+
+_BATCH_ROWS = 10_000
+"""Default rows per batch of ``minibatch_kmeans``."""
+
+_BATCHES = 30
+"""Default number of batches of ``minibatch_kmeans``."""
+
 _MIN_CURVE = 3
 """Points a curve needs to have a bend: a start, a middle and an end."""
 
@@ -197,7 +206,8 @@ class KMeansFit:
     """A k-means fit.
 
     Args:
-        centroids: The mean of each cluster, shape (k, d).
+        centroids: The mean of each cluster, shape (k, d). For ``"minibatch"`` the centres of
+            the last batch, which are not the means of the rows labelled with them.
         labels: The cluster of each row, shape (n,).
         inertia: The within-cluster sum of squared distances to the centroid (the objective).
         n_iter: Lloyd iterations of the kept run.
@@ -209,6 +219,9 @@ class KMeansFit:
             value than a tight one of the same size. ``nan`` for a cluster with no rows.
         metric: ``"euclidean"``, or ``"cosine"``: then each centroid has length 1, the labels
             are by the largest cosine, and ``inertia`` is the sum of ``1 - cos``.
+        method: ``"lloyd"`` from ``kmeans``, or ``"minibatch"`` from ``minibatch_kmeans``:
+            then ``n_iter`` counts batches and ``converged`` is False.
+        batch_size: Rows per batch of ``"minibatch"``, else None.
     """
 
     centroids: npt.NDArray[np.float64]
@@ -219,6 +232,8 @@ class KMeansFit:
     n_init: int
     dispersion: npt.NDArray[np.float64]
     metric: Metric = "euclidean"
+    method: KMeansMethod = "lloyd"
+    batch_size: int | None = None
 
     @property
     def k(self) -> int:
@@ -376,6 +391,69 @@ def kmeans(  # noqa: PLR0913 (settings are keyword-only)
         n_init,
         _dispersion(a, centres, found, metric),
         metric,
+    )
+
+
+def minibatch_kmeans(  # noqa: PLR0913 (settings are keyword-only)
+    x: npt.ArrayLike,
+    k: int,
+    *,
+    batch_size: int = _BATCH_ROWS,
+    n_batches: int = _BATCHES,
+    seed: int = 0,
+    threads: int | None = None,
+) -> KMeansFit:
+    """Return an approximate k-means fit that reads a random batch of rows at a time.
+
+    This is Algorithm 1 of Sculley (2010). The centres start by k-means++ on a first sample of
+    ``max(batch_size, 3 k)`` rows (the paper takes random rows). Then ``n_batches`` times: draw
+    ``batch_size`` rows with replacement, find the nearest centre of each with the centres held,
+    and move each centre towards its rows one at a time, by a step of 1 over the number of rows
+    it has had. Last, every row gets its nearest centre. Only that last step grows with the
+    number of rows.
+
+    The result is not a fit that ``kmeans`` would stop at: no step makes each centre the mean of
+    its rows, and nothing tests convergence. Its inertia is usually a little higher. Compare
+    both on a sample before you rely on it. Use ``kmeans`` when it is fast enough.
+
+    Args:
+        x: The points, shape (n, d), finite.
+        k: Number of clusters, from 1 to n.
+        batch_size: Rows drawn per batch, at least 1. The default is a choice of statsx: the
+            paper used 1,000.
+        n_batches: Number of batches, at least 1. The default is a choice of statsx.
+        seed: Seed of the seeding and the batches.
+        threads: Worker threads, as in ``kmeans``. The result does not depend on it.
+
+    Raises:
+        ValueError: If ``x`` is not a finite (n, d) array with at least 2 rows, ``k`` is not in
+            [1, n], or ``batch_size`` or ``n_batches`` is below 1.
+
+    References:
+        Sculley, D. (2010). Web-scale k-means clustering. *Proceedings of the 19th International
+        Conference on World Wide Web*, pp. 1177-1178. https://doi.org/10.1145/1772690.1772862.
+    """
+    a = as_rows(x)
+    n = a.shape[0]
+    if not 1 <= k <= n:
+        raise ValueError(f"k must be between 1 and n = {n}, got {k}")
+    if batch_size < 1 or n_batches < 1:
+        raise ValueError("batch_size and n_batches must be at least 1")
+    labels, centroids, inertia = _accel.kmeans_minibatch(
+        a, k, batch_size, n_batches, seed, resolve_threads(threads)
+    )
+    centres = np.asarray(centroids, dtype=np.float64)
+    found = np.asarray(labels, dtype=np.int64)
+    return KMeansFit(
+        centres,
+        found,
+        float(inertia),
+        n_iter=n_batches,
+        converged=False,
+        n_init=1,
+        dispersion=_dispersion(a, centres, found, "euclidean"),
+        method="minibatch",
+        batch_size=batch_size,
     )
 
 

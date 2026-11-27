@@ -58,6 +58,14 @@ def kmeans_fit(
     spherical: bool,
     threads: int,
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64], float, int, bool]: ...
+def kmeans_minibatch(
+    data: npt.NDArray[np.float32] | npt.NDArray[np.float64],
+    k: int,
+    batch: int,
+    batches: int,
+    seed: int,
+    threads: int,
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64], float]: ...
 def kmeans_assign(
     data: npt.NDArray[np.float32] | npt.NDArray[np.float64],
     centroids: npt.NDArray[np.float64],

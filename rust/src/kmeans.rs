@@ -185,6 +185,55 @@ fn to_unit(centre: &mut [f64], fallback: &[f64]) {
     }
 }
 
+/// `rows` rows of `x` drawn with replacement, in the order drawn, replacing what `out` held.
+fn draw<V: Value>(out: &mut Vec<V>, x: &[V], n: usize, dim: usize, rows: usize, rng: &mut Rng) {
+    out.clear();
+    out.reserve(rows * dim);
+    for _ in 0..rows {
+        let i = rng.below(n as u64) as usize;
+        out.extend_from_slice(&x[i * dim..(i + 1) * dim]);
+    }
+}
+
+/// Mini-batch k-means: Algorithm 1 of Sculley, D. (2010), "Web-scale k-means clustering",
+/// WWW '10, pp. 1177-1178, DOI 10.1145/1772690.1772862. Each batch is `batch` rows drawn with
+/// replacement. Every row of the batch gets its nearest centre with the centres held; then, row
+/// by row in the order drawn, the count of its centre grows by 1 and the centre moves to
+/// `(1 - eta) c + eta x` with `eta = 1 / count`. The paper starts from random rows; here the
+/// start is k-means++ on a first sample of `max(batch, 3 k)` rows drawn the same way. The labels
+/// and the inertia come from one assignment of all rows to the last centres. Decision D-83.
+pub(crate) fn minibatch<V: Value>(
+    x: &[V],
+    n: usize,
+    dim: usize,
+    k: usize,
+    batch: usize,
+    batches: usize,
+    rng: &mut Rng,
+) -> Fit {
+    let mut drawn: Vec<V> = Vec::new();
+    let sample = batch.max(3 * k);
+    draw(&mut drawn, x, n, dim, sample, rng);
+    let mut centres = seed_centres(&drawn, sample, dim, k, rng);
+    let mut counts = vec![0u64; k];
+    for _ in 0..batches {
+        draw(&mut drawn, x, n, dim, batch, rng);
+        let (nearest, _) = assign_all(&drawn, batch, dim, &centres, k);
+        // One row at a time in draw order: the result must not depend on the threads.
+        for (row, &label) in drawn.chunks_exact(dim).zip(&nearest) {
+            let c = label as usize;
+            counts[c] += 1;
+            let eta = 1.0 / counts[c] as f64;
+            for (m, v) in centres[c * dim..(c + 1) * dim].iter_mut().zip(row) {
+                *m = (1.0 - eta) * *m + eta * v.wide();
+            }
+        }
+    }
+    let (labels, dist) = assign_all(x, n, dim, &centres, k);
+    let inertia = dist.iter().sum();
+    (labels, centres, inertia, batches, false)
+}
+
 /// With `spherical`, the rows of `x` must have length 1 and each centre is scaled to length 1
 /// after it is averaged: spherical k-means (Dhillon & Modha 2001, "Concept decompositions for
 /// large sparse text data using clustering", Machine Learning 42:143-175), which maximises the
@@ -361,6 +410,56 @@ pub fn kmeans_fit<'py>(
     }
 }
 
+/// `kmeans_minibatch` on rows of one type.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn minibatch_rows<'py, V: Value + ArrayElement>(
+    py: Python<'py>,
+    data: &PyReadonlyArray2<'py, V>,
+    k: usize,
+    batch: usize,
+    batches: usize,
+    seed: u64,
+    threads: usize,
+) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray2<f64>>, f64)> {
+    let (n, dim) = (data.shape()[0], data.shape()[1]);
+    if k == 0 || k > n || dim == 0 || batch == 0 || batches == 0 {
+        return Err(PyValueError::new_err("need 1 <= k <= n, dim >= 1, batch >= 1, batches >= 1"));
+    }
+    if batch.max(k.saturating_mul(3)).checked_mul(dim).is_none() {
+        return Err(PyValueError::new_err("the batch is too large"));
+    }
+    let x = rows(data)?;
+    let pool = pool(threads)?;
+    let (labels, centres, inertia, _, _) = py.allow_threads(|| {
+        pool.install(|| minibatch(x, n, dim, k, batch, batches, &mut Rng::new(seed)))
+    });
+    let centres = Array2::from_shape_vec((k, dim), centres)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((
+        Array1::from_vec(labels).into_pyarray_bound(py),
+        centres.into_pyarray_bound(py),
+        inertia,
+    ))
+}
+
+/// Fit mini-batch k-means and return the labels, centres and inertia.
+#[pyfunction]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn kmeans_minibatch<'py>(
+    py: Python<'py>,
+    data: Points<'py>,
+    k: usize,
+    batch: usize,
+    batches: usize,
+    seed: u64,
+    threads: usize,
+) -> PyResult<(Bound<'py, PyArray1<i64>>, Bound<'py, PyArray2<f64>>, f64)> {
+    match data {
+        Points::Double(a) => minibatch_rows(py, &a, k, batch, batches, seed, threads),
+        Points::Single(a) => minibatch_rows(py, &a, k, batch, batches, seed, threads),
+    }
+}
+
 /// `kmeans_assign` on rows of one type.
 #[allow(clippy::type_complexity)]
 fn assign_rows<'py, V: Value + ArrayElement>(
@@ -468,6 +567,43 @@ mod tests {
         let mut zero = [0.0, 0.0];
         to_unit(&mut zero, &[0.0, 1.0]);
         assert_eq!(zero, [0.0, 1.0]);
+    }
+
+    #[test]
+    fn minibatch_equals_algorithm_1_written_plainly() {
+        let (x, n) = blobs(100, 4);
+        let (k, batch, batches) = (3, 17, 9);
+        let found = minibatch(&x, n, 2, k, batch, batches, &mut Rng::new(11));
+        let mut rng = Rng::new(11);
+        let mut sample = Vec::new();
+        for _ in 0..batch.max(3 * k) {
+            let i = rng.below(n as u64) as usize;
+            sample.extend_from_slice(&x[i * 2..i * 2 + 2]);
+        }
+        let mut centres = seed_centres(&sample, sample.len() / 2, 2, k, &mut rng);
+        let mut counts = vec![0.0; k];
+        let nearest = |row: &[f64], c: &[f64]| {
+            (0..k)
+                .min_by(|&a, &b| {
+                    dist2(row, &c[a * 2..a * 2 + 2]).total_cmp(&dist2(row, &c[b * 2..b * 2 + 2]))
+                })
+                .unwrap()
+        };
+        for _ in 0..batches {
+            let rows: Vec<usize> = (0..batch).map(|_| rng.below(n as u64) as usize).collect();
+            let cached: Vec<usize> =
+                rows.iter().map(|&i| nearest(&x[i * 2..i * 2 + 2], &centres)).collect();
+            for (&i, &c) in rows.iter().zip(&cached) {
+                counts[c] += 1.0;
+                let eta = 1.0 / counts[c];
+                for d in 0..2 {
+                    centres[c * 2 + d] = (1.0 - eta) * centres[c * 2 + d] + eta * x[i * 2 + d];
+                }
+            }
+        }
+        assert_eq!(found.1, centres);
+        let labels: Vec<i64> = x.chunks(2).map(|row| nearest(row, &centres) as i64).collect();
+        assert_eq!(found.0, labels);
     }
 
     #[test]
