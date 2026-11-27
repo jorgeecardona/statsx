@@ -139,12 +139,26 @@ needs:
 
   - id: MG-9
     text: >
-      When the caller maps or clusters more points than exact neighbours can handle in their time, they can
-      use approximate neighbours.
+      When the caller maps more points than exact neighbours can handle in their time, they can use
+      approximate neighbours.
     sources:
       - {kind: primary, date: 2026-11-26, who: maintainer, quote: "check their gitlab issues and take them as ours? so we have a plan to migrate"}
       - {kind: secondary, date: 2026-08-25, locator: "https://gitlab.com/cardona-oss/fastumap/-/work_items/17"}
-    proofs: []
+    proofs:
+      - "test:tests/test_neighbors.py::test_the_nearest_neighbours_are_the_ones_of_the_full_distance_matrix"
+      - "test:tests/test_neighbors.py::test_the_table_of_the_exact_search_gives_the_same_fit"
+      - "test:tests/test_neighbors.py::test_a_wider_table_in_any_order_with_the_row_itself_gives_the_same_fit"
+      - "test:tests/test_neighbors.py::test_distances_in_float32_are_accepted_and_the_fit_keeps_exact_ones"
+      - "test:tests/test_neighbors.py::test_distances_that_are_not_those_of_the_data_are_refused"
+      - "test:tests/test_neighbors.py::test_a_table_that_cannot_be_a_table_of_neighbours_is_refused"
+      - "test:tests/test_neighbors.py::test_recall_is_one_for_the_exact_table_and_falls_by_what_is_missing"
+      - "test:tests/test_neighbors.py::test_recall_counts_a_neighbour_at_the_same_distance_as_found"
+      - "test:tests/test_neighbors.py::test_recall_on_a_sample_estimates_the_recall_of_all_rows"
+      - "test:tests/test_neighbors.py::test_a_fit_measures_its_own_neighbours"
+      - "test:tests/test_neighbors.py::test_recall_refuses_settings_out_of_range"
+      - "test:tests/test_neighbors.py::test_preservation_on_a_sample_is_the_mean_over_those_rows"
+      - "test:tests/test_neighbors.py::test_a_sample_leaves_out_the_row_itself_when_it_has_many_copies"
+      - "test:tests/test_neighbors.py::test_a_fit_from_a_given_table_survives_a_save_and_older_files_say_exact"
     must: false
 
   - id: MG-10

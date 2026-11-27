@@ -2139,5 +2139,7 @@ decisions:
     missed when they swap places.'
   consequences: 'Exact search time at 1024 columns and 4 threads on a loaded 16-core laptop: 7 s at
     10,000 rows, 41 s at 25,000, 189 s at 50,000, 776 s at 100,000; 54 s at 100,000 rows of 16
-    columns. A user above that needs a table from elsewhere, or pca first.'
+    columns. A user above that needs a table from elsewhere, or pca first. MG-9 now says maps only:
+    hdbscan and dbscan take no table, so a caller who clusters that many points reduces the columns
+    with pca first.'
 
