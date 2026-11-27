@@ -518,6 +518,30 @@ def test_a_fit_assigns_in_its_own_distance(metric: Metric) -> None:
     assert 0 < far.n_noise <= len(x) // 10 + 1
 
 
+@pytest.mark.parametrize(
+    ("scale", "offset", "columns"),
+    [(1.0, 0.0, 3), (1.0, 1e9, 40), (2.0**-140, 0.0, 40), (2.0**133, 0.0, 40), (1.0, 0.0, 1100)],
+    ids=["small", "far", "below float32", "above float32", "wide"],
+)
+def test_the_screen_of_the_assignment_never_changes_a_label(
+    scale: float, offset: float, columns: int
+) -> None:
+    # whole numbers times a power of two, so every squared distance is exact and many tie
+    rng = np.random.default_rng(columns)
+    centres = rng.integers(-2, 3, size=(25, columns)).astype(np.float64)
+    centres[10] = centres[3]
+    centres[11] = centres[3]
+    centres[11, 0] += 1.0
+    x = rng.integers(-2, 3, size=(5000, columns)).astype(np.float64)
+    x[:25] = centres
+    x, centres = x * scale + offset, centres * scale + offset
+    squared = np.stack([((x - c) ** 2).sum(axis=1) for c in centres], axis=1)
+    found = assign_clusters(x, centres)
+    assert np.array_equal(found.nearest, squared.argmin(axis=1))
+    assert np.array_equal(found.distances, np.sqrt(squared.min(axis=1)))
+    assert found.nearest[10] == 3  # a copy of a centre goes to the first of the two
+
+
 def test_assign_clusters_checks_its_input() -> None:
     x = np.ones((3, 2))
     with pytest.raises(ValueError, match="columns"):

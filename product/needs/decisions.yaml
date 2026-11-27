@@ -2175,3 +2175,28 @@ decisions:
     out rows rose from 0.51 to 0.68, and of the training positions from 0.50 to 0.99, while kept
     neighbours fell from 0.30 to 0.23. With random labels held out rows stayed at 0.36 and the training
     positions reached 0.99.'
+
+- id: D-81
+  text: 'The nearest centroid of a row, in k-means, predict and assign_clusters, is the one with the
+    smallest dist2 (D-76), ties to the lower index. With more than 8 centroids a matrix product rules
+    centroids out first: rows and centroids are moved by the mean centroid, and a centroid stays when
+    its value |c|^2 - 2 x.c is within a margin of the smallest of the row. The margin bounds the error
+    of the product, gamma_d |x| |c| (Higham 2002, section 3.1), the rounding of the move and of the
+    values, and underflow, from the longest row of a block and the longest centroid. When a product
+    could overflow, the whole block computes every distance. The product is float32 from 256 columns
+    and float64 below, so it may use fused multiply-add: it decides nothing. Before, the label came from
+    the float64 product alone and could differ between processors at a near tie.'
+  needs:
+  - MG-5
+  alternatives:
+  - 'Hamerly (2010), Elkan (2003), Yinyang (Ding et al. 2015), which skip rows between iterations: not
+    written; the share of late iterations that change few labels is not measured.'
+  - 'A float32 product for any width: not used; on 64 columns or fewer it was slower than float64.'
+  - 'A bound for each row and centroid: written first and replaced; on 2 and 16 columns it took up to
+    2.4 times the time of the release before.'
+  - 'A matrix product for 8 centroids or fewer: not used; every distance is as fast or faster.'
+  consequences: 'Time of one assignment on one thread against the release before, both kernels timed in
+    turns in one process on a loaded laptop: at 1,024 columns 0.38, 0.91, 0.73 and 0.44 for 3, 10, 40
+    and 300 centroids; at 256 columns 0.51 to 1.12; at 16 and 2 columns 0.92 to 1.62, slowest at 10 and
+    40 centroids. A whole fit gains less: seeding and the means read the data as before. A few labels of
+    rows at a near tie can differ from earlier releases.'

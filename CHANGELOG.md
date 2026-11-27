@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.83] - 2026-11-27
+
+### Changed
+
+- `kmeans`, `predict` and `assign_clusters` give each row the centroid with the smallest distance in
+  float64, so a row that is almost equally far from two centroids gets the same label on any
+  processor. A few such labels can differ from the release before. On 1,024 columns this step takes
+  0.4 to 0.9 of the time it took; on 64 columns or fewer it can take up to 1.6 times as long.
+
 ## [0.1.82] - 2026-11-27
 
 ### Added

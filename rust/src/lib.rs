@@ -22,6 +22,7 @@ mod linalg;
 mod negbin;
 mod psis;
 mod rng;
+mod screen;
 mod simd;
 mod sample;
 mod special;

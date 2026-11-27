@@ -5,8 +5,9 @@
 //! (2007), "k-means++: the advantages of careful seeding", SODA '07, pp. 1027-1035 (D^2
 //! sampling). Decision D-63.
 //!
-//! The assignment step is one matrix product per block of rows, `X_b C^T`, since
-//! `|x - c|^2 = |x|^2 - 2 x.c + |c|^2` and `|x|^2` does not change the nearest centroid.
+//! The assignment step takes the centre with the smallest `dist2`. With more than a few centres,
+//! a matrix product per block of rows rules the others out with an error bound (`screen.rs`,
+//! D-81).
 //!
 //! The result does not depend on the number of threads. Work is split into blocks of a fixed
 //! number of rows, each block is computed alone, and block results are combined in block order.
@@ -20,112 +21,71 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 
 use crate::rng::Rng;
+use crate::screen::{exact, screened, Element, Moved};
 use crate::simd::dist2;
 
 /// Rows per block. Fixed, so that results do not depend on the thread count.
 const BLOCK: usize = 2048;
 
+/// With this many centres or fewer the assignment computes every distance.
+const EXACT_CENTRES: usize = 8;
+
+/// Fewest columns for which the screen uses a float32 product.
+const SINGLE_COLUMNS: usize = 256;
+
 pub(crate) type Fit = (Vec<i64>, Vec<f64>, f64, usize, bool);
 
-/// Nearest centroid of each row of the block `x` (rows x dim), by one matrix product.
-///
-/// `x` and `centroids` must be shifted to near the origin: the expansion
-/// `|x - c|^2 = |x|^2 - 2 x.c + |c|^2` loses the difference between two centroids when the
-/// values are large against their distance.
-fn assign_block(
+/// `nearest` on each block of rows, the results in block order.
+fn in_blocks(
     x: &[f64],
-    rows: usize,
+    n: usize,
     dim: usize,
-    centroids: &[f64],
-    c_sq: &[f64],
-    k: usize,
-    scratch: &mut [f64],
-) -> Vec<usize> {
-    // SAFETY: x is rows x dim and centroids is k x dim, both row-major and contiguous; scratch
-    // holds at least rows * k values.
-    unsafe {
-        matrixmultiply::dgemm(
-            rows,
-            dim,
-            k,
-            1.0,
-            x.as_ptr(),
-            dim as isize,
-            1,
-            centroids.as_ptr(),
-            1,
-            dim as isize,
-            0.0,
-            scratch.as_mut_ptr(),
-            k as isize,
-            1,
-        );
-    }
-    (0..rows)
-        .map(|i| {
-            let g = &scratch[i * k..i * k + k];
-            let mut best = 0usize;
-            let mut best_v = f64::INFINITY;
-            for j in 0..k {
-                let v = c_sq[j] - 2.0 * g[j];
-                if v < best_v {
-                    best_v = v;
-                    best = j;
-                }
-            }
-            best
+    nearest: impl Fn(&[f64]) -> Vec<(usize, f64)> + Sync,
+) -> Vec<Vec<(usize, f64)>> {
+    (0..n.div_ceil(BLOCK))
+        .into_par_iter()
+        .map(|b| {
+            let start = b * BLOCK;
+            let rows = BLOCK.min(n - start);
+            nearest(&x[start * dim..(start + rows) * dim])
         })
         .collect()
 }
 
-/// Each row of `x` minus `shift`.
-fn shifted(x: &[f64], shift: &[f64]) -> Vec<f64> {
-    let mut out = x.to_vec();
-    for row in out.chunks_exact_mut(shift.len()) {
-        for (v, s) in row.iter_mut().zip(shift) {
-            *v -= s;
-        }
-    }
-    out
-}
-
-fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (Vec<i64>, Vec<f64>) {
-    // Both sides are moved by the mean of the centroids before the product. A move changes no
-    // distance, and it keeps the digits that tell two centroids apart when the data are far
-    // from the origin.
+fn assign_screened<E: Element + Sync>(
+    x: &[f64],
+    n: usize,
+    dim: usize,
+    centroids: &[f64],
+    k: usize,
+) -> Vec<Vec<(usize, f64)>> {
+    // The screen moves both sides by the mean of the centroids: it keeps the digits that tell two
+    // centroids apart when the data are far from the origin.
     let mut shift = vec![0.0; dim];
     for c in centroids.chunks(dim) {
         for d in 0..dim {
             shift[d] += c[d] / k as f64;
         }
     }
-    let moved = shifted(centroids, &shift);
-    let c_sq: Vec<f64> = moved.chunks(dim).map(|c| c.iter().map(|v| v * v).sum()).collect();
-    let blocks: Vec<Vec<(i64, f64)>> = (0..n.div_ceil(BLOCK))
-        .into_par_iter()
-        .map(|b| {
-            let start = b * BLOCK;
-            let rows = BLOCK.min(n - start);
-            let raw = &x[start * dim..(start + rows) * dim];
-            let near = shifted(raw, &shift);
-            let mut scratch = vec![0.0; rows * k];
-            assign_block(&near, rows, dim, &moved, &c_sq, k, &mut scratch)
-                .into_iter()
-                .enumerate()
-                .map(|(i, best)| {
-                    // The distance by differences of the values as given: no cancellation in
-                    // the reported inertia.
-                    let row = &raw[i * dim..(i + 1) * dim];
-                    (best as i64, dist2(row, &centroids[best * dim..(best + 1) * dim]))
-                })
-                .collect()
-        })
-        .collect();
+    let centres = Moved::<E>::new(centroids, &shift);
+    in_blocks(x, n, dim, |block| screened(block, centroids, &centres, &shift))
+}
+
+/// The nearest centroid of each row by `dist2`, ties to the lower index, and that distance. Which
+/// way the centroids are ruled out depends on the shape; the result does not (D-81).
+fn assign_all(x: &[f64], n: usize, dim: usize, centroids: &[f64], k: usize) -> (Vec<i64>, Vec<f64>) {
+    let blocks = if k <= EXACT_CENTRES {
+        in_blocks(x, n, dim, |block| exact(block, centroids, dim))
+    } else if dim >= SINGLE_COLUMNS {
+        assign_screened::<f32>(x, n, dim, centroids, k)
+    } else {
+        assign_screened::<f64>(x, n, dim, centroids, k)
+    };
     let mut labels = Vec::with_capacity(n);
     let mut dist = Vec::with_capacity(n);
     for block in blocks {
         for (l, d) in block {
-            labels.push(l);
+            labels.push(l as i64);
             dist.push(d);
         }
     }

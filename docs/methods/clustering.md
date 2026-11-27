@@ -21,6 +21,11 @@ its points. `n_init` runs from different seeds are made and the run with the low
 because one run can stop in a poor local minimum. The same `seed` gives the same fit for any number of
 threads.
 
+A row joins the centroid with the smallest distance computed in float64, and the first of two at the
+same distance. With more than 8 centroids, a matrix product first rules out those that its proven
+error bound leaves no chance (Higham 2002, section 3.1). The product only saves time: the labels are
+the same on any processor.
+
 ```python
 import numpy as np
 from statsx.clustering import choose_k, kmeans, silhouette
@@ -577,6 +582,9 @@ proves that the clusters are real: they say how well separated the partition is.
   distances; a row at the limit keeps its label, and a tie goes to the first centre.
 - `kmeans`, the assignment and the silhouette give the same result for data moved to 1e8 and 1e11
   from the origin.
+- The assignment equals the smallest distance over all centroids, label for label, on data with many
+  ties, far from the origin, beyond the range of float32 and on 1,100 columns, and its bound never
+  rules out that centroid.
 - `find_knees` reproduces Figure 2 of the Kneedle paper (the knee at `x = 0.22`) and equals the
   steps of the paper, written out in the test, on 300 random curves and 3 sensitivities.
 - `elbow_k` found 3, 5 and 7 planted clusters for each of 3 seeds, and picked a `k` for uniform
@@ -607,6 +615,8 @@ proves that the clusters are real: they say how well separated the partition is.
 
 ## References
 
+- Higham, N. J. (2002). *Accuracy and Stability of Numerical Algorithms*, 2nd ed. SIAM.
+  <https://doi.org/10.1137/1.9780898718027>. Section 3.1 gives the error bound of an inner product.
 - Dhillon, I. S., and Modha, D. S. (2001). Concept decompositions for large sparse text data using
   clustering. *Machine Learning* 42(1-2):143-175. <https://doi.org/10.1023/A:1007612920971>
 
