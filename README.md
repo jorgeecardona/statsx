@@ -5,16 +5,15 @@
 <p align="center">
   <a href="https://pypi.org/project/statsx/"><img alt="PyPI" src="https://img.shields.io/pypi/v/statsx?style=flat-square"></a>
   <a href="https://pypi.org/project/statsx/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/statsx?style=flat-square"></a>
+  <a href="https://cardona-oss.gitlab.io/statsx/"><img alt="Docs" src="https://img.shields.io/badge/docs-cardona--oss.gitlab.io%2Fstatsx-blue?style=flat-square"></a>
   <a href="https://gitlab.com/cardona-oss/statsx/-/pipelines"><img alt="Pipeline" src="https://img.shields.io/gitlab/pipeline-status/cardona-oss%2Fstatsx?branch=main&style=flat-square"></a>
   <a href="https://gitlab.com/cardona-oss/statsx/-/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="https://gitlab.com/cardona-oss/statsx/-/blob/main/docs/choose.md">Which method do I use?</a> ·
-  <a href="https://gitlab.com/cardona-oss/statsx/-/tree/main/docs/methods">Methods</a> ·
-  <a href="https://gitlab.com/cardona-oss/statsx/-/tree/main/docs/recipes">Recipes</a> ·
-  <a href="https://gitlab.com/cardona-oss/statsx/-/blob/main/CHANGELOG.md">Changelog</a> ·
-  <a href="https://gitlab.com/cardona-oss/statsx/-/issues">Issues</a>
+  <a href="https://cardona-oss.gitlab.io/statsx/choose/">Which method do I use?</a> ·
+  <a href="https://cardona-oss.gitlab.io/statsx/api/">API reference</a> ·
+  <a href="https://gitlab.com/cardona-oss/statsx/-/blob/main/CHANGELOG.md">Changelog</a>
 </p>
 
 ---
@@ -34,7 +33,8 @@ Status: beta.
 pip install statsx
 ```
 
-Requires Python 3.12 or newer. NumPy is the only run-time dependency.
+Requires Python 3.12 or newer. Wheels for Linux and macOS; other platforms build from source with
+a Rust toolchain. NumPy is the only run-time dependency.
 
 ## Quickstart
 
@@ -62,13 +62,24 @@ sample size and an `assumption` field. Fitted models (`fit_trend`, `fit_bradley_
 functions that return a bare `Interval` do not have that field: their methods pages state what
 they assume.
 
-## What it does
+## Why statsx
 
-Not sure where to start? Read
-[Which method do I use?](https://gitlab.com/cardona-oss/statsx/-/blob/main/docs/choose.md).
+`scipy.stats` covers many of the same point tests and intervals. Use it when you need a stable,
+widely-deployed package, or when you need tests that statsx does not have.
+
+statsx adds what scipy does not have:
+
+- Sequential and always-valid inference: confidence sequences and e-values that hold at every
+  stopping time, not only at a fixed sample size.
+- The `assumption` field on every `Estimate`, so the method's assumptions travel with the result.
+- Model comparison on shared tasks via Rasch abilities and token-ratio scoring.
+- A Bradley-Terry fit with per-judge models for ranking from pairwise outcomes.
+- Forecasting of count series: trend with anomaly detection and causal impact.
+
+## Key features
 
 Each method follows a published paper, and its module docstring lists the references. The
-[methods pages](https://gitlab.com/cardona-oss/statsx/-/tree/main/docs/methods) state the model,
+[methods pages](https://cardona-oss.gitlab.io/statsx/methods/intervals/) state the model,
 the formulas and the guarantee.
 
 Of the 31 method modules, 19 import the Rust extension `statsx._accel`, 6 import it through
@@ -91,8 +102,17 @@ another statsx module, and 6 are Python and NumPy only (`allocation`, `alwaysval
 - MCMC checks: convergence, effective sample size, Monte Carlo standard error, simulation-based
   calibration.
 
+## Limits
+
+- Status is beta. The API can change between releases.
+- Python 3.12 or newer. The wheel contains a compiled Rust extension.
+- Pre-built wheels for Linux and macOS. Other platforms need a Rust toolchain and a C compiler to
+  build from source.
+
 ## Links
 
+- Documentation: <https://cardona-oss.gitlab.io/statsx/>
+- Recipes: <https://cardona-oss.gitlab.io/statsx/recipes/compare-timings/>
 - Source: https://gitlab.com/cardona-oss/statsx
 - Issues: https://gitlab.com/cardona-oss/statsx/-/issues
 - PyPI: https://pypi.org/project/statsx/

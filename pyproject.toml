@@ -29,6 +29,7 @@ docs = [
 ]
 
 [project.urls]
+Documentation = "https://cardona-oss.gitlab.io/statsx/"
 Homepage = "https://gitlab.com/cardona-oss/statsx"
 Repository = "https://gitlab.com/cardona-oss/statsx"
 Changelog = "https://gitlab.com/cardona-oss/statsx/-/blob/main/CHANGELOG.md"

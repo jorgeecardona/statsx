@@ -1,4 +1,5 @@
 site_name: statsx
+site_url: https://cardona-oss.gitlab.io/statsx/
 site_description: "Statistics for experiments and forecasts, with a Rust extension and NumPy the only dependency"
 repo_url: https://gitlab.com/cardona-oss/statsx
 repo_name: cardona-oss/statsx
