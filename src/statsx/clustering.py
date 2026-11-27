@@ -1425,7 +1425,9 @@ def hdbscan(  # noqa: PLR0913 (settings are keyword-only)
     densities ``1 / distance`` differ, so the chosen clusters can differ from a Euclidean fit of
     rows you scaled yourself.
 
-    The cost is O(n^2 d) time and O(n d) memory. The result does not depend on ``threads``.
+    The cost is O(n^2 d) time. Up to 8,192 rows of 64 columns or more, every pair distance is
+    computed once and kept (4 n^2 bytes, 268 MB at 8,192 rows); otherwise the memory is O(n d).
+    The result does not depend on ``threads``.
 
     Args:
         x: The points, shape (n, d), finite.

@@ -93,7 +93,7 @@ element!(f32, matrixmultiply::sgemm, 1.4e-45);
 element!(f64, matrixmultiply::dgemm, 5e-324);
 
 /// `n u / (1 - n u)`, or infinity when `n u` reaches 1 and there is no bound.
-fn gamma(n: usize, u: f64) -> f64 {
+pub(crate) fn gamma(n: usize, u: f64) -> f64 {
     let nu = n as f64 * u;
     if nu < 1.0 {
         nu / (1.0 - nu)

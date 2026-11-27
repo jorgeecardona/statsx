@@ -19,8 +19,11 @@
 //! `lambda_max - lambda_min`; and the flat clustering is the set of non-overlapping clusters of
 //! largest total stability. Decision D-65.
 //!
-//! The minimum spanning tree is exact (Prim's algorithm, O(n^2) distances, O(n d) memory), not a
-//! neighbour-graph approximation. Nothing here depends on the number of threads: row blocks and
+//! The minimum spanning tree is exact (Prim's algorithm, O(n^2) distances), not a
+//! neighbour-graph approximation. Up to `MATRIX_ROWS` rows of `MATRIX_COLUMNS` columns or more,
+//! every pair distance is computed once and kept (O(n^2) memory), and the core distances and
+//! Prim's algorithm read it; otherwise Prim computes the distances as it goes (O(n d) memory).
+//! Both give the same tree. Decision D-84. Nothing here depends on the number of threads: row blocks and
 //! column tiles have fixed sizes, cluster membership is the same for any order of unions, and
 //! minima are exact.
 
@@ -32,14 +35,21 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
-use crate::simd::dist2;
 use crate::kmeans::pool;
+use crate::screen::gamma;
+use crate::simd::dist2;
 
 /// Rows per block and columns per tile of the distance matrix. Fixed.
 pub(crate) const ROWS: usize = 128;
 pub(crate) const COLS: usize = 2048;
 /// Vertices per chunk in Prim's algorithm. Fixed.
 const CHUNK: usize = 2048;
+/// Most rows for which HDBSCAN keeps every pair distance: 268 MB at this size.
+const MATRIX_ROWS: usize = 8192;
+/// Fewest columns for it: on narrow rows a distance costs less than reading it back.
+const MATRIX_COLUMNS: usize = 64;
+/// Rows per side of a tile of that matrix: two tiles of 1,024 columns fit a second-level cache.
+const TILE: usize = 32;
 /// Distances below this count as this, so that `lambda = 1 / distance` stays finite when two
 /// points coincide.
 const MIN_DISTANCE: f64 = 1e-100;
@@ -131,45 +141,185 @@ pub(crate) fn blocks(n: usize) -> usize {
 // ---------------------------------------------------------------------------------------------
 // k-th nearest neighbour distance
 
-/// Distance from each point to its `k`-th nearest point, the point itself being the first.
+/// Candidates kept per row before the ones that fell behind are dropped.
+const SPARE: usize = 64;
+
+/// A bound on `|Points::d2 - Points::exact_d2|` for the pairs of one row with any other row,
+/// from its squared length and the largest one. Infinity when a sum could overflow.
+///
+/// Both are within `gamma_{d+4} (|a| + |b|)^2` of the squared distance (Higham 2002, section
+/// 3.1), and `(|a| + |b|)^2 <= 2 (|a|^2 + |b|^2)`; the factor 8 covers the two errors, the
+/// rounding of the squared lengths and of the bound.
+fn cut_error(dim: usize, own: f64, longest: f64) -> f64 {
+    let sum = own + longest;
+    if sum < 1e300 {
+        8.0 * gamma(dim + 4, f64::EPSILON / 2.0) * sum + dim as f64 * 1e-300
+    } else {
+        f64::INFINITY
+    }
+}
+
+/// The `k` smallest values seen of one row, ascending, and every column that can still hold one
+/// of the `k` smallest exact distances.
+struct Nearest {
+    smallest: Vec<f64>,
+    candidates: Vec<(f64, usize)>,
+    /// The largest value a column can have and still be a candidate.
+    limit: f64,
+}
+
+impl Nearest {
+    fn new(k: usize) -> Self {
+        Nearest { smallest: Vec::with_capacity(k + 1), candidates: Vec::new(), limit: f64::INFINITY }
+    }
+
+    /// Take the value of column `j` into account. The exact `k`-th distance is at most the
+    /// `k`-th smallest value plus `error`, and a value above that by `error` more is farther.
+    #[inline]
+    fn offer(&mut self, value: f64, j: usize, k: usize, error: f64) {
+        if value > self.limit {
+            return;
+        }
+        if self.smallest.len() < k || value < self.smallest[k - 1] {
+            let at = self.smallest.partition_point(|&v| v <= value);
+            self.smallest.insert(at, value);
+            self.smallest.truncate(k);
+            if self.smallest.len() == k {
+                self.limit = self.smallest[k - 1] + 2.0 * error;
+            }
+        }
+        self.candidates.push((value, j));
+        if self.candidates.len() >= 2 * k + SPARE {
+            let limit = self.limit;
+            self.candidates.retain(|c| c.0 <= limit);
+        }
+    }
+}
+
+/// Distance from each point to its `k`-th nearest point, the point itself being the first: the
+/// `k`-th smallest of `exact_d2` over all points.
+///
+/// A matrix product finds the candidates, and `cut_error` bounds what it can get wrong, so the
+/// answer is that of every exact distance, on any processor.
 fn kth_distance(p: &Points, k: usize) -> Vec<f64> {
+    let longest = p.sq.iter().copied().fold(0.0, f64::max);
     let parts: Vec<Vec<f64>> = (0..blocks(p.n))
         .into_par_iter()
         .map(|b| {
             let r0 = b * ROWS;
             let rows = ROWS.min(p.n - r0);
-            let mut best: Vec<Vec<(f64, usize)>> = vec![Vec::with_capacity(k + 1); rows];
+            let error: Vec<f64> =
+                (0..rows).map(|r| cut_error(p.dim, p.sq[r0 + r], longest)).collect();
+            let mut near: Vec<Nearest> = (0..rows).map(|_| Nearest::new(k)).collect();
             let mut scratch = vec![0.0; rows * COLS];
             let mut c0 = 0;
             while c0 < p.n {
                 let cols = COLS.min(p.n - c0);
                 p.gram(r0, rows, c0, cols, &mut scratch);
                 for r in 0..rows {
-                    let list = &mut best[r];
                     for c in 0..cols {
                         let d2 = p.d2(r0 + r, c0 + c, scratch[r * cols + c]);
-                        if list.len() < k || d2 < list[list.len() - 1].0 {
-                            let at = list.partition_point(|e| e.0 <= d2);
-                            list.insert(at, (d2, c0 + c));
-                            list.truncate(k);
-                        }
+                        near[r].offer(d2, c0 + c, k, error[r]);
                     }
                 }
                 c0 += cols;
             }
-            // Exact distances for the k kept, so the answer does not carry the rounding of the
-            // expansion.
             (0..rows)
                 .map(|r| {
                     let i = r0 + r;
-                    let mut exact: Vec<f64> = best[r].iter().map(|&(_, j)| p.exact_d2(i, j)).collect();
-                    exact.sort_by(|a, b| a.total_cmp(b));
-                    exact[k - 1].sqrt()
+                    let limit = near[r].limit;
+                    let mut exact: Vec<f64> = near[r]
+                        .candidates
+                        .iter()
+                        .filter(|c| c.0 <= limit)
+                        .map(|c| p.exact_d2(i, c.1))
+                        .collect();
+                    exact.select_nth_unstable_by(k - 1, f64::total_cmp).1.sqrt()
                 })
                 .collect()
         })
         .collect();
     parts.into_iter().flatten().collect()
+}
+
+/// The squared distance of every pair of rows by `dist2`, stored once per pair.
+struct Pairs {
+    n: usize,
+    /// Row `i` holds the pairs `(i, j)` with `j > i`, in order of `j`.
+    d2: Vec<f64>,
+}
+
+impl Pairs {
+    /// Where the pairs of row `i` start.
+    fn start(n: usize, i: usize) -> usize {
+        i * (2 * n - i - 1) / 2
+    }
+
+    fn new(p: &Points) -> Pairs {
+        let n = p.n;
+        let mut d2 = vec![0.0; n * (n - 1) / 2];
+        let mut rows = Vec::with_capacity(n);
+        let mut rest = d2.as_mut_slice();
+        for i in 0..n {
+            let (row, after) = rest.split_at_mut(n - 1 - i);
+            rows.push(row);
+            rest = after;
+        }
+        // Tile by tile, so that the rows being compared stay in the cache.
+        rows.par_chunks_mut(TILE).enumerate().for_each(|(t, tile)| {
+            let r0 = t * TILE;
+            let mut c0 = r0;
+            while c0 < n {
+                let c1 = (c0 + TILE).min(n);
+                for (r, row) in tile.iter_mut().enumerate() {
+                    let i = r0 + r;
+                    for j in c0.max(i + 1)..c1 {
+                        row[j - i - 1] = p.exact_d2(i, j);
+                    }
+                }
+                c0 = c1;
+            }
+        });
+        Pairs { n, d2 }
+    }
+
+    fn get(&self, i: usize, j: usize) -> f64 {
+        if i == j {
+            return 0.0;
+        }
+        let (a, b) = (i.min(j), i.max(j));
+        self.d2[Pairs::start(self.n, a) + b - a - 1]
+    }
+
+    /// `kth_distance` read from the pairs.
+    fn kth_distance(&self, k: usize) -> Vec<f64> {
+        (0..self.n)
+            .into_par_iter()
+            .map_init(
+                || Vec::with_capacity(self.n),
+                |row, i| {
+                    row.clear();
+                    row.extend((0..self.n).map(|j| self.get(i, j)));
+                    row.select_nth_unstable_by(k - 1, f64::total_cmp).1.sqrt()
+                },
+            )
+            .collect()
+    }
+}
+
+/// The core distances and the minimum spanning tree of HDBSCAN, keeping every pair distance
+/// when `keep` is true.
+fn core_and_tree(p: &Points, min_samples: usize, keep: bool) -> (Vec<f64>, Vec<(usize, usize, f64)>) {
+    if keep {
+        let pairs = Pairs::new(p);
+        let core = pairs.kth_distance(min_samples);
+        let edges = prim(p.n, &core, |u, v| pairs.get(u, v));
+        (core, edges)
+    } else {
+        let core = kth_distance(p, min_samples);
+        let edges = prim(p.n, &core, |u, v| p.exact_d2(u, v));
+        (core, edges)
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -325,10 +475,10 @@ fn dbscan(p: &Points, eps: f64, min_samples: usize) -> (Vec<i64>, Vec<bool>) {
 // ---------------------------------------------------------------------------------------------
 // HDBSCAN*
 
-/// Minimum spanning tree of the mutual reachability distance, by Prim's algorithm. Edges come
-/// in the order they join the tree, as (from, to, weight).
-fn prim(p: &Points, core: &[f64]) -> Vec<(usize, usize, f64)> {
-    let n = p.n;
+/// Minimum spanning tree of the mutual reachability distance, by Prim's algorithm, from the
+/// squared distance `d2` of a pair. Edges come in the order they join the tree, as
+/// (from, to, weight).
+fn prim(n: usize, core: &[f64], d2: impl Fn(usize, usize) -> f64 + Sync) -> Vec<(usize, usize, f64)> {
     let mut best = vec![f64::INFINITY; n];
     let mut from = vec![0usize; n];
     let mut in_tree = vec![false; n];
@@ -337,7 +487,6 @@ fn prim(p: &Points, core: &[f64]) -> Vec<(usize, usize, f64)> {
     in_tree[0] = true;
     for _ in 1..n {
         let cu = core[u];
-        let urow = p.row(u);
         let tree = &in_tree;
         let step = |base: usize, b: &mut [f64], f: &mut [usize]| -> (f64, usize) {
             let mut top = (f64::INFINITY, usize::MAX);
@@ -348,7 +497,7 @@ fn prim(p: &Points, core: &[f64]) -> Vec<(usize, usize, f64)> {
                 }
                 let lower = cu.max(core[v]);
                 if lower < b[k] {
-                    let w = lower.max(dist2(urow, p.row(v)).sqrt());
+                    let w = lower.max(d2(u, v).sqrt());
                     if w < b[k] {
                         b[k] = w;
                         f[k] = u;
@@ -656,13 +805,16 @@ pub fn hdbscan_fit<'py>(
             "need n >= 2, 1 <= min_samples <= n and min_cluster_size >= 2",
         ));
     }
-    let flat: Vec<f64> = data.as_array().iter().copied().collect();
+    if !data.is_c_contiguous() {
+        return Err(PyValueError::new_err("the array must be C-contiguous"));
+    }
+    let flat = data.as_slice().map_err(|e| PyValueError::new_err(e.to_string()))?;
     let pool = pool(threads)?;
     let (core, edges, tree, label, point) = py.allow_threads(|| {
         pool.install(|| {
-            let p = Points::new(&flat, n, dim);
-            let mut core = kth_distance(&p, min_samples);
-            let mut edges = prim(&p, &core);
+            let p = Points::new(flat, n, dim);
+            let keep = n <= MATRIX_ROWS && dim >= MATRIX_COLUMNS;
+            let (mut core, mut edges) = core_and_tree(&p, min_samples, keep);
             if cosine {
                 // The rows are unit vectors. The map from the Euclidean to the cosine distance
                 // rises, so the neighbours, the mutual reachability order and the tree are the
@@ -736,7 +888,7 @@ mod tests {
             pool.install(|| {
                 let p = Points::new(&x, n, 2);
                 let core = kth_distance(&p, 5);
-                let edges = prim(&p, &core);
+                let edges = prim(p.n, &core, |u, v| p.exact_d2(u, v));
                 (dbscan(&p, 0.8, 5), core, edges)
             })
         };
@@ -747,11 +899,55 @@ mod tests {
     }
 
     #[test]
+    fn the_kth_distance_is_the_kth_smallest_exact_one() {
+        let mut rng = Rng::new(9);
+        // plain rows, rows far from the origin, and whole numbers where many distances tie
+        // within a rounding unit
+        for (n, dim, whole, offset) in
+            [(500usize, 7usize, false, 0.0), (500, 7, false, 1e9), (900, 4, true, 0.0), (2600, 2, true, 0.5)]
+        {
+            let x: Vec<f64> = (0..n * dim)
+                .map(|_| offset + if whole { rng.below(3) as f64 } else { rng.normal() })
+                .collect();
+            let p = Points::new(&x, n, dim);
+            for k in [1, 2, 6, 200, n] {
+                let found = kth_distance(&p, k);
+                for (i, f) in found.iter().enumerate() {
+                    let mut all: Vec<f64> = (0..n).map(|j| p.exact_d2(i, j)).collect();
+                    all.sort_by(f64::total_cmp);
+                    assert_eq!(f.to_bits(), all[k - 1].sqrt().to_bits(), "{n} {dim} {k} {i}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn keeping_the_pair_distances_gives_the_bytes_of_computing_them() {
+        let mut rng = Rng::new(8);
+        // random rows, and rows of whole numbers where many distances tie
+        for (n, dim, whole) in [(2usize, 3usize, false), (33, 1, true), (300, 20, false), (700, 4, true)] {
+            let x: Vec<f64> = (0..n * dim)
+                .map(|_| if whole { rng.below(3) as f64 } else { rng.normal() })
+                .collect();
+            let p = Points::new(&x, n, dim);
+            let pairs = Pairs::new(&p);
+            for i in 0..n {
+                for j in 0..n {
+                    assert_eq!(pairs.get(i, j).to_bits(), p.exact_d2(i, j).to_bits(), "{n} {i} {j}");
+                }
+            }
+            for k in [1, 2.min(n), 5.min(n), n] {
+                assert_eq!(core_and_tree(&p, k, true), core_and_tree(&p, k, false), "{n} {dim} {k}");
+            }
+        }
+    }
+
+    #[test]
     fn prim_returns_n_minus_one_edges_that_connect_every_point() {
         let (x, n) = blobs(40, 3);
         let p = Points::new(&x, n, 2);
         let core = kth_distance(&p, 4);
-        let edges = prim(&p, &core);
+        let edges = prim(p.n, &core, |u, v| p.exact_d2(u, v));
         assert_eq!(edges.len(), n - 1);
         let mut set: Vec<usize> = (0..n).collect();
         fn root(s: &mut [usize], mut i: usize) -> usize {
@@ -772,7 +968,7 @@ mod tests {
         let (x, n) = blobs(80, 4);
         let p = Points::new(&x, n, 2);
         let core = kth_distance(&p, 5);
-        let edges = prim(&p, &core);
+        let edges = prim(p.n, &core, |u, v| p.exact_d2(u, v));
         let tree = condense(n, &edges, 10);
         let (_, point) = select(n, &tree, false);
         let mut labels: Vec<i64> = point.clone();

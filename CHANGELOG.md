@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.86] - 2026-11-27
+
+### Fixed
+
+- `k_distances` and the core distances of `hdbscan` could miss the `k`-th nearest distance by the
+  last digit when several distances were that close, and the result could differ between
+  processors. They are now the exact `k`-th smallest.
+
+### Changed
+
+- `hdbscan` is 2.4 to 3.6 times faster on up to 8,192 rows of 1,024 columns, with the same result.
+  It keeps every pair distance for that: 268 MB at 8,192 rows.
+
 ## [0.1.85] - 2026-11-27
 
 ### Added

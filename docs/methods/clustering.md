@@ -510,8 +510,13 @@ and Campello, Moulavi, Zimek and Sander (2015), in the notation of McInnes and H
    chosen cluster is noise.
 
 The tree is exact. It is built by Prim's algorithm from distances, with no neighbour index, so the
-cost is O(n^2 d) time and O(n d) memory. Edges of equal weight, which mutual reachability makes
-common, join at one level, so the result does not depend on the order of equal edges.
+cost is O(n^2 d) time. Edges of equal weight, which mutual reachability makes common, join at one
+level, so the result does not depend on the order of equal edges.
+
+Memory is O(n d), except for up to 8,192 rows of 64 columns or more: then every pair distance is
+computed once and kept, 4 n^2 bytes (100 MB at 5,000 rows, 268 MB at 8,192). On 1,024 columns and
+4 threads this made `hdbscan` 2.4 to 3.6 times faster, with the same result: 4.2 s against 9.9 s
+at 5,000 rows.
 
 ```python
 dense = rng.standard_normal((90, 2)) * 0.2
@@ -650,6 +655,9 @@ proves that the clusters are real: they say how well separated the partition is.
 - DBSCAN equals the sequential algorithm of Ester et al. (1996), written out in the test, label for
   label, on random data, on an integer grid where points sit exactly at `eps`, on points far from
   the origin, and in 30 dimensions.
+- `k_distances` and the core distances are the `k`-th smallest of the distances to all rows, bit
+  for bit, also far from the origin and when many distances tie within a rounding unit. With the
+  pair distances kept or computed as needed, the tree of HDBSCAN is the same, bit for bit.
 - The core distances and the tree weight of HDBSCAN equal the definitions, computed on the full
   distance matrix. The clusters and their stabilities equal a second implementation that reads the
   hierarchy from the top, by removing the heaviest edges, on 6 random data sets and 3 settings.
