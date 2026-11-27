@@ -354,8 +354,9 @@ Use `umap(x, neighbors=table)` when the exact search is too slow, with a table f
 method of another library, or when several maps of the same rows should share one search.
 
 The exact search grows with the square of the number of rows. At 1,024 columns and 4 threads, on a
-laptop with other work running, it took 7 s for 10,000 rows, 41 s for 25,000 and 13 minutes for
-100,000. At 16 columns it took 54 s for 100,000 rows.
+laptop with other work running, it took 1 s for 5,000 rows, 12 s for 20,000, 61 s for 40,000 and
+6 minutes for 100,000 (with 2.4 GB of memory at the peak, the data included). At 16 columns it took
+54 s for 100,000 rows.
 
 `nearest_neighbors` runs the exact search once. A table with more columns than `n_neighbors` serves
 several settings:
@@ -523,6 +524,8 @@ Not checked: that the map shows real groups, or that the labels mean anything. S
 
 - The neighbours equal the exact nearest points computed from the full distance matrix, also on an
   integer grid where many distances tie.
+- The search equals every distance ordered by distance and row number, bit for bit: on narrow and
+  wide rows, far from the origin, with many ties, and with values beyond the range of float32.
 - `rho`, `sigma` and the weights equal the formulas of section 3.1, and the graph equals
   `A + A^T - A o A^T`.
 - The spectral start equals a dense eigendecomposition: eigenvalues to 1e-9, and the same plane.

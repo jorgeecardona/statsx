@@ -329,7 +329,7 @@ pub enum Points<'py> {
 }
 
 /// The values of a row-major (C-contiguous) array, without a copy.
-fn rows<'a, V: ArrayElement>(array: &'a PyReadonlyArray2<'_, V>) -> PyResult<&'a [V]> {
+pub(crate) fn rows<'a, V: ArrayElement>(array: &'a PyReadonlyArray2<'_, V>) -> PyResult<&'a [V]> {
     if !array.is_c_contiguous() {
         return Err(PyValueError::new_err("the array must be C-contiguous"));
     }

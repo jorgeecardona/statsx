@@ -25,8 +25,8 @@
 //! fixed (`place`), with local connectivity 0 as the uwot vignette and umap-learn do. No paper
 //! describes this (Reichmann et al. 2024 say so); decision D-68.
 //!
-//! The neighbours are exact (blocked matrix products, as in `density`), not the approximate
-//! nearest-neighbour descent of Dong, Charikar & Li (2011) that the paper prefers.
+//! The neighbours are exact (`search`, D-85), not the approximate nearest-neighbour descent of
+//! Dong, Charikar & Li (2011) that the paper prefers.
 //!
 //! Nothing here depends on the number of threads. Neighbour blocks have a fixed size. In the
 //! layout, every point is updated from the positions at the start of the epoch and from its own
@@ -40,9 +40,10 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
-use crate::density::{blocks, Points, COLS, ROWS};
-use crate::kmeans::pool;
+use crate::density::{blocks, COLS, ROWS};
+use crate::kmeans::{pool, rows};
 use crate::rng::Rng;
+use crate::screen::{search_error, Element, Moved, Nearest};
 use crate::simd;
 
 /// Each coordinate of one gradient step is limited to this, as in the reference implementation of
@@ -60,8 +61,9 @@ const BISECT: usize = 100;
 // Nearest neighbours
 
 /// The `k` nearest other points of each point: indices and distances, nearest first, ties by index.
-fn knn(p: &Points, x: &[f64], k: usize) -> (Vec<usize>, Vec<f64>) {
-    search(p, x, 0, p.n, p.n, k)
+fn knn(x: &[f64], dim: usize, k: usize) -> (Vec<usize>, Vec<f64>) {
+    let n = x.len() / dim;
+    search(x, dim, 0, n, n, k)
 }
 
 /// The squared distance of rows `i` and `j` of `x`.
@@ -81,42 +83,72 @@ fn table_d2(x: &[f64], dim: usize, rows: &[usize], idx: &[usize], k: usize) -> V
     out
 }
 
-/// The `k` nearest of the rows `0..refs` for each of the rows `q0..q1`, nearest first, ties by
-/// index. A row never counts as its own neighbour. When the queries come after the references
-/// (`q0 >= refs`) no row is one of its own candidates, so nothing is skipped.
+/// Fewest columns for which the search uses a float32 product.
+const SINGLE_COLUMNS: usize = 256;
+
+/// The `k` nearest of the rows `0..refs` for each of the rows `q0..q1` of `x` (row-major, `dim`
+/// columns), nearest first, ties by index. A row never counts as its own neighbour. When the
+/// queries come after the references (`q0 >= refs`) no row is one of its own candidates, so
+/// nothing is skipped.
 ///
-/// `p` holds the centred rows, used to find the candidates. `x` holds the same rows as given, and
-/// the distances of the answer come from them, as in `table_d2`.
-fn search(
-    p: &Points,
+/// The answer is that of `dist2` over every reference, on any processor. A matrix product of the
+/// rows moved to their mean finds the candidates, and `search_error` bounds what it can get
+/// wrong (D-85). The product is float32 on wide rows whose lengths fit it.
+fn search(x: &[f64], dim: usize, q0: usize, q1: usize, refs: usize, k: usize) -> (Vec<usize>, Vec<f64>) {
+    let n = x.len() / dim;
+    // The move changes no distance, and the expansion loses fewer digits near the origin.
+    let mut mean = vec![0.0; dim];
+    for row in x.chunks_exact(dim) {
+        for (m, v) in mean.iter_mut().zip(row) {
+            *m += v;
+        }
+    }
+    for m in mean.iter_mut() {
+        *m /= n as f64;
+    }
+    if dim >= SINGLE_COLUMNS {
+        let moved = Moved::<f32>::new(x, &mean);
+        if search_error::<f32>(dim, moved.longest(), moved.longest()).is_finite() {
+            return search_moved(&moved, x, dim, q0, q1, refs, k);
+        }
+    }
+    search_moved(&Moved::<f64>::new(x, &mean), x, dim, q0, q1, refs, k)
+}
+
+/// `search` with the moved rows in one type.
+fn search_moved<E: Element + Send + Sync>(
+    moved: &Moved<E>,
     x: &[f64],
+    dim: usize,
     q0: usize,
     q1: usize,
     refs: usize,
     k: usize,
 ) -> (Vec<usize>, Vec<f64>) {
+    let longest = moved.longest();
     let parts: Vec<(Vec<usize>, Vec<f64>)> = (0..blocks(q1 - q0))
         .into_par_iter()
         .map(|b| {
             let r0 = q0 + b * ROWS;
             let rows = ROWS.min(q1 - r0);
-            let mut best: Vec<Vec<(f64, usize)>> = vec![Vec::with_capacity(k + 1); rows];
-            let mut scratch = vec![0.0; rows * COLS];
+            let error: Vec<f64> = (0..rows)
+                .map(|r| search_error::<E>(dim, moved.norm_sq[r0 + r], longest))
+                .collect();
+            let mut near: Vec<Nearest> = (0..rows).map(|_| Nearest::new(k)).collect();
+            let own = &moved.values[r0 * dim..(r0 + rows) * dim];
             let mut c0 = 0;
             while c0 < refs {
                 let cols = COLS.min(refs - c0);
-                p.gram(r0, rows, c0, cols, &mut scratch);
-                for r in 0..rows {
-                    let list = &mut best[r];
-                    for c in 0..cols {
-                        if r0 + r == c0 + c {
-                            continue;
-                        }
-                        let d2 = p.d2(r0 + r, c0 + c, scratch[r * cols + c]);
-                        if list.len() < k || d2 < list[list.len() - 1].0 {
-                            let at = list.partition_point(|e| e.0 <= d2);
-                            list.insert(at, (d2, c0 + c));
-                            list.truncate(k);
+                let others = &moved.values[c0 * dim..(c0 + cols) * dim];
+                let product = E::product(own, others, rows, cols, dim);
+                for (r, (list, line)) in near.iter_mut().zip(product.chunks_exact(cols)).enumerate() {
+                    let i = r0 + r;
+                    let aa = moved.norm_sq[i];
+                    for (c, g) in line.iter().enumerate() {
+                        let j = c0 + c;
+                        if i != j {
+                            let value = aa + moved.norm_sq[j] - 2.0 * g.widened();
+                            list.offer(value, j, k, error[r]);
                         }
                     }
                 }
@@ -124,13 +156,17 @@ fn search(
             }
             let mut idx = Vec::with_capacity(rows * k);
             let mut dist = Vec::with_capacity(rows * k);
-            for (r, list) in best.iter().enumerate() {
-                // Exact distances for the k kept, so the answer does not carry the rounding of
-                // the expansion, and so equal distances are ordered by index.
-                let mut exact: Vec<(f64, usize)> =
-                    list.iter().map(|&(_, j)| (pair_d2(x, p.dim, r0 + r, j), j)).collect();
+            for (r, list) in near.iter().enumerate() {
+                // The distances of every row that can be among the k nearest, from the rows as
+                // given, so equal distances are ordered by index.
+                let mut exact: Vec<(f64, usize)> = list
+                    .candidates
+                    .iter()
+                    .filter(|c| !(c.0 > list.limit))
+                    .map(|&(_, j)| (pair_d2(x, dim, r0 + r, j), j))
+                    .collect();
                 exact.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-                for (d2, j) in exact {
+                for &(d2, j) in &exact[..k] {
                     idx.push(j);
                     dist.push(d2.sqrt());
                 }
@@ -774,9 +810,9 @@ pub fn umap_knn<'py>(
     if k == 0 || k >= n || dim == 0 {
         return Err(PyValueError::new_err("need 1 <= k <= n - 1"));
     }
-    let flat: Vec<f64> = data.as_array().iter().copied().collect();
+    let x = rows(&data)?;
     let pool = pool(threads)?;
-    let (idx, dist) = py.allow_threads(|| pool.install(|| knn(&Points::new(&flat, n, dim), &flat, k)));
+    let (idx, dist) = py.allow_threads(|| pool.install(|| knn(x, dim, k)));
     let idx = Array2::from_shape_vec((n, k), idx.into_iter().map(|x| x as i64).collect())
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let dist = Array2::from_shape_vec((n, k), dist).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -975,8 +1011,7 @@ pub fn umap_knn_between<'py>(
     let mut flat: Vec<f64> = reference.as_array().iter().copied().collect();
     flat.extend(query.as_array().iter().copied());
     let pool = pool(threads)?;
-    let (idx, dist) =
-        py.allow_threads(|| pool.install(|| search(&Points::new(&flat, n + m, dim), &flat, n, n + m, n, k)));
+    let (idx, dist) = py.allow_threads(|| pool.install(|| search(&flat, dim, n, n + m, n, k)));
     let idx = Array2::from_shape_vec((m, k), idx.into_iter().map(|x| x as i64).collect())
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let dist = Array2::from_shape_vec((m, k), dist).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -1157,19 +1192,49 @@ mod tests {
         assert!(cross_entropy(&y, 2, &g, (a, b)).abs() < 1e-12);
     }
 
+    /// The definition: every reference ordered by `dist2`, then index.
+    fn brute(x: &[f64], dim: usize, q: usize, refs: usize, k: usize) -> Vec<(usize, f64)> {
+        let mut all: Vec<(f64, usize)> =
+            (0..refs).filter(|&j| j != q).map(|j| (pair_d2(x, dim, q, j), j)).collect();
+        all.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        all[..k].iter().map(|&(d2, j)| (j, d2.sqrt())).collect()
+    }
+
     #[test]
-    fn a_search_between_two_sets_equals_the_brute_force_answer() {
-        let (n, m, dim, k) = (300, 70, 4, 6);
+    fn the_search_equals_every_distance_bit_for_bit() {
         let mut rng = Rng::new(11);
-        let flat: Vec<f64> = (0..(n + m) * dim).map(|_| rng.normal()).collect();
-        let p = Points::new(&flat, n + m, dim);
-        let (idx, dist) = search(&p, &flat, n, n + m, n, k);
-        for q in 0..m {
-            let mut all: Vec<(f64, usize)> = (0..n).map(|j| (pair_d2(&flat, dim, n + q, j), j)).collect();
-            all.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-            for e in 0..k {
-                assert_eq!(idx[q * k + e], all[e].1);
-                assert!((dist[q * k + e] - all[e].0.sqrt()).abs() < 1e-12);
+        // narrow and wide rows (the float32 product), far from the origin, whole numbers with
+        // many ties, values too large for float32, and tiny ones
+        let cases: [(usize, f64, f64, bool); 8] = [
+            (4, 1.0, 0.0, false),
+            (4, 1.0, 1e9, false),
+            (2, 1.0, 0.5, true),
+            (300, 1.0, 0.0, false),
+            (300, 1.0, 1e9, false),
+            (300, 1.0, 0.0, true),
+            (300, 1e30, 0.0, false),
+            (300, 1e-42, 0.0, false),
+        ];
+        for (dim, scale, offset, whole) in cases {
+            let (refs, queries) = (2300, 150);
+            let x: Vec<f64> = (0..(refs + queries) * dim)
+                .map(|_| offset + scale * if whole { rng.below(2) as f64 } else { rng.normal() })
+                .collect();
+            for k in [1, 7] {
+                let (idx, dist) = search(&x, dim, refs, refs + queries, refs, k);
+                let within = search(&x[..refs * dim], dim, 0, 140, refs, k);
+                for q in 0..queries {
+                    for (e, (j, d)) in brute(&x, dim, refs + q, refs, k).into_iter().enumerate() {
+                        let at = q * k + e;
+                        assert_eq!((idx[at], dist[at].to_bits()), (j, d.to_bits()), "{dim} {scale} {q}");
+                    }
+                }
+                for q in 0..140 {
+                    for (e, (j, d)) in brute(&x, dim, q, refs, k).into_iter().enumerate() {
+                        let at = q * k + e;
+                        assert_eq!((within.0[at], within.1[at].to_bits()), (j, d.to_bits()), "{dim} {q}");
+                    }
+                }
             }
         }
     }

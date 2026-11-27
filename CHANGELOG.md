@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.87] - 2026-11-27
+
+### Changed
+
+- The exact neighbour search of `umap`, `nearest_neighbors` and `transform` is 1.8 to 2.5 times
+  faster on 1,024 columns, and about 8% slower on 16 columns or fewer.
+
+### Fixed
+
+- At a near tie for the last neighbour, the search could keep the row one rounding unit farther
+  away, depending on the processor. It now returns the nearest by exact distance.
+
 ## [0.1.86] - 2026-11-27
 
 ### Fixed

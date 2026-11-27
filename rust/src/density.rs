@@ -36,7 +36,7 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 
 use crate::kmeans::pool;
-use crate::screen::gamma;
+use crate::screen::{gamma, Nearest};
 use crate::simd::dist2;
 
 /// Rows per block and columns per tile of the distance matrix. Fixed.
@@ -141,9 +141,6 @@ pub(crate) fn blocks(n: usize) -> usize {
 // ---------------------------------------------------------------------------------------------
 // k-th nearest neighbour distance
 
-/// Candidates kept per row before the ones that fell behind are dropped.
-const SPARE: usize = 64;
-
 /// A bound on `|Points::d2 - Points::exact_d2|` for the pairs of one row with any other row,
 /// from its squared length and the largest one. Infinity when a sum could overflow.
 ///
@@ -156,43 +153,6 @@ fn cut_error(dim: usize, own: f64, longest: f64) -> f64 {
         8.0 * gamma(dim + 4, f64::EPSILON / 2.0) * sum + dim as f64 * 1e-300
     } else {
         f64::INFINITY
-    }
-}
-
-/// The `k` smallest values seen of one row, ascending, and every column that can still hold one
-/// of the `k` smallest exact distances.
-struct Nearest {
-    smallest: Vec<f64>,
-    candidates: Vec<(f64, usize)>,
-    /// The largest value a column can have and still be a candidate.
-    limit: f64,
-}
-
-impl Nearest {
-    fn new(k: usize) -> Self {
-        Nearest { smallest: Vec::with_capacity(k + 1), candidates: Vec::new(), limit: f64::INFINITY }
-    }
-
-    /// Take the value of column `j` into account. The exact `k`-th distance is at most the
-    /// `k`-th smallest value plus `error`, and a value above that by `error` more is farther.
-    #[inline]
-    fn offer(&mut self, value: f64, j: usize, k: usize, error: f64) {
-        if value > self.limit {
-            return;
-        }
-        if self.smallest.len() < k || value < self.smallest[k - 1] {
-            let at = self.smallest.partition_point(|&v| v <= value);
-            self.smallest.insert(at, value);
-            self.smallest.truncate(k);
-            if self.smallest.len() == k {
-                self.limit = self.smallest[k - 1] + 2.0 * error;
-            }
-        }
-        self.candidates.push((value, j));
-        if self.candidates.len() >= 2 * k + SPARE {
-            let limit = self.limit;
-            self.candidates.retain(|c| c.0 <= limit);
-        }
     }
 }
 

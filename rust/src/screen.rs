@@ -104,8 +104,8 @@ pub(crate) fn gamma(n: usize, u: f64) -> f64 {
 
 /// Rows moved by a common vector, in the type of the product, with their squared lengths.
 pub(crate) struct Moved<E> {
-    values: Vec<E>,
-    norm_sq: Vec<f64>,
+    pub(crate) values: Vec<E>,
+    pub(crate) norm_sq: Vec<f64>,
     dim: usize,
 }
 
@@ -134,7 +134,7 @@ impl<E: Element> Moved<E> {
     }
 
     /// The largest squared length, infinity if a value is not a number.
-    fn longest(&self) -> f64 {
+    pub(crate) fn longest(&self) -> f64 {
         self.norm_sq.iter().fold(0.0, |m, &v| if v <= m { m } else if v > m { v } else { f64::INFINITY })
     }
 }
@@ -232,6 +232,64 @@ pub(crate) fn screened<V: Value, E: Element>(
             }
         })
         .collect()
+}
+
+/// Candidates kept per row before the ones that fell behind are dropped.
+const SPARE: usize = 64;
+
+/// The `k` smallest values seen of one row, ascending, and every column that can still hold one
+/// of the `k` smallest exact distances.
+pub(crate) struct Nearest {
+    smallest: Vec<f64>,
+    pub(crate) candidates: Vec<(f64, usize)>,
+    /// The largest value a column can have and still be a candidate.
+    pub(crate) limit: f64,
+}
+
+impl Nearest {
+    pub(crate) fn new(k: usize) -> Self {
+        Nearest { smallest: Vec::with_capacity(k + 1), candidates: Vec::new(), limit: f64::INFINITY }
+    }
+
+    /// Take the value of column `j` into account. The exact `k`-th distance is at most the
+    /// `k`-th smallest value plus `error`, and a value above that by `error` more is farther.
+    #[inline]
+    pub(crate) fn offer(&mut self, value: f64, j: usize, k: usize, error: f64) {
+        if value > self.limit {
+            return;
+        }
+        if self.smallest.len() < k || value < self.smallest[k - 1] {
+            let at = self.smallest.partition_point(|&v| v <= value);
+            self.smallest.insert(at, value);
+            self.smallest.truncate(k);
+            if self.smallest.len() == k {
+                self.limit = self.smallest[k - 1] + 2.0 * error;
+            }
+        }
+        self.candidates.push((value, j));
+        if self.candidates.len() >= 2 * k + SPARE {
+            let limit = self.limit;
+            self.candidates.retain(|c| c.0 <= limit);
+        }
+    }
+}
+
+/// A bound on the gap between `|a'|^2 + |b'|^2 - 2 a'.b'`, from rows moved and rounded to `E`
+/// and their product in `E`, and `dist2` of the rows as given, from `|a'|^2` and the largest
+/// `|b'|^2`, in `dim` columns. Infinity when the product could overflow or a value is not finite.
+///
+/// With `u` the unit roundoff of `E`: the product is within `gamma_d(u) (|a'|^2 + |b'|^2)`
+/// (Higham 2002, section 3.1), moving and rounding the rows changes the squared distance by at
+/// most `4 u (|a'|^2 + |b'|^2)`, and the float64 steps add terms of the float64 roundoff. The
+/// bound is twice their sum.
+pub(crate) fn search_error<E: Element>(dim: usize, own: f64, longest: f64) -> f64 {
+    let sum = own + longest;
+    if sum < E::LARGEST / 4.0 {
+        let relative = 2.0 * gamma(dim + 4, E::UNIT) + 8.0 * E::UNIT + 8.0 * gamma(dim + 4, U64);
+        relative * sum + dim as f64 * (4.0 * E::TINY + 1e-300)
+    } else {
+        f64::INFINITY
+    }
 }
 
 #[cfg(test)]

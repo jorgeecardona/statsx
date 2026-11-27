@@ -2269,3 +2269,26 @@ decisions:
     2.23 to 0.62 s, 5,000 rows 9.9 to 4.2 s, 8,000 rows 24.3 to 9.8 s; unchanged at 12,000 rows and on
     16 columns, with equal labels everywhere. k_distances took about the same time. fastumap, which
     joins 30 neighbours only, took 3.2 s at 5,000 rows.'
+
+- id: D-85
+  text: 'The exact neighbour search returns the k rows of smallest dist2 over all references, ties by
+    row number. A matrix product of the rows, moved to their mean, finds candidates: a row stays while
+    its value |a|^2 + |b|^2 - 2 a.b is within twice an error bound of the k-th smallest value. The
+    bound, 2 gamma_{d+4}(u) + 8 u of the product type plus float64 terms, times the sum of the squared
+    lengths, covers the product (Higham 2002, section 3.1), the move and rounding of the rows, and
+    dist2. Every candidate is computed again by dist2 on the rows as given (D-79). The product is
+    float32 from 256 columns when the rows fit it, else float64. Before, the k rows with the smallest
+    float64 product value were recomputed, with no bound at the k-th place.'
+  needs:
+  - MG-5
+  - MG-9
+  alternatives:
+  - 'A symmetric product that uses each pair once: not written; it could save up to half of the
+    remaining time.'
+  - 'float32 for any width: not used, as in D-81.'
+  - 'NN-descent (Dong, Charikar and Li 2011): not written (D-79); measure it against this search on real
+    embeddings first.'
+  consequences: 'umap_knn with k = 15 on 4 threads, old and new build in one process, equal indices and
+    distances everywhere: 1,024 columns 5,000 rows 1.78 to 0.71 s, 20,000 rows 27.4 to 12.2 s, 40,000
+    rows 109 to 61 s; 256 columns 20,000 rows 7.4 to 4.7 s; 16 and 2 columns 50,000 rows about 8%
+    slower.'
